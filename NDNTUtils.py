@@ -4,22 +4,28 @@ from copy import deepcopy
 
 #################### CREATE NETWORK PARAMETER-DICTS ####################
 def layer_dict(
-    input_dims=None, num_filters=1, conv=False,
-    NLtype='relu', norm_type=0, pos_constraint=False, num_inh=0):
+    input_dims=None, num_filters=1, NLtype='relu', 
+    norm_type=0, pos_constraint=False, num_inh=0,
+    conv=False, conv_width=None):
 
     """input dims are [num_filters, space1, space2, num_lags]"""
 
     # Add any other nonlinaerities here (and pass to functionals below)
     val_nls = ['lin', 'relu', 'quad', 'softplus', 'tanh', 'sigmoid']
-
+    assert NLtype in val_nls, 'NLtype not valid.'
 
     if input_dims is None:
         input_dims = [1,1,1,1]
     output_dims = [num_filters, 1, 1, 1]
     if conv:
         output_dims[1:3] = input_dims[1:3]
-
-    assert NLtype in val_nls, 'NLtype not valid.'
+        if conv_width is None:
+            TypeError( 'Need to define conv filter-width.')
+        filter_dims = [input_dims[3]*input_dims[0], conv_width, conv_width]
+        if input_dims[2] == 1:  # then 1-d spatial
+            filter_dims[2] = 1
+    else:
+        filter_dims = [input_dims[0]*input_dims[3]] + input_dims[1:3]
 
     if num_inh > num_filters:
         print("Warning: num_inh is too large. Adjusted to ", num_filters)
@@ -29,11 +35,13 @@ def layer_dict(
         'input_dims': input_dims,
         'output_dims': output_dims,
         'num_filters': num_filters,
+        'filter_dims': filter_dims, 
         'NLtype': NLtype, 
         'norm_type': norm_type, 
         'pos_constraint': pos_constraint,
         'conv': conv,
         'num_inh': num_inh,
+        'initializer': 'uniform',
         'bias': True}
 
     return params_dict

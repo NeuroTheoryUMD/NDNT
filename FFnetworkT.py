@@ -34,9 +34,9 @@ class FFnetwork(LightningModule):
         # Check that first layer has matching input dims (to FFnetwork)
         if self.layer_list[0]['input_dims'] is None:
             self.layer_list[0]['input_dims'] = ffnet_params['input_dims']
-            
+
         # Make each layer as part of an array
-        self.layers = []
+        self.layers = nn.ModuleList()
         for ll in range(num_layers):
             self.layers.append(
                 NDNlayer(self.layer_list[ll]) )

@@ -1,3 +1,4 @@
+from NDNTUtils import layer_dict
 import numpy as np
 import torch
 from torch import nn
@@ -11,6 +12,7 @@ from torch.nn import init
 #from torch.nn.common_types import _size_2_t, _size_3_t # for conv2,conv3 default
 #from torch.nn.modules.utils import _triple # for posconv3
 
+from .regularization import Regularization
 from copy import deepcopy
 
 
@@ -21,7 +23,7 @@ class NDNlayer(LightningModule):
         s = super().__repr__()
         # Add other details for printing out if we want
 
-    def __init__(self, layer_params):
+    def __init__(self, layer_params, reg_vals=None):
         super(NDNlayer, self).__init__()
 
         assert not layer_params['conv'], "layer_params error: This is not a conv layer."
@@ -30,6 +32,7 @@ class NDNlayer(LightningModule):
         self.output_dims = layer_params['output_dims']
         self.NLtype = layer_params['NLtype']
         
+        # Will want to replace this with Jake's fancy function
         if self.NLtype == 'lin':
             self.NL = None
         elif self.NLtype == 'relu':
@@ -65,17 +68,26 @@ class NDNlayer(LightningModule):
             # Does this apply to both weights and biases? Should be separate?
             # How does this compare without explicit constraint? Maybe better, maybe worse...
 
+        self.reg = Regularization(
+            input_dims=self.filter_dims,
+            num_filters=self.num_filters,
+            vals=reg_vals)
+
         if layer_params['num_inh'] == 0:
             self.ei_mask = None
         else:
-            # self.register_buffer('ei_mask', torch.ones(self.num_filters))  
-            # how set?
-            self.ei_mask = torch.ones(self.num_filters)
+            self.register_buffer('ei_mask', torch.ones(self.num_filters))  
             self.ei_mask[-(layer_params['num_inh']+1):0] = -1
 
-        self.reset_parameters()
+        self.reset_parameters( layer_dict['initializer'])
+    # END NDNlayer.__init__
 
-    def reset_parameters(self) -> None:
+    def reset_parameters(self, initializer=None) -> None:
+        
+        # Default initializer, although others possible
+        if initializer is None:
+            initializer = 'uniform'
+
         init.kaiming_uniform_(self.weight, a=np.sqrt(5))
         if self.bias is not None:
             fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)

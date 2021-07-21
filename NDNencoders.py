@@ -81,8 +81,8 @@ class Encoder(LightningModule):
 
                 #net_ins.append( input_cat )
                 net_outs.append( self.networks[nn](input_cat) ) 
-        #return net_ins, net_outs
-        return net_outs
+        return net_ins, net_outs
+        #return net_outs
 
 
     def forward(self, Xs, shifter=None):
@@ -90,10 +90,10 @@ class Encoder(LightningModule):
         The tricky thing is concatenating multiple-input dimensions together correctly.
         Note that the external inputs is actually in principle a list of inputs"""
 
-        net_outs = self.compute_network_outputs( Xs )
+        net_ins, net_outs = self.compute_network_outputs( Xs )
 
         # For now assume its just one output, given by the first value of self.ffnet_out
-        return net_outs[self.ffnet_n[0]]
+        return net_outs[self.ffnet_out[0]]
     # END Encoder.forward
 
     #def training_step(self, batch, batch_idx):  # batch_indx not used, right?

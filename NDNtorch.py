@@ -11,8 +11,8 @@ from torch.nn import functional as F
 #from torch import Tensor
 from torch.nn.parameter import Parameter
 from torch.nn import init
-from torch.nn.common_types import _size_2_t, _size_3_t # for conv2,conv3 default
-from torch.nn.modules.utils import _triple # for posconv3
+#from torch.nn.common_types import _size_2_t, _size_3_t # for conv2,conv3 default
+#from torch.nn.modules.utils import _triple # for posconv3
 
 # Imports from my code
 from NDNT.NDNLosses import *
@@ -112,26 +112,26 @@ class NDN:
         
         num_networks = len(ffnet_list)
         # Make list of lightning modules
-        network_list = []
+        network_list = nn.ModuleList()
 
-        for nn in range(num_networks):
+        for mm in range(num_networks):
 
             # Determine network input
-            if ffnet_list[nn]['ffnet_n'] is None:
+            if ffnet_list[mm]['ffnet_n'] is None:
                 # then external input (assume from one source)
-                input_dims = ffnet_list[nn]['input_dims']
-                assert input_dims is not None, "FFnet%d: External input dims must be specified"%nn
+                input_dims = ffnet_list[mm]['input_dims']
+                assert input_dims is not None, "FFnet%d: External input dims must be specified"%mm
             else: 
-                nets_in = ffnet_list[nn]['ffnet_n']
+                nets_in = ffnet_list[mm]['ffnet_n']
                 num_input_networks = len(nets_in)
 
                 # Concatenate input dimensions into first filter dims and make sure valid
                 input_dim_list, valid_concat = [], True
                 for ii in range(num_input_networks):
-                    assert nets_in[ii] < nn, "FFnet%d (%d): input networks must come earlier"%(nn, ii)
+                    assert nets_in[ii] < mm, "FFnet%d (%d): input networks must come earlier"%(mm, ii)
                     
                     # How reads input networks depends on what type of network this is
-                    if ffnet_list[nn]['ffnet_type'] == 'normal':
+                    if ffnet_list[mm]['ffnet_type'] == 'normal':
                         # this means that just takes output of last layer of input network
                         input_dim_list.append(network_list[nets_in[ii]].layers[-1].output_dims)
                     else:
@@ -143,14 +143,14 @@ class NDN:
                             num_cat_filters += input_dim_list[ii][0]
                         else:
                             valid_concat = False
-                            print("FFnet%d: invalid concatenation %d:"%(nn,ii), input_dim_list[ii][1:], input_dim_list[0][1:] )
+                            print("FFnet%d: invalid concatenation %d:"%(mm,ii), input_dim_list[ii][1:], input_dim_list[0][1:] )
                 assert valid_concat, "Dim concat error. Exiting."
                 input_dims = [num_cat_filters] + input_dim_list[0][1:]
 
-            ffnet_list[nn]['input_dims'] = input_dims
+            ffnet_list[mm]['input_dims'] = input_dims
 
             # Create corresponding FFnetwork
-            network_list.append( FFnetwork(ffnet_list[nn]) )
+            network_list.append( FFnetwork(ffnet_list[mm]) )
 
             return network_list
     # END assemble_ffnetworks
@@ -263,7 +263,7 @@ class NDN:
         '''
         m0 = self.cpu()
         if self.loss_type == 'poisson':
-            loss = torch.nn.PoissonNLLLoss(log_input=False, reduction='none')
+            loss = nn.PoissonNLLLoss(log_input=False, reduction='none')
         else:
             print('Whatever loss function you want is not yet here.')
         
