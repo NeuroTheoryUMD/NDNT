@@ -15,12 +15,12 @@ from torch.nn import init
 #from torch.nn.modules.utils import _triple # for posconv3
 
 # Imports from my code
-from NDNT.NDNLosses import *
-from NDNT.NDNencoders import Encoder
-from NDNT.NDNencoders import get_trainer
+from NDNLosses import *
+from NDNencoders import Encoder
+from NDNencoders import get_trainer
 from NDNlayer import *
-from FFnetworkT import *
-from NDNT.NDNTutils import create_optimizer_params
+from FFnetworks import *
+from NDNutils import create_optimizer_params
 
 
 class NDN:

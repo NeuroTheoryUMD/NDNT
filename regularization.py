@@ -39,57 +39,48 @@ class Regularization(LightningModule):
 
     _allowed_reg_types = ['l1', 'l2', 'norm2', 'norm2_space', 'norm2_filt',
                           'd2t', 'd2x', 'd2xt', 'local', 'glocal', 'center',
-                          'max', 'max_filt', 'max_space', 'max_level', 'dropout', 'orth']
+                          'max', 'max_filt', 'max_space', 'orth']
 
-    def __init__(self, input_dims=None, num_filters=None, vals=None):
-        """Constructor for Regularization class
+    def __init__(self, filter_dims=None, num_filters=None, vals=None):
+        """Constructor for Regularization class. This stores all info for regularization, and 
+        sets up regularization modules for training, and returns reg_penalty from layer when passed in weights
         
         Args:
             input_dims (list of ints): dimension of input size (for building reg mats)
-            num_outputs (int): number of outputs (for normalization in norm2)
-            vals (dict, optional): key-value pairs specifying value for each
-                type of regularization 
+            vals (dict, optional): key-value pairs specifying value for each type of regularization 
 
         Raises:
             TypeError: If `input_dims` is not specified
             TypeError: If `num_outputs` is not specified
-            
+        
+        Note that I'm using my old regularization matrices, which is made for the following 3-dimensional
+        weights with dimensions ordered in [NX, NY, num_lags]. Currently, filter_dims is 4-d: 
+        [num_filters, NX, NY, num_lags] so this will need to rearrage so num_filters gets folded into last 
+        dimension so that it will work with d2t regularization, if reshape is necessary]
         """
 
         from copy import deepcopy
 
         # check input
-        if input_dims is None:
-            raise TypeError('Must specify `input_dims`')
-        if num_filters is None:
-            raise TypeError('Must specify `num_outputs`')
-
-        if isinstance(input_dims, list) is False:
-            input_dims = [1, input_dims, 1, 1] # default space
-
-        self.input_dims = input_dims[:]
-        self.num_filters = num_filters
-
-        # set all default values to None
-        none_default = {}
-        for reg_type in self._allowed_reg_types:
-            none_default[reg_type] = None
-        self.vals = deepcopy(none_default)
-        self.vals_ph = deepcopy(none_default)
-        self.vals_var = deepcopy(none_default)
-        self.mats = deepcopy(none_default)
-        self.penalties = deepcopy(none_default)
-        self.blocks = None
+        assert filter_dims is not None, "Must specify `input_dims`"
+        self.input_dims_original = filter_dims
+        self.input_dims = deepcopy(filter_dims[1:])
+        self.input_dims[2] *= filter_dims[0]  
+        # combines num_filters into last dim, but weights-transpose needed
+        if filter_dims[0] == 1:
+            self.need_reshape = False
+        else:
+            self.need_reshape = True
 
         # read user input
         if vals is not None:
             #for reg_type, reg_val in vals.iteritems():  # python3 mod
-            for reg_type in vals:
-                reg_val = vals[reg_type]
-                self.set_reg_val(reg_type, reg_val)
+            for reg_type, reg_val in vals.items():
+                if reg_val is not None:
+                    self.set_reg_val(reg_type, reg_val)
     # END Regularization.__init__
 
-    def set_reg_val(self, reg_type, reg_val):
+    def set_reg_val(self, reg_type, reg_val=None):
         """Set regularization value in self.vals dict (doesn't affect a tf 
         Graph until a session is run and `assign_reg_vals` is called)
         
@@ -109,284 +100,74 @@ class Regularization(LightningModule):
         # check inputs
         if reg_type not in self._allowed_reg_types:
             raise ValueError('Invalid regularization type ''%s''' % reg_type)
-        if reg_val < 0.0:
-            raise ValueError('`reg_val` must be greater than or equal to zero')
 
-        # determine if this is a new type of regularization
-        if self.vals[reg_type] is None:
-            new_reg_type = True
-        else:
-            new_reg_type = False
+        if reg_val is None:  # then eliminate reg_type
+            if reg_type in self.vals:
+                del self.vals[reg_type]
+        else:  # add or modify reg_val
+            if reg_val < 0.0:
+                raise ValueError('`reg_val` must be greater than or equal to zero')
 
-        self.vals[reg_type] = reg_val
+            self.vals[reg_type] = reg_val
 
-        return new_reg_type
+        self.reg_modules = nn.ModuleList()
     # END Regularization.set_reg_val
 
-    def assign_reg_vals(self, sess):
-        """Update regularization values in default tf Graph"""
-        # loop through all types of regularization
-        #for reg_type, reg_val in self.vals.iteritems():  # python3 mod
-        for reg_type in self.vals:
-            reg_val = self.vals[reg_type]
-            # only assign if applicable
-#            if reg_val is not None:
-#                sess.run(
-#                    self.vals_var[reg_type].initializer,
-#                    feed_dict={self.vals_ph[reg_type]: self.vals[reg_type]})
-    # END Regularization.assign_reg_vals
+    def build_reg_modules(self):
+        """Prepares regularization modules in train based on current regularization values"""
+        #self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
+        self.reg_modules.clear()
+        for kk, vv in self.vals.items():
+            self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims) )
 
-    def define_reg_loss(self, weights):
-        """Define regularization loss in default tf Graph"""
+    def compute_reg_loss(self, weights):  # this could also be a forward?
+        """Define regularization loss. Will reshape weights as needed"""
+        
+        if self.need_reshape:
+            wsize = weights.size()
+            w = torch.reshape(
+                    torch.reshape(weights, self.input_dims_original).permute(1,2,0,3), 
+                    wsize)
+        else:
+            w = weights
 
-        reg_loss = []
-        # loop through all types of regularization
-        #for reg_type, reg_val in self.vals.iteritems():  # python3 mod
-        for reg_type in self.vals:
-            reg_val = self.vals[reg_type]
-            # set up reg val variable if it doesn't already exist
-            if reg_val is not None:
-                with tf.name_scope(reg_type + '_loss'):
-                    # use placeholder to initialize Variable for easy
-                    # reassignment of reg vals
-                    self.vals_ph[reg_type] = tf.placeholder(
-                        shape=(),
-                        dtype=tf.float32,
-                        name=reg_type + '_ph')
-                    self.vals_var[reg_type] = tf.Variable(
-                        self.vals_ph[reg_type],  # initializer for variable
-                        trainable=False,  # no GraphKeys.TRAINABLE_VARS
-                        collections=[],   # no GraphKeys.GLOBAL_VARS
-                        dtype=tf.float32,
-                        name=reg_type + '_param')
-                    self.mats[reg_type] = self._build_reg_mats(reg_type)
-                    self.penalties[reg_type] = \
-                        self._calc_reg_penalty(reg_type, weights)
-                reg_loss.append(self.penalties[reg_type])
-
-        # if no regularization, define regularization loss to be zero
-        if len(reg_loss) == 0:
-            reg_loss.append(tf.constant(0.0, tf.float32, name='zero'))
-
-        return tf.add_n(reg_loss)
+        rloss = 0
+        for regmod in self.reg_modules:
+            rloss += regmod( weights )
+        return rloss
     # END Regularization.define_reg_loss
-
-    def _build_reg_mats(self, reg_type):
-        """Build regularization matrices in default tf Graph
-
-        Args:
-            reg_type (str): see `_allowed_reg_types` for options
-        """
-
-        if (reg_type == 'd2t') or (reg_type == 'd2x') or (reg_type == 'd2xt'):
-            reg_mat = get_rmats.create_tikhonov_matrix(self.input_dims, reg_type)
-            name = reg_type + '_laplacian'
-        elif (reg_type == 'max') or (reg_type == 'max_filt') or (reg_type == 'max_space'):
-            reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
-            name = reg_type + '_reg'
-        elif reg_type == 'center':
-            reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
-            name = reg_type + '_reg'
-        elif reg_type == 'max_level':
-            if self.blocks is not None:
-                reg_mat = get_rmats.create_maxpenalty_matrix([len(self.blocks), 1, 1], 'max')
-            else:
-                reg_mat = 0.0
-            name = reg_type + '_reg'
-        elif reg_type == 'local':
-            reg_mat = get_rmats.create_localpenalty_matrix(
-                self.input_dims, separable=False)
-            name = reg_type + '_reg'
-        elif reg_type == 'glocal':
-            reg_mat = get_rmats.create_localpenalty_matrix(
-                self.input_dims, separable=False, spatial_global=True)
-            name = reg_type + '_reg'
-        else:
-            reg_mat = 0.0
-            name = 'lp_placeholder'
-
-        return tf.constant(reg_mat, dtype=tf.float32, name=name)
-    # END Regularization._build_reg_mats
-
-    def _calc_reg_penalty(self, reg_type, weights):
-        """Calculate regularization penalty for various reg types in default tf 
-        Graph"""
-
-        if reg_type == 'l1':
-            reg_pen = tf.multiply(
-                self.vals_var['l1'],
-                tf.reduce_sum(tf.abs(weights)))
-        elif reg_type == 'l2':
-            reg_pen = tf.multiply(
-                self.vals_var['l2'],
-                tf.nn.l2_loss(weights))
-        elif reg_type == 'norm2':
-            reg_pen = tf.multiply(
-                self.vals_var['norm2'],
-                tf.square(tf.reduce_sum(tf.square(weights))-self.num_outputs))
-        elif reg_type == 'max':
-            w2 = tf.square(weights)
-            reg_pen = tf.multiply(
-                self.vals_var['max'],
-                tf.trace(tf.matmul(w2,
-                                   tf.matmul(self.mats['max'], w2),
-                                   transpose_a=True)))
-        elif reg_type == 'max_space':
-            w2 = tf.square(weights)
-            reg_pen = tf.multiply(
-                self.vals_var['max_space'],
-                tf.trace(tf.matmul(w2,
-                                   tf.matmul(self.mats['max_space'], w2),
-                                   transpose_a=True)))
-        elif reg_type == 'max_filt':
-            w2 = tf.square(weights)
-            reg_pen = tf.multiply(
-                self.vals_var['max_filt'],
-                tf.trace(tf.matmul(w2,
-                                   tf.matmul(self.mats['max_filt'], w2),
-                                   transpose_a=True)))
-        elif reg_type == 'd2t':
-            reg_pen = tf.multiply(
-                self.vals_var['d2t'],
-                tf.reduce_sum(tf.square(
-                    tf.matmul(self.mats['d2t'], weights))))
-        elif reg_type == 'd2x':
-            reg_pen = tf.multiply(
-                self.vals_var['d2x'],
-                tf.reduce_sum(tf.square(
-                    tf.matmul(self.mats['d2x'], weights))))
-        elif reg_type == 'd2xt':
-            reg_pen = tf.multiply(
-                self.vals_var['d2xt'],
-                tf.reduce_sum(tf.square(
-                    tf.matmul(self.mats['d2xt'], weights))))
-        elif reg_type == 'local':
-            w2 = tf.square(weights)
-            reg_pen = tf.multiply(
-                self.vals_var['local'],
-                tf.trace(tf.matmul(w2,
-                                   tf.matmul(self.mats['local'], w2),
-                                   transpose_a=True)))
-        elif reg_type == 'glocal':
-            w2 = tf.square(weights)
-            reg_pen = tf.multiply(
-                self.vals_var['glocal'],
-                tf.trace(tf.matmul(w2, tf.matmul(self.mats['glocal'], w2),
-                                   transpose_a=True)))
-        elif reg_type == 'center':
-            reg_pen = tf.multiply(
-                self.vals_var['center'],
-                tf.trace(tf.matmul(weights,
-                                   tf.matmul(self.mats['center'], weights),
-                                   transpose_a=True)))
-        elif reg_type == 'max_level':
-            if self.blocks is not None:
-                w2 = tf.square(weights)
-                num_levels = len(self.blocks)
-                level_mags = []
-                for nn in range(num_levels):
-                    # Compute range of indices given 'blocks' represent filters and there is space
-                    level_mags.append(tf.reduce_sum(tf.gather(w2, self.blocks[nn]), axis=0))
-                reg_pen = tf.multiply(
-                    self.vals_var['max_level'],
-                    tf.trace(tf.matmul(level_mags,
-                                       tf.matmul(self.mats['max_level'], level_mags),
-                                       transpose_a=True)))
-            else:
-                reg_pen = tf.constant(0.0)
-        elif reg_type == 'orth':
-            diagonal = np.ones(weights.shape[1], dtype='float32')
-            # sum( (W^TW - I).^2)
-            reg_pen = tf.multiply(self.vals_var['orth'],
-                tf.reduce_sum(tf.square(tf.math.subtract(tf.matmul(tf.transpose(weights), weights),tf.linalg.diag(diagonal)))))
-        else:
-            reg_pen = tf.constant(0.0)
-        return reg_pen
-    # END Regularization._calc_reg_penalty
-
-    def get_reg_penalty(self, sess):
-        """Build dictionary that contains regularization penalty from each 
-        regularization type"""
-
-        reg_dict = {}
-        #for reg_type, reg_val in self.vals.iteritems():  # python3 mod
-        for reg_type in self.vals:
-            reg_val = self.vals[reg_type]
-            if reg_val is not None:
-                reg_pen = sess.run(self.penalties[reg_type])
-            else:
-                reg_pen = 0.0
-            reg_dict[reg_type] = reg_pen
-
-        return reg_dict
-    # END Regularization.get_reg_penalty
 
     def reg_copy(self):
         """Copy regularization to new structure"""
 
         from copy import deepcopy
-
-        reg_target = Regularization(
-            input_dims=self.input_dims,
-            num_outputs=self.num_outputs)
-        reg_target.vals = self.vals.copy()
-        reg_target.mats = {}
-        if self.blocks is not None:
-            reg_target.blocks = deepcopy(self.blocks)
+        reg_target = Regularization(input_dims=self.input_dims)
+        reg_target.vals = deepcopy(self.val)
 
         return reg_target
     # END Regularization.reg_copy
 
-    def scaffold_setup(self, num_units):
-        """This sets up the 'blocks' within the inputs to the first scaffold layer, for
-        regularization schemes that act with knowledge of these inputs. num_units is the
-        number of 'filters' in each level of the scaffold."""
+class RegModule(LightningModule):
 
-        import numpy as np
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None):
+        """Constructor for Reg_module class"""
 
-        num_space = self.input_dims[1] * self.input_dims[2]
-        num_filt = self.input_dims[0]
+        assert reg_type is not None, 'Need reg_type.'
+        assert reg_val is not None, 'Need reg_val'
+        assert input_dims is not None, 'Need input dims'
 
-        self.blocks = []
-        fcount = 0
-        for ll in range(len(num_units)):
-            indx_range = []
-            # filter range is the 'most internal' dimension
-            filter_range = range(fcount, fcount+num_units[ll])
-            fcount += num_units[ll]
+        self.reg_type = reg_type
+        self.register_buffer( 'val', torch.Tensor(reg_val))
+        self.input_dims = input_dims
 
-            for sp in range(num_space):
-                indx_range = np.concatenate((indx_range, np.add(filter_range, sp*num_filt)))
+        # Make appropriate reg_matrix as buffer (non-fit parameter)
+        reg_tensor = self._build_reg_mats( reg_type)
+        if reg_tensor is None:  # some reg dont need rmat 
+            self.rmat = None
+        else:
+            self.register_buffer( 'rmat', reg_tensor)
 
-            self.blocks.append(indx_range.astype(int))
-            # END Regularization.scaffold_setup
-# END Regularization
-
-
-class SepRegularization(Regularization):
-    """Child class that adjusts regularization for separable layers"""
-
-    def __init__(self,
-                 input_dims=None,
-                 num_outputs=None,
-                 vals=None):
-
-        """Constructor for Sep_Regularization object
-        
-        Args:
-            input_dims (int): dimension of input size (for building reg mats)
-            num_outputs (int): number of outputs (for normalization in norm2)
-            vals (dict, optional): key-value pairs specifying value for each
-                type of regularization
-        """
-
-        super(SepRegularization, self).__init__(
-            input_dims=input_dims,
-            num_outputs=num_outputs,
-            vals=vals)
-
-        self.partial_fit = None
-    # END SepRegularization.__init__
+    # END RegModule.__init__
 
     def _build_reg_mats(self, reg_type):
         """Build regularization matrices in default tf Graph
@@ -394,438 +175,63 @@ class SepRegularization(Regularization):
         Args:
             reg_type (str): see `_allowed_reg_types` for options
         """
+        from . import create_reg_matrices as get_rmats
 
-        if reg_type == 'd2t':
-            if self.partial_fit == 1:
-                raise TypeError('d2t is pointless when only fitting spatial part.')
-            else:
-                reg_mat = get_rmats.create_tikhonov_matrix(
-                    [self.input_dims[0], 1, 1], reg_type)
-                name = reg_type + '_laplacian'
-        elif reg_type == 'd2x':
-            if self.partial_fit == 0:
-                raise TypeError('d2x is pointless when only fitting temporal part.')
-            else:
-                reg_mat = get_rmats.create_tikhonov_matrix(
-                    [1, self.input_dims[1], self.input_dims[2]], reg_type)
-                name = reg_type + '_laplacian'
-        elif reg_type == 'd2xt':
-            raise TypeError('d2xt does not work with a separable layer.')
-        elif reg_type == 'max':
-            raise ValueError('Cannot use max regularization with a separable layer.')
-        elif reg_type == 'max_filt':
-            reg_mat = get_rmats.create_maxpenalty_matrix(
-                [self.input_dims[0], 1, 1], 'max')
-            name = reg_type + '_reg'
-        elif reg_type == 'max_space':
-            reg_mat = get_rmats.create_maxpenalty_matrix(
-                [self.input_dims[1]*self.input_dims[2], 1, 1], 'max')
-            name = reg_type + '_reg'
-        elif reg_type == 'max_level':
-            if self.blocks is not None:
-                reg_mat = get_rmats.create_maxpenalty_matrix(
-                    [len(self.blocks), 1, 1], 'max')
-            else:
-                reg_mat = 0.0
-            name = reg_type + '_reg'
+        if (reg_type == 'd2t') or (reg_type == 'd2x') or (reg_type == 'd2xt'):
+            reg_mat = get_rmats.create_tikhonov_matrix(self.input_dims, reg_type)
+            #name = reg_type + '_laplacian'
+        elif (reg_type == 'max') or (reg_type == 'max_filt') or (reg_type == 'max_space'):
+            reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
+            #name = reg_type + '_reg'
         elif reg_type == 'center':
-            reg_mat = get_rmats.create_maxpenalty_matrix(
-                [1, self.input_dims[1], self.input_dims[2]], 'center')
-            name = reg_type + '_reg'
+            reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
+            #name = reg_type + '_reg'
         elif reg_type == 'local':
             reg_mat = get_rmats.create_localpenalty_matrix(
-                self.input_dims, separable=True)
-            name = reg_type + '_reg'
+                self.input_dims, separable=False)
+            #name = reg_type + '_reg'
         elif reg_type == 'glocal':
-            raise TypeError('glocal regularization not supported with a separable layer.')
+            reg_mat = get_rmats.create_localpenalty_matrix(
+                self.input_dims, separable=False, spatial_global=True)
+            #name = reg_type + '_reg'
         else:
-            reg_mat = 0.0
-            name = 'lp_placeholder'
+            reg_mat = None
 
-        return tf.constant(reg_mat, dtype=tf.float32, name=name)
-    # END SepRegularization._build_reg_mats
-
-    def _calc_reg_penalty(self, reg_type, weights):
-        """Calculate regularization penalty for various reg types in default tf
-        Graph"""
-
-        if reg_type == 'l1':
-            reg_pen = tf.multiply(
-                self.vals_var['l1'],
-                tf.reduce_sum(tf.abs(weights)))
-        elif reg_type == 'l2':
-            reg_pen = tf.multiply(
-                self.vals_var['l2'],
-                tf.nn.l2_loss(weights))
-        elif reg_type == 'norm2':
-            reg_pen = tf.multiply(
-                self.vals_var['norm2'],
-                tf.square(tf.reduce_sum(tf.square(weights))-self.num_outputs))
-        elif reg_type == 'norm2_filt':
-            wfilt = tf.slice(weights, [0, 0], [self.input_dims[0],
-                                               self.num_outputs])
-            reg_pen = tf.multiply(
-                self.vals_var['norm2_filt'],
-                tf.square(tf.reduce_sum(tf.square(wfilt))-self.num_outputs))
-        elif reg_type == 'norm2_space':
-            wspace = tf.slice(weights, [self.input_dims[0], 0],
-                              [self.input_dims[1]*self.input_dims[2],
-                               self.num_outputs])
-            reg_pen = tf.multiply(
-                self.vals_var['norm2_space'],
-                tf.square(tf.reduce_sum(tf.square(wspace))-self.num_outputs))
-
-        elif reg_type == 'max_space':
-            if self.partial_fit == 0:
-                raise TypeError('max_space is pointless when only fitting temporal part.')
-            elif self.partial_fit == 1:
-                ws2 = tf.square(weights)
-            else:
-                ws2 = tf.square(tf.slice(weights, [self.input_dims[0], 0],
-                                         [self.input_dims[1]*self.input_dims[2],
-                                          self.num_outputs]))
-            reg_pen = tf.multiply(
-                self.vals_var['max_space'], tf.trace(tf.matmul(
-                    ws2, tf.matmul(self.mats['max_space'], ws2),
-                    transpose_a=True)))
-
-        elif reg_type == 'max_filt':
-            if self.partial_fit == 1:
-                raise TypeError('max_filt is pointless when only fitting spatial part.')
-            elif self.partial_fit == 0:
-                wt2 = tf.square(weights)
-            else:
-                wt2 = tf.square(tf.slice(weights, [0, 0],
-                                         [self.input_dims[0], self.num_outputs]))
-            reg_pen = tf.multiply(self.vals_var['max_filt'],
-                                  tf.trace(tf.matmul(wt2, tf.matmul(self.mats['max_filt'],
-                                                               wt2), transpose_a=True)))
-        elif reg_type == 'max_level':
-            if self.blocks is not None:
-                w2 = tf.square(weights)
-                num_levels = len(self.blocks)
-                level_mags = []
-                for nn in range(num_levels):
-                    # Compute range of indices given 'blocks' represent filters and there is space
-                    level_mags.append(tf.reduce_sum(tf.gather(w2, self.blocks[nn]), axis=0))
-                reg_pen = tf.multiply(
-                    self.vals_var['max_level'],
-                    tf.trace(tf.matmul(level_mags,
-                                       tf.matmul(self.mats['max_level'], level_mags),
-                                       transpose_a=True)))
-            else:
-                reg_pen = tf.constant(0.0)
-
-        elif reg_type == 'd2t':
-            if self.partial_fit == 1:
-                raise TypeError('d2t is pointless when only fitting spatial part...')
-            elif self.partial_fit == 0:
-                wt = weights
-            else:
-                wt = tf.slice(weights, [0, 0], [self.input_dims[0], self.num_outputs])
-
-            reg_pen = tf.multiply(self.vals_var['d2t'],
-                                  tf.reduce_sum(tf.square(tf.matmul(self.mats['d2t'], wt))))
-
-        elif reg_type == 'd2x':
-            if self.partial_fit == 0:
-                raise TypeError('d2x is pointless when only fitting temporal part...')
-            elif self.partial_fit == 1:
-                ws = weights
-            else:
-                ws = tf.slice(weights, [self.input_dims[0], 0],
-                              [self.input_dims[1]*self.input_dims[2],
-                               self.num_outputs])
-
-            reg_pen = tf.multiply(self.vals_var['d2x'],
-                                  tf.reduce_sum(tf.square(
-                                      tf.matmul(self.mats['d2x'], ws))))
-        elif reg_type == 'center':
-            if self.partial_fit == 0:
-                raise TypeError('center reg is pointless when only fitting temporal part...')
-            elif self.partial_fit == 1:
-                ws = weights
-            else:
-                ws = tf.slice(weights, [self.input_dims[0], 0],
-                              [self.input_dims[1]*self.input_dims[2],
-                               self.num_outputs])
-
-            reg_pen = tf.multiply(self.vals_var['center'],
-                                  tf.trace(tf.matmul(ws, tf.matmul(self.mats['center'], ws),
-                                                     transpose_a=True)))
-
-        elif reg_type == 'local':
-            if self.partial_fit == 0:
-                raise TypeError('local reg is pointless when only fitting temporal part...')
-            elif self.partial_fit == 1:
-                ws2 = tf.square(weights)
-            else:
-                ws2 = tf.square(tf.slice(weights, [self.input_dims[0], 0],
-                                         [self.input_dims[1]*self.input_dims[2],
-                                          self.num_outputs]))
-
-            reg_pen = tf.multiply(
-                self.vals_var['local'],
-                tf.trace(tf.matmul(ws2, tf.matmul(self.mats['local'], ws2),
-                                   transpose_a=True)))
-        elif reg_type == 'd2xt':
-            raise TypeError('d2xt does not work with a separable layer.')
+        if reg_mat is None:
+            return None
         else:
-            reg_pen = tf.constant(0.0)
+            return torch.Tensor(reg_mat)
+    # END RegModule._build_reg_mats
+
+    def forward(self, weights):
+        """Calculate regularization penalty for various reg types"""
+
+        if self.reg_type == 'l1':
+            reg_pen = torch.sum(torch.abs(weights))
+
+        elif self.reg_type == 'l2':
+            reg_pen = torch.sum(torch.square(weights))
+
+        elif self.reg_type in ['d2t', 'd2x', 'd2xt']:
+            reg_pen = torch.sum( torch.square( torch.matmul(self.reg_mat, weights) ) )
+
+        elif self.reg_type == 'norm2':  # [custom] convex (I think) soft-normalization regularization
+            reg_pen = torch.square( torch.mean(torch.square(weights))-1 )
+
+        elif self.reg_type in ['max', 'max_filt', 'max_space', 'local', 'glocal', 'center']:  # [custom]
+            # my old implementation didnt square weights before passing into center. should it? I think....
+            w2 = torch.square(weights)
+            reg_pen = torch.trace( torch.matmul(
+                    torch.transpose(w2),
+                    torch.matmul(self.reg_mat, w2) ))
+        # ORTH MORE COMPLICATED: needs another buffer?
+        #elif self.reg_type == 'orth':  # [custom]
+        #    diagonal = np.ones(weights.shape[1], dtype='float32')
+        #    # sum( (W^TW - I).^2)
+        #    reg_pen = tf.multiply(self.vals_var['orth'],
+        #        tf.reduce_sum(tf.square(tf.math.subtract(tf.matmul(tf.transpose(weights), weights),tf.linalg.diag(diagonal)))))
+        else:
+            reg_pen = 0.0
+
         return reg_pen
-    # END Sep_Regularization._calc_reg_penalty
-
-    def reg_copy(self):
-        """Copy regularization to new structure"""
-
-        reg_target = SepRegularization(
-            input_dims=self.input_dims,
-            num_outputs=self.num_outputs)
-        reg_target.vals = self.vals.copy()
-        reg_target.mats = {}
-
-        return reg_target
-    # END SepRegularization.reg_copy
-
-    def scaffold_setup(self, num_units):
-        """This sets up the 'blocks' within the inputs to the first scaffold layer, for
-        regularization schemes that act with knowledge of these inputs. num_units is the
-        number of 'filters' in each level of the scaffold."""
-
-        self.blocks = []
-        fcount = 0
-        for ll in range(len(num_units)):
-            # filter range is the 'most internal' dimension
-            filter_range = range(fcount, fcount+num_units[ll])
-            fcount += num_units[ll]
-
-            self.blocks.append(filter_range)
-    # END SepRegularization.scaffold_setup
-# END SepRegularization
-
-
-class UnitRegularization(Regularization):
-    """Child class that adjusts regularization for separable layers"""
-
-    def __init__(self,
-                 input_dims=None,
-                 num_outputs=None,
-                 vals=None):
-        """Constructor for UnitRegularization object
-
-        Args:
-            input_dims (int): dimension of input size (for building reg mats)
-            num_outputs (int): number of outputs (for normalization in norm2)
-            vals (dict, optional): key-value pairs specifying value for each
-                type of regularization
-        """
-
-        super(UnitRegularization, self).__init__(
-            input_dims=input_dims,
-            num_outputs=num_outputs,
-            vals=vals)
-
-    # END UnitRegularization.__init__
-
-    def set_reg_val(self, reg_type, reg_vals):
-        """Set regularization value in self.vals dict (doesn't affect a tf
-        Graph until a session is run and `assign_reg_vals` is called)
-
-        Args:
-            reg_type (str): see `_allowed_reg_types` for options
-            reg_vals (float): value of regularization parameter
-
-        Returns:
-            bool: True if `reg_type` has not been previously set
-
-        Raises:
-            ValueError: If `reg_type` is not a valid regularization type
-            ValueError: If `reg_val` is less than 0.0
-
-        """
-
-        # check inputs
-        if reg_type not in self._allowed_reg_types:
-            raise ValueError('Invalid regularization type ''%s''' % reg_type)
-        if reg_vals is None:
-            return
-        # Convert reg_vals to array nomatter what
-        reg_vals = np.array(reg_vals, dtype='float32')
-        if len(reg_vals.shape) == 0: # then single number
-            reg_vals = np.array([reg_vals]*self.num_outputs, dtype='float32')
-        else:
-            assert reg_vals.shape[0] == self.num_outputs, 'reg_vals is incorrect length.'
-
-        # determine if this is a new type of regularization
-        if self.vals[reg_type] is None:
-            new_reg_type = True
-        else:
-            new_reg_type = False
-
-        # Check dimensionality of reg
-        self.vals[reg_type] = reg_vals
-
-        return new_reg_type
-    # END UnitRegularization.set_reg_val
-
-    def define_reg_loss(self, weights):
-        """Define regularization loss in default tf Graph"""
-
-        reg_loss = []
-        # loop through all types of regularization
-        #for reg_type, reg_val in self.vals.iteritems():  # python3 mod
-        for reg_type in self.vals:
-            reg_val = self.vals[reg_type]
-            # set up reg val variable if it doesn't already exist
-            if reg_val is not None:
-                with tf.name_scope(reg_type + '_loss'):
-                    # use placeholder to initialize Variable for easy
-                    # reassignment of reg vals
-                    self.vals_ph[reg_type] = tf.placeholder(
-                        shape=self.num_outputs,
-                        dtype=tf.float32,
-                        name=reg_type + '_ph')
-                    self.vals_var[reg_type] = tf.Variable(
-                        self.vals_ph[reg_type],  # initializer for variable
-                        trainable=False,  # no GraphKeys.TRAINABLE_VARS
-                        collections=[],   # no GraphKeys.GLOBAL_VARS
-                        dtype=tf.float32,
-                        name=reg_type + '_param')
-                    self.mats[reg_type] = self._build_reg_mats(reg_type)
-                    self.penalties[reg_type] = \
-                        self._calc_reg_penalty(reg_type, weights)
-                reg_loss.append(self.penalties[reg_type])
-
-        # if no regularization, define regularization loss to be zero
-        if len(reg_loss) == 0:
-            reg_loss.append(tf.constant(0.0, tf.float32, name='zero'))
-
-        return tf.add_n(reg_loss)
-    # END UnitRegularization.define_reg_loss
-
-    def reg_copy(self):
-        """Copy regularization to new structure"""
-
-        from copy import deepcopy
-
-        reg_target = UnitRegularization(
-            input_dims=self.input_dims,
-            num_outputs=self.num_outputs)
-        reg_target.vals = self.vals.copy()
-        reg_target.mats = {}
-        if self.blocks is not None:
-            reg_target.blocks = deepcopy(self.blocks)
-
-        return reg_target
-    # END UnitRegularization.reg_copy
-
-    def _calc_reg_penalty(self, reg_type, weights):
-        """Calculate regularization penalty for various reg types in default tf
-        Graph"""
-
-        if reg_type == 'l1':
-            reg_pen = tf.reduce_sum(
-                tf.multiply(self.vals_var['l1'], tf.abs(weights)))
-        elif reg_type == 'l2':
-            reg_pen = tf.reduce_sum(
-                tf.multiply(self.vals_var['l2'], tf.square(weights)))
-        elif reg_type == 'max':
-            w2 = tf.square(weights)
-            reg_pen = tf.trace(tf.matmul(
-                tf.multiply(w2, self.vals_var['max']),
-                tf.matmul(self.mats['max'], w2), transpose_a=True))
-        elif reg_type == 'max_space':
-            w2 = tf.square(weights)
-            reg_pen = tf.trace(tf.matmul(
-                tf.multiply(w2, self.vals_var['max_space']),
-                tf.matmul(self.mats['max_space'], w2), transpose_a=True))
-        elif reg_type == 'max_filt':
-            w2 = tf.square(weights)
-            reg_pen = tf.trace(tf.matmul(
-                tf.multiply(w2, self.vals_var['max_filt']),
-                tf.matmul(self.mats['max_filt'], w2), transpose_a=True))
-        elif reg_type == 'd2t':
-            reg_pen = tf.reduce_sum(tf.multiply(
-                self.vals_var['d2t'], tf.square(
-                    tf.matmul(self.mats['d2t'], weights))))
-        elif reg_type == 'd2x':
-            reg_pen = tf.reduce_sum(tf.multiply(
-                self.vals_var['d2x'], tf.square(
-                    tf.matmul(self.mats['d2x'], weights))))
-        elif reg_type == 'd2xt':
-            reg_pen = tf.reduce_sum(tf.multiply(
-                self.vals_var['d2xt'], tf.square(
-                    tf.matmul(self.mats['d2xt'], weights))))
-        elif reg_type == 'local':
-            w2 = tf.square(weights)
-            reg_pen = tf.trace(tf.matmul(
-                tf.multiply(w2, self.vals_var['local']),
-                tf.matmul(self.mats['local'], w2), transpose_a=True))
-        elif reg_type is 'glocal':
-            w2 = tf.square(weights)
-            reg_pen = tf.trace(tf.matmul(
-                tf.multiply(w2, self.vals_var['glocal']),
-                tf.matmul(self.mats['glocal'], w2), transpose_a=True))
-        elif reg_type == 'max_level':
-            if self.blocks is not None:
-                w2 = tf.square(weights)
-                num_levels = len(self.blocks)
-                level_mags = []
-                for nn in range(num_levels):
-                    # Compute range of indices given 'blocks' represent filters and there is space
-                    level_mags.append(tf.reduce_sum(tf.gather(w2, self.blocks[nn]), axis=0))
-                reg_pen = tf.multiply(
-                    self.vals_var['max_level'][0],
-                    tf.trace(tf.matmul(level_mags,
-                                       tf.matmul(self.mats['max_level'], level_mags),
-                                       transpose_a=True)))
-            else:
-                reg_pen = tf.constant(0.0)
-        else:
-            reg_pen = tf.constant(0.0)
-        return reg_pen
-    # END UnitRegularization._calc_reg_penalty
-
-class OutputRegularization(Regularization):
-    """Child class that adjusts regularization for output of layers"""
-
-    def __init__(self,
-                 input_dims=None,
-                 vals=None,
-                 network_target=None,
-                 layer_target=None):
-
-        """Constructor for Sep_Regularization object
-        
-        Args:
-            input_dims (int): dimension of input size (for building reg mats)
-            num_outputs (int): number of outputs (for normalization in norm2)
-            vals (dict, optional): key-value pairs specifying value for each
-                type of regularization
-        """
-
-        super(OutputRegularization, self).__init__(
-            input_dims=input_dims,
-            num_outputs=input_dims[-2],
-            vals=vals)
-
-        self.network_target = network_target
-        self.layer_target = layer_target
-    # END SepRegularization.__init__
-
-    def reg_copy(self):
-        """Copy regularization to new structure"""
-
-        from copy import deepcopy
-
-        reg_target = OutputRegularization(
-            input_dims=self.input_dims,
-            network_target=self.network_target,
-            layer_target=self.layer_target)
-        reg_target.vals = self.vals.copy()
-        reg_target.mats = {}
-        if self.blocks is not None:
-            reg_target.blocks = deepcopy(self.blocks)
-
-        return reg_target
-    # END UnitRegularization.reg_copy
+    # END RegModule.forward

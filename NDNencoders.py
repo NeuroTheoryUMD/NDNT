@@ -11,7 +11,7 @@ from pytorch_lightning import LightningModule
 
 # import regularizers
 from NDNlayer import *
-from FFnetworkT import *
+from FFnetworks import *
 
 
 class Encoder(LightningModule):

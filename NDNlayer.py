@@ -68,10 +68,7 @@ class NDNlayer(LightningModule):
             # Does this apply to both weights and biases? Should be separate?
             # How does this compare without explicit constraint? Maybe better, maybe worse...
 
-        self.reg = Regularization(
-            input_dims=self.filter_dims,
-            num_filters=self.num_filters,
-            vals=reg_vals)
+        self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals)
 
         if layer_params['num_inh'] == 0:
             self.ei_mask = None
@@ -106,6 +103,7 @@ class NDNlayer(LightningModule):
 
         if self.NL is not None:
             x = self.NL(x)
-
         return x 
         
+    def compute_reg_loss(self):
+        return self.reg.compute_reg_loss(self.weights)

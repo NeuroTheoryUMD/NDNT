@@ -21,11 +21,11 @@ def layer_dict(
         output_dims[1:3] = input_dims[1:3]
         if conv_width is None:
             TypeError( 'Need to define conv filter-width.')
-        filter_dims = [input_dims[3]*input_dims[0], conv_width, conv_width]
+        filter_dims = [input_dims[0], conv_width, conv_width, input_dims[3]]
         if input_dims[2] == 1:  # then 1-d spatial
             filter_dims[2] = 1
     else:
-        filter_dims = [input_dims[0]*input_dims[3]] + input_dims[1:3]
+        filter_dims = deepcopy(input_dims)
 
     if num_inh > num_filters:
         print("Warning: num_inh is too large. Adjusted to ", num_filters)
@@ -128,6 +128,7 @@ def ffnet_dict_NIM(
 #################### CREATE OTHER PARAMETER-DICTS ####################
 def create_optimizer_params(
         batch_size=1000,
+        weight_decay=None,
         early_stopping=True,
         early_stopping_patience=4,
         max_iter=10000,
@@ -144,6 +145,7 @@ def create_optimizer_params(
 
     optpar = {
         'batch_size': batch_size,
+        'weight_decay': weight_decay,
         'early_stopping': early_stopping,
         'early_stopping_patience': early_stopping_patience,
         'max_iter': max_iter,
@@ -161,21 +163,6 @@ def create_optimizer_params(
 # END create_optimizer_params
 
 
-def create_reg_params(
-    weight_decay=None,
-    center=None, d2x=None, d2t = None, d2xt = None,
-    Hcenter=None, Hd2x=None, Hd2t=None,
-    gamma_input=None, gamma_center=None, gamma_hidden=None):
-
-    reg_pars = {
-        'weight_decay': weight_decay,
-        'center': center, 'Hcenter': Hcenter,
-        'd2x': d2x, 'Hd2x': Hd2x,
-        'd2t': d2t, 'd2xt': d2xt,
-        'gamma_hidden': gamma_hidden, 'gamma_input': gamma_input, 'gamma_center': gamma_center}
-
-    return reg_pars
-# END create_reg_params
 
 
 #################### DIRECTORY ORGANIZATION ####################
