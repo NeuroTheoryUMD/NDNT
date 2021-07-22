@@ -29,7 +29,7 @@ class FFnetwork(LightningModule):
 
         # Format and record inputs into ffnet
         self.layer_list = deepcopy(ffnet_params['layer_list'])
-        self.xstim = ffnet_params['xstim_n']
+        self.xstim_n = ffnet_params['xstim_n']
         self.ffnets_in = deepcopy(ffnet_params['ffnet_n'])
         self.conv = ffnet_params['conv']    
 
@@ -51,8 +51,8 @@ class FFnetwork(LightningModule):
                 NDNlayer(self.layer_list[ll], reg_vals=reg_params[ll]) )
         
     def forward(self, x):        
-        for ll in range(self.layers):
-            x = self.layer[ll](x)
+        for layer in self.layers:
+            x = layer(x)
         return x
     
     def __reg_setup_ffnet(self, reg_params=None):

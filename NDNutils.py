@@ -94,10 +94,10 @@ def ffnet_dict_NIM(
     """This creates will make a list of layer dicts corresponding to a non-convolutional NIM].
     Note that input_dims can be set to none"""
 
-    ffnet_params = ffnet_params_default(xstim_n=[0], ffnet_n=None)
+    ffnet_params = ffnet_params_default(xstim_n=0, ffnet_n=None)
     ffnet_params['input_dims'] = input_dims
     ffnet_params['reg_list'] = reg_list
-    
+
     num_layers = len(layer_sizes)
     assert len(act_funcs) == num_layers, "act_funcs is wrong length."
 

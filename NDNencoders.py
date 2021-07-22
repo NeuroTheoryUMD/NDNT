@@ -50,6 +50,7 @@ class Encoder(LightningModule):
         #self.core = core
         #self.readout = readout
         self.networks = network_list
+        self.ffnet_out = ffnet_out
         self.detach_core = detach_core
         self.save_hyperparameters('learning_rate','batch_size',
             'num_workers', 'data_dir', 'optimizer', 'weight_decay', 'amsgrad', 'betas',
@@ -68,13 +69,13 @@ class Encoder(LightningModule):
 
         net_ins, net_outs = [], []
         for nn in range(len(self.networks)):
-            if self.networks[nn].ffnets_n is None:
+            if self.networks[nn].ffnets_in is None:
                 # then getting external input
                 #net_ins.append( Xs[self.networks[nn].xstim_n] )
                 net_outs.append( self.networks[nn]( Xs[self.networks[nn].xstim_n] ) )
             else:
                 # Concatenate the previous relevant network outputs
-                in_nets = self.networks[nn].ffnets_n
+                in_nets = self.networks[nn].ffnets_in
                 input_cat = net_outs[in_nets[0]]
                 for mm in range(1, len(in_nets)):
                     input_cat = torch.cat( (input_cat, net_outs[in_nets[mm]]), 1 )

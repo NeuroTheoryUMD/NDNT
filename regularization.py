@@ -73,7 +73,7 @@ class Regularization(LightningModule):
         else:
             self.need_reshape = True
         self.vals = {}
-        
+
         # read user input
         if vals is not None:
             #for reg_type, reg_val in vals.iteritems():  # python3 mod
@@ -117,12 +117,14 @@ class Regularization(LightningModule):
                 raise ValueError('`reg_val` must be greater than or equal to zero')
 
             self.vals[reg_type] = reg_val
+
+        self.reg_modules = nn.ModuleList() 
     # END Regularization.set_reg_val
 
     def build_reg_modules(self):
         """Prepares regularization modules in train based on current regularization values"""
-        self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
-        #self.reg_modules.clear()
+        #self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
+        self.reg_modules.clear()
         for kk, vv in self.vals.items():
             self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims) )
 
@@ -245,5 +247,5 @@ class RegModule(LightningModule):
         else:
             reg_pen = 0.0
 
-        return reg_pen
+        return self.val*reg_pen
     # END RegModule.forward
