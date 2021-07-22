@@ -112,10 +112,12 @@ def ffnet_dict_NIM(
     for ll in range(num_layers):
         pos_con = False
         if ll > 0:
-            if ei_layers[ll-1] > 0:
+            if ei_layers[ll-1] is not None:
                 pos_con = True
         if ei_layers[ll] is None:
             num_inh = 0
+        else:
+            num_inh = ei_layers[ll]
 
         layer_list.append(
             layer_dict(
@@ -126,7 +128,7 @@ def ffnet_dict_NIM(
                 pos_constraint = pos_con,
                 num_inh = num_inh))
 
-    indims = layer_list[-1]['output_dims']
+        indims = layer_list[-1]['output_dims']
     ffnet_params['layer_list'] = layer_list
 
     return ffnet_params

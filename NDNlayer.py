@@ -19,9 +19,9 @@ from copy import deepcopy
 #class NDNlayer(nn.Module):
 class NDNlayer(LightningModule):
 
-    #def __repr__(self):
-    #    s = super().__repr__()
-        # Add other details for printing out if we want
+    def __repr__(self):
+        s = super().__repr__()
+        s += 'NDNlayer'
 
     def __init__(self, layer_params, reg_vals=None):
         super(NDNlayer, self).__init__()
@@ -99,10 +99,18 @@ class NDNlayer(LightningModule):
 
         # Add normalization
         x = torch.matmul(x, w) + self.bias
-
         if self.NL is not None:
             x = self.NL(x)
         return x 
         
     def compute_reg_loss(self):
         return self.reg.compute_reg_loss(self.weights)
+
+    def get_weights(self, to_reshape=True):
+        ws = self.weights.detach().cpu().numpy()
+        if to_reshape:
+            num_filts = ws.shape[-1]
+            return ws.reshape(self.filter_dims + [num_filts]).squeeze()
+        else:
+            return ws.squeeze()
+    

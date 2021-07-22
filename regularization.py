@@ -65,14 +65,20 @@ class Regularization(LightningModule):
         # check input
         assert filter_dims is not None, "Must specify `input_dims`"
         self.input_dims_original = filter_dims
-        self.input_dims = deepcopy(filter_dims[1:])
-        self.input_dims[2] *= filter_dims[0]  
-        # combines num_filters into last dim, but weights-transpose needed
+        # the "input_dims" are ordered differently for matrix implementations,
+        # so this is a temporary fix to be able to use old functions
+        self.input_dims = [
+            filter_dims[0]*filter_dims[3], # non-spatial
+            filter_dims[1], filter_dims[2]]  # spatial 
+ 
+        # will this need to combine first and last input dims? (or just ignore first)
         if filter_dims[0] == 1:
             self.need_reshape = False
         else:
             self.need_reshape = True
+
         self.vals = {}
+        self.reg_modules = nn.ModuleList() 
 
         # read user input
         if vals is not None:
@@ -80,10 +86,6 @@ class Regularization(LightningModule):
             for reg_type, reg_val in vals.items():
                 if reg_val is not None:
                     self.set_reg_val(reg_type, reg_val)
-        
-        self.reg_modules = None
-
-        self.reg_modules = nn.ModuleList() 
     # END Regularization.__init__
 
     #def __repr__(self):
@@ -124,18 +126,26 @@ class Regularization(LightningModule):
 
     def build_reg_modules(self):
         """Prepares regularization modules in train based on current regularization values"""
-        #self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
-        self.reg_modules.clear()
+        self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
+        #self.reg_modules.clear()  # no 'clear' exists for module lists
         for kk, vv in self.vals.items():
             self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims) )
 
     def compute_reg_loss(self, weights):  # this could also be a forward?
         """Define regularization loss. Will reshape weights as needed"""
         
+        if len(self.reg_modules) == 0:
+            return 0.0
+
         if self.need_reshape:
             wsize = weights.size()
+            print(wsize)
+            num_filters = wsize[-1]
             w = torch.reshape(
-                    torch.reshape(weights, self.input_dims_original).permute(1,2,0,3), 
+                    torch.reshape(
+                        weights, 
+                        self.input_dims_original + [wsize[-1]]
+                        ).permute(1,2,0,3,4), 
                     wsize)
         else:
             w = weights
@@ -168,7 +178,7 @@ class RegModule(LightningModule):
         super(RegModule, self).__init__()
 
         self.reg_type = reg_type
-        self.register_buffer( 'val', torch.Tensor(reg_val))
+        self.register_buffer( 'val', torch.tensor(reg_val))
         self.input_dims = input_dims
 
         # Make appropriate reg_matrix as buffer (non-fit parameter)
@@ -228,7 +238,7 @@ class RegModule(LightningModule):
             reg_pen = torch.sum(torch.square(weights))
 
         elif self.reg_type in ['d2t', 'd2x', 'd2xt']:
-            reg_pen = torch.sum( torch.square( torch.matmul(self.reg_mat, weights) ) )
+            reg_pen = torch.sum( torch.square( torch.matmul(self.rmat, weights) ) )
 
         elif self.reg_type == 'norm2':  # [custom] convex (I think) soft-normalization regularization
             reg_pen = torch.square( torch.mean(torch.square(weights))-1 )
@@ -238,7 +248,7 @@ class RegModule(LightningModule):
             w2 = torch.square(weights)
             reg_pen = torch.trace( torch.matmul(
                     torch.transpose(w2),
-                    torch.matmul(self.reg_mat, w2) ))
+                    torch.matmul(self.rmat, w2) ))
         # ORTH MORE COMPLICATED: needs another buffer?
         #elif self.reg_type == 'orth':  # [custom]
         #    diagonal = np.ones(weights.shape[1], dtype='float32')

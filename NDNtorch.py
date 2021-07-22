@@ -167,14 +167,18 @@ class NDN:
             #earlystopping = self.opt_params['early_stopping'],
             #batchsize= self.opt_params['batch_size'])
 
+        # Make reg modules
+        for network in self.encoder.networks:
+            network.prepare_regularization()
+
         t0 = time.time()
         trainer.fit( self.encoder, train_dl, valid_dl)
         t1 = time.time()
 
         print('  Fit complete:', t1-t0, 'sec elapsed')
-        if save_pkl:
+        #if save_pkl:
             # Pickle model-structure in checkpoint_directory
-            self.save_model()
+        #    self.save_model()
     # END NDN.train
         
     def eval_models(self, sample, bits=False, null_adjusted=True):
@@ -217,11 +221,8 @@ class NDN:
             LLneuron/=np.log(2)
         return LLneuron
 
-    def get_filters(self):
-        return self.encoder.core.get_filters()
-
-    def get_readout_weights(self):
-        return self.encoder.network.features[0].detach().cpu().numpy().squeeze()
+    def get_weights(self, ffnet_target=0, layer_target=0, to_reshape=True):
+        return self.encoder.networks[ffnet_target].layers[layer_target].get_weights(to_reshape)
 
     def get_readout_positions(self):
         return self.encoder.network.mu.detach().cpu().numpy().squeeze()
