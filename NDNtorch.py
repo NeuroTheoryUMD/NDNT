@@ -30,18 +30,11 @@ class NDN:
         loss_type = 'poisson',
         ffnet_out = [-1], # Default output is last
         # not sure what val_loss does and if we need....
-        reg_params = None, 
         optimizer_params = None,
         model_name='model',
         data_dir='',
         detach_core=False  # what does this do?
         ):
-
-        # Default reg_params
-        if reg_params is None:
-            weight_decay = 1e-2
-        else:
-            weight_decay = reg_params['weight_decay']
 
         # Assign optimizer params
         if optimizer_params is None:
@@ -62,6 +55,9 @@ class NDN:
         else: # assume passed in loss function directly
             self.loss_type = 'custom'
             loss_func = loss_type
+
+        # Has both reduced and non-reduced for other eval functions
+        self.loss_module = loss_func
 
         # Assemble FFnetworks and put into encoder (f passed in network-list)
         if type(ffnet_list) is list:
@@ -87,14 +83,13 @@ class NDN:
             num_workers=optimizer_params['num_workers'],
             data_dir=data_dir,
             optimizer=optimizer_params['optimizer'],
-            weight_decay=weight_decay,
+            weight_decay=optimizer_params['weight_decay'],
             amsgrad=optimizer_params['amsgrad'],
             betas=optimizer_params['betas'],
             max_iter=optimizer_params['max_iter'],
             ffnet_out=ffnet_out)
    
         self.opt_params = optimizer_params
-        self.reg_params = reg_params
         self.name = model_name
     # END NDN.__init__
 
@@ -193,7 +188,8 @@ class NDN:
         dfs = sample['dfs']
 
         if self.loss_type == 'poisson':
-            loss = nn.PoissonNLLLoss(log_input=False, reduction='none')
+            #loss = nn.PoissonNLLLoss(log_input=False, reduction='none')
+            loss = self.loss_module.lossNR
         else:
             print("This loss-type is not supported for eval_models.")
             loss = None
@@ -264,7 +260,8 @@ class NDN:
         '''
         m0 = self.cpu()
         if self.loss_type == 'poisson':
-            loss = nn.PoissonNLLLoss(log_input=False, reduction='none')
+            #loss = nn.PoissonNLLLoss(log_input=False, reduction='none')
+            loss = self.loss_module.lossNR
         else:
             print('Whatever loss function you want is not yet here.')
         

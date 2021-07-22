@@ -38,7 +38,7 @@ class PoissonLoss_datafilter(LightningModule):
         if data_filters is None:
             loss = self.Poisson_loss(pred, target)
         else:
-            loss_full = self.Poisson_lossDF(pred, target)
+            loss_full = self.lossNR(pred, target)
             loss = torch.sum(
                 torch.div(
                     torch.mul(loss_full, data_filters), 

@@ -82,10 +82,12 @@ class Regularization(LightningModule):
                     self.set_reg_val(reg_type, reg_val)
         
         self.reg_modules = None
+
+        self.reg_modules = nn.ModuleList() 
     # END Regularization.__init__
 
-    def __repr__(self):
-        s = super().__repr__()
+    #def __repr__(self):
+    #    s = super().__repr__()
         # Add other details for printing out if we want
 
     def set_reg_val(self, reg_type, reg_val=None):
@@ -118,7 +120,6 @@ class Regularization(LightningModule):
 
             self.vals[reg_type] = reg_val
 
-        self.reg_modules = nn.ModuleList() 
     # END Regularization.set_reg_val
 
     def build_reg_modules(self):

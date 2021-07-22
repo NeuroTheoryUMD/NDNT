@@ -85,7 +85,6 @@ class Encoder(LightningModule):
         return net_ins, net_outs
         #return net_outs
 
-
     def forward(self, Xs, shifter=None):
         """This applies the forwards of each network in sequential order.
         The tricky thing is concatenating multiple-input dimensions together correctly.
@@ -97,8 +96,7 @@ class Encoder(LightningModule):
         return net_outs[self.ffnet_out[0]]
     # END Encoder.forward
 
-    #def training_step(self, batch, batch_idx):  # batch_indx not used, right?
-    def training_step(self, batch):
+    def training_step(self, batch, batch_idx):  # batch_indx not used, right?
         x = batch['stim']
         y = batch['robs']
         dfs = batch['dfs']
@@ -110,15 +108,14 @@ class Encoder(LightningModule):
 
         loss = self.loss(y_hat, y, dfs)
         #regularizers = int(not self.detach_core) * self.core.regularizer() + self.readout.regularizer()
-        regularizers = int(not self.detach_core) * self.network.regularizer()
+        regularizers = int(not self.detach_core) * self.compute_reg_loss()
 
         self.log('train_loss', loss + regularizers, on_step=False, on_epoch=True)
         #self.log('rloss', regularizers, on_step=False, on_epoch=True)
         return {'loss': loss + regularizers}
     # END Encoder.training_step
 
-    #def validation_step(self, batch, batch_idx):
-    def validation_step(self, batch):
+    def validation_step(self, batch, batch_idx):
         x = batch['stim']
         y = batch['robs']
         dfs = batch['dfs']
@@ -129,7 +126,8 @@ class Encoder(LightningModule):
 
         y_hat = self(x)
         loss = self.val_loss(y_hat, y, dfs)
-        reg_loss = int(not self.detach_core) * self.network.regularizer()
+        #reg_loss = int(not self.detach_core) * self.networks.regularizer()
+        reg_loss = int(not self.detach_core) * self.compute_reg_loss()
         self.log('val_loss', loss)
         self.log('reg_loss', reg_loss, on_step=False, on_epoch=True)
         return {'loss': loss}
@@ -138,8 +136,8 @@ class Encoder(LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         # logging
         if(self.current_epoch==1):
-            self.logger.experiment.add_text('core', str(dict(self.core.hparams)))
-            self.logger.experiment.add_text('readout', str(dict(self.readout.hparams)))
+            self.logger.experiment.add_text('network0', str(dict(self.networks[0].hparams)))
+            #self.logger.experiment.add_text('readout', str(dict(self.readout.hparams)))
 
         #avg_val_loss = torch.tensor([x['loss'] for x in validation_step_outputs]).mean()
         #avg_reg_loss = torch.tensor([x['reg_loss'] for x in validation_step_outputs]).mean()
@@ -172,13 +170,10 @@ class Encoder(LightningModule):
     
     def on_save_checkpoint(self, checkpoint):
         # track the core, readout, shifter class and state_dicts
-        checkpoint['core_type'] = type(self.core)
-        checkpoint['core_hparams'] = self.core.hparams
-        checkpoint['core_state_dict'] = self.core.state_dict()
-
-        checkpoint['readout_type'] = type(self.readout)
-        checkpoint['readout_hparams'] = self.readout.hparams
-        checkpoint['readout_state_dict'] = self.readout.state_dict() # TODO: is this necessary or included in self state_dict?
+        # this is all temporary: to be replaced with new logging
+        checkpoint['core_type'] = type(self.networks[0])
+        checkpoint['core_hparams'] = self.networks[0].hparams
+        checkpoint['core_state_dict'] = self.networks[0].state_dict()
 
         # checkpoint['shifter_type'] = type(self.shifter)
         # if checkpoint['shifter_type']!=type(None):
@@ -187,13 +182,21 @@ class Encoder(LightningModule):
 
     def on_load_checkpoint(self, checkpoint):
         # properly handle core, readout, shifter state_dicts
-        self.core = checkpoint['core_type'](**checkpoint['core_hparams'])
-        self.readout = checkpoint['readout_type'](**checkpoint['readout_hparams'])
+        #self.networks[0] = checkpoint['core_type'](**checkpoint['net0_hparams'])
+        #self.readout = checkpoint['readout_type'](**checkpoint['readout_hparams'])
         # if checkpoint['shifter_type']!=type(None):
         #     self.shifter = checkpoint['shifter_type'](**checkpoint['shifter_hparams'])
         #     self.shifter.load_state_dict(checkpoint['shifter_state_dict'])
-        self.core.load_state_dict(checkpoint['core_state_dict'])
-        self.readout.load_state_dict(checkpoint['readout_state_dict'])
+        #self.core.load_state_dict(checkpoint['core_state_dict'])
+        #self.readout.load_state_dict(checkpoint['readout_state_dict'])
+        print('on_load_checkpoint needs to be reimplemented with new net structure.')
+
+    def compute_reg_loss(self):
+        rloss = 0
+        for network in self.networks:
+            rloss += network.compute_reg_loss()
+        return rloss
+### END Encoder class
 
 
 def get_trainer(dataset,

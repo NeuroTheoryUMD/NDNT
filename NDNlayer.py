@@ -19,8 +19,8 @@ from copy import deepcopy
 #class NDNlayer(nn.Module):
 class NDNlayer(LightningModule):
 
-    def __repr__(self):
-        s = super().__repr__()
+    #def __repr__(self):
+    #    s = super().__repr__()
         # Add other details for printing out if we want
 
     def __init__(self, layer_params, reg_vals=None):
@@ -58,7 +58,7 @@ class NDNlayer(LightningModule):
         self.pos_constraint = layer_params['pos_constraint']
 
         # Make layer variables
-        self.weight = Parameter(torch.Tensor(size=self.shape))
+        self.weights = Parameter(torch.Tensor(size=self.shape))
         if layer_params['bias']:
             self.bias = Parameter(torch.Tensor(self.num_filters))
         else:
@@ -86,14 +86,14 @@ class NDNlayer(LightningModule):
         if initializer is None:
             initializer = 'uniform'
 
-        init.kaiming_uniform_(self.weight, a=np.sqrt(5))
+        init.kaiming_uniform_(self.weights, a=np.sqrt(5))
         if self.bias is not None:
-            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weights)
             bound = 1 / np.sqrt(fan_in)
             init.uniform_(self.bias, -bound, bound)          
 
     def forward(self, x):
-        w = self.weight
+        w = self.weights
         if self.pos_constraint:
             w = torch.maximum(w, self.minval)
 
