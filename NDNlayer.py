@@ -1,4 +1,4 @@
-from NDNTUtils import layer_dict
+from .NDNutils import layer_dict
 import numpy as np
 import torch
 from torch import nn
@@ -29,6 +29,7 @@ class NDNlayer(LightningModule):
         assert not layer_params['conv'], "layer_params error: This is not a conv layer."
         self.input_dims = layer_params['input_dims']
         self.num_filters = layer_params['num_filters']
+        self.filter_dims = layer_params['filter_dims']
         self.output_dims = layer_params['output_dims']
         self.NLtype = layer_params['NLtype']
         
@@ -76,7 +77,7 @@ class NDNlayer(LightningModule):
             self.register_buffer('ei_mask', torch.ones(self.num_filters))  
             self.ei_mask[-(layer_params['num_inh']+1):0] = -1
 
-        self.reset_parameters( layer_dict['initializer'])
+        self.reset_parameters( layer_params['initializer'] )
     # END NDNlayer.__init__
 
     def reset_parameters(self, initializer=None) -> None:

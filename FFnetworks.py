@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from torch import nn
 from pytorch_lightning import LightningModule
-from regularization import reg_setup_ffnet
 #from torch.nn import functional as F
 
 #from torch import Tensor
@@ -12,16 +11,17 @@ from regularization import reg_setup_ffnet
 #from torch.nn.modules.utils import _triple # for posconv3
 
 from copy import deepcopy
-from NDNlayer import *
+#from .regularization import reg_setup_ffnet
+from .NDNlayer import *
 
 
 class FFnetwork(LightningModule):
 
-    def __repr__(self):
-        s = super().__repr__()
-        # Add information about module to print out
+    #def __repr__(self):
+    #    s = super().__repr__()
+    #    # Add information about module to print out
 
-    def __init__(self, ffnet_params, reg_params=None):
+    def __init__(self, ffnet_params):
         """ffnet_params is a dictionary constructed by other utility functions
         reg_params is a dictionary of reg type and list of values for each layer,
         i.e., {'d2xt':[None, 0.2], 'l1':[1e-4,None]}"""
@@ -40,16 +40,16 @@ class FFnetwork(LightningModule):
             self.layer_list[0]['input_dims'] = ffnet_params['input_dims']
 
         # Process regularization into layer-specific list. Will save at this level too
-        reg_params = self.__reg_setup_ffnet( reg_params )
+        
+        reg_params = self.__reg_setup_ffnet( ffnet_params['reg_list'] )
         # can be saved, but difficult to update. just save reg vals within layers
 
         # Make each layer as part of an array
         self.layers = nn.ModuleList()
         for ll in range(num_layers):
             self.layers.append(
-                NDNlayer(self.layer_list[ll]), reg_vals=reg_params[ll] )
+                NDNlayer(self.layer_list[ll], reg_vals=reg_params[ll]) )
         
-
     def forward(self, x):        
         for ll in range(self.layers):
             x = self.layer[ll](x)

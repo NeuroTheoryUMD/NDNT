@@ -76,8 +76,9 @@ def ffnet_params_default(xstim_n=None, ffnet_n=None):
         'input_dims': None,
         'xstim_n': xstim_n,
         'ffnet_n': ffnet_n,
-        'conv': False
-    }
+        'conv': False,
+        'reg_list': None
+        }
     return ffnet_params
 # END ffnet_params_default
 
@@ -87,26 +88,34 @@ def ffnet_dict_NIM(
     layer_sizes=None, 
     act_funcs=None,
     ei_layers=None,
-    norm_list=None):
+    norm_list=None,
+    reg_list=None):
 
     """This creates will make a list of layer dicts corresponding to a non-convolutional NIM].
     Note that input_dims can be set to none"""
 
-    ffnet_params = ffnet_params_default(xstim=[0], ffnet=None)
+    ffnet_params = ffnet_params_default(xstim_n=[0], ffnet_n=None)
     ffnet_params['input_dims'] = input_dims
-
+    ffnet_params['reg_list'] = reg_list
+    
     num_layers = len(layer_sizes)
     assert len(act_funcs) == num_layers, "act_funcs is wrong length."
 
     layer_list = []   
     indims = input_dims  # starts with network input dims
 
-    for ll in range(num_layers):
+    if ei_layers is None:
+        ei_layers = [None]*num_layers
+    if norm_list is None:
+        norm_list = [None]*num_layers
 
-        if (ll > 0) & (ei_layers[ll-1] > 0):
-            pos_con = True
-        else: 
-            pos_con = False
+    for ll in range(num_layers):
+        pos_con = False
+        if ll > 0:
+            if ei_layers[ll-1] > 0:
+                pos_con = True
+        if ei_layers[ll] is None:
+            num_inh = 0
 
         layer_list.append(
             layer_dict(
@@ -115,10 +124,9 @@ def ffnet_dict_NIM(
                 NLtype = act_funcs[ll],
                 norm_type = norm_list[ll],
                 pos_constraint = pos_con,
-                num_inh = ei_layers[ll]))
+                num_inh = num_inh))
 
-        indims = layer_list[-1].output_dims
-
+    indims = layer_list[-1]['output_dims']
     ffnet_params['layer_list'] = layer_list
 
     return ffnet_params

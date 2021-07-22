@@ -15,12 +15,12 @@ from torch.nn import init
 #from torch.nn.modules.utils import _triple # for posconv3
 
 # Imports from my code
-from NDNLosses import *
-from NDNencoders import Encoder
-from NDNencoders import get_trainer
-from NDNlayer import *
-from FFnetworks import *
-from NDNutils import create_optimizer_params
+from .NDNLosses import *
+from .NDNencoders import Encoder
+from .NDNencoders import get_trainer
+from .NDNlayer import *
+from .FFnetworks import *
+from .NDNutils import create_optimizer_params
 
 
 class NDN:
@@ -48,7 +48,8 @@ class NDN:
             optimizer_params = create_optimizer_params()
 
         # Assign loss function (from list)
-        if type(loss_type) is str:
+        
+        if isinstance(loss_type, str):
             self.loss_type = loss_type
             if loss_type == 'poisson':
                 loss_func = PoissonLoss_datafilter()  # defined below, but could be in own Losses.py

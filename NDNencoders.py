@@ -10,8 +10,8 @@ from torch.nn import functional as F
 from pytorch_lightning import LightningModule
 
 # import regularizers
-from NDNlayer import *
-from FFnetworks import *
+from .NDNlayer import *
+from .FFnetworks import *
 
 
 class Encoder(LightningModule):
@@ -26,7 +26,7 @@ class Encoder(LightningModule):
     
     def __init__(self,
         network_list=None,
-        loss_func=None,
+        loss=None,
         val_loss=None,
         detach_core=False,
         learning_rate=1e-3,
@@ -42,7 +42,7 @@ class Encoder(LightningModule):
         **kwargs):
 
         assert network_list is not None, 'Missing encoder' 
-        assert loss_func is not None, 'Missing loss_function' 
+        assert loss is not None, 'Missing loss_function' 
 
         super().__init__()
 
@@ -55,9 +55,9 @@ class Encoder(LightningModule):
             'num_workers', 'data_dir', 'optimizer', 'weight_decay', 'amsgrad', 'betas',
             'max_iter')          
         
-        self.loss = loss_func
+        self.loss = loss
         if val_loss is None:
-            self.val_loss = loss_func
+            self.val_loss = loss
         else:
             self.val_loss = val_loss
     # END Encoder.__init__

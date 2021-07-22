@@ -60,6 +60,7 @@ class Regularization(LightningModule):
         """
 
         from copy import deepcopy
+        super(Regularization, self).__init__()
 
         # check input
         assert filter_dims is not None, "Must specify `input_dims`"
@@ -71,14 +72,21 @@ class Regularization(LightningModule):
             self.need_reshape = False
         else:
             self.need_reshape = True
-
+        self.vals = {}
+        
         # read user input
         if vals is not None:
             #for reg_type, reg_val in vals.iteritems():  # python3 mod
             for reg_type, reg_val in vals.items():
                 if reg_val is not None:
                     self.set_reg_val(reg_type, reg_val)
+        
+        self.reg_modules = None
     # END Regularization.__init__
+
+    def __repr__(self):
+        s = super().__repr__()
+        # Add other details for printing out if we want
 
     def set_reg_val(self, reg_type, reg_val=None):
         """Set regularization value in self.vals dict (doesn't affect a tf 
@@ -109,14 +117,12 @@ class Regularization(LightningModule):
                 raise ValueError('`reg_val` must be greater than or equal to zero')
 
             self.vals[reg_type] = reg_val
-
-        self.reg_modules = nn.ModuleList()
     # END Regularization.set_reg_val
 
     def build_reg_modules(self):
         """Prepares regularization modules in train based on current regularization values"""
-        #self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
-        self.reg_modules.clear()
+        self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
+        #self.reg_modules.clear()
         for kk, vv in self.vals.items():
             self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims) )
 
@@ -156,6 +162,8 @@ class RegModule(LightningModule):
         assert reg_val is not None, 'Need reg_val'
         assert input_dims is not None, 'Need input dims'
 
+        super(RegModule, self).__init__()
+
         self.reg_type = reg_type
         self.register_buffer( 'val', torch.Tensor(reg_val))
         self.input_dims = input_dims
@@ -168,6 +176,10 @@ class RegModule(LightningModule):
             self.register_buffer( 'rmat', reg_tensor)
 
     # END RegModule.__init__
+
+    #def __repr__(self):
+    #    s = super().__repr__()
+        # Add other details for printing out if we want
 
     def _build_reg_mats(self, reg_type):
         """Build regularization matrices in default tf Graph
