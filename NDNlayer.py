@@ -98,8 +98,6 @@ class NDNlayer(LightningModule):
             w = torch.maximum(w, self.minval)
 
         # Add normalization
-
-        # Question: is there some virtue in setting x to itself. this was to be avoided in TF 1
         x = torch.matmul(x, w) + self.bias
 
         if self.NL is not None:
