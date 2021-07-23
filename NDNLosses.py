@@ -9,11 +9,10 @@
 
 import torch
 from torch import nn
-from pytorch_lightning import LightningModule
 
 
 #### LOSS FUNCTIONS: could ideally be in separate file and imported directly
-class PoissonLoss_datafilter(LightningModule):
+class PoissonLoss_datafilter(nn.Module):
     """The standard way would be to weight a neurons contribution in a given batch by the number of spikes it happens
     to fire in that batch, relative to other neurons. But this means that the fit overall will be dominated by high-
     firing rate neurons. But also you cannot calc LL/spk within a batch because the number of spikes are too variable

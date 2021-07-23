@@ -1,21 +1,13 @@
 import numpy as np
 import torch
 from torch import nn
-from pytorch_lightning import LightningModule
-#from torch.nn import functional as F
-
-#from torch import Tensor
-#from torch.nn.parameter import Parameter
-#from torch.nn import init
-#from torch.nn.common_types import _size_2_t, _size_3_t # for conv2,conv3 default
-#from torch.nn.modules.utils import _triple # for posconv3
 
 from copy import deepcopy
 #from .regularization import reg_setup_ffnet
-from .NDNlayer import *
+from NDNlayer import *
 
 
-class FFnetwork(LightningModule):
+class FFnetwork(nn.Module):
 
     #def __repr__(self):
     #    s = super().__repr__()
