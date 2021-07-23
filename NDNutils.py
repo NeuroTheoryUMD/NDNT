@@ -1,6 +1,11 @@
 ### NDNTorchUtils.py ####
 import numpy as np
 from copy import deepcopy
+import torch
+import torch.nn as nn
+import os
+import shutil
+from collections import OrderedDict
 
 #################### CREATE NETWORK PARAMETER-DICTS ####################
 def layer_dict(
@@ -146,7 +151,9 @@ def create_optimizer_params(
         betas=[0.9, 0.999],
         num_gpus=1,
         progress_bar_refresh=20, # num of batches 
-        num_workers=4):
+        num_workers=4,
+        line_search='Wolfe', # see LBFGS for meaning of line_search method
+        history=10):
 
     if early_stopping:
         max_epochs = 1000
@@ -167,6 +174,8 @@ def create_optimizer_params(
         'progress_bar_refresh': progress_bar_refresh,
         'num_workers': num_workers,
         'num_gpus': num_gpus,
+        'history': history,
+        'line_search': line_search,
         'optimizer': 'AdamW'}
 
     return optpar
@@ -372,3 +381,189 @@ def generate_xv_folds(nt, num_folds=5, num_blocks=3, which_fold=None):
     train_inds = np.setdiff1d(np.arange(0, nt, 1), test_inds)
 
     return train_inds, test_inds
+
+def save_checkpoint(state, save_path: str, is_best: bool = False, max_keep: int = None):
+    """Saves torch model to checkpoint file.
+    Args:
+        state (torch model state): State of a torch Neural Network (use model.state_dict() to get it)
+        save_path (str): Destination path for saving checkpoint
+        is_best (bool): If ``True`` creates additional copy
+            ``best_model.ckpt``
+        max_keep (int): Specifies the max amount of checkpoints to keep
+    
+    credit: pulled from https://github.com/IgorSusmelj/pytorch-styleguide
+    """
+
+    # save checkpoint
+    torch.save(state, save_path)
+
+    # deal with max_keep
+    save_dir = os.path.dirname(save_path)
+    list_path = os.path.join(save_dir, 'latest_checkpoint.txt')
+
+    save_path = os.path.basename(save_path)
+    if os.path.exists(list_path):
+        with open(list_path) as f:
+            ckpt_list = f.readlines()
+            ckpt_list = [save_path + '\n'] + ckpt_list
+    else:
+        ckpt_list = [save_path + '\n']
+
+    if max_keep is not None:
+        for ckpt in ckpt_list[max_keep:]:
+            ckpt = os.path.join(save_dir, ckpt[:-1])
+            if os.path.exists(ckpt):
+                os.remove(ckpt)
+        ckpt_list[max_keep:] = []
+
+    with open(list_path, 'w') as f:
+        f.writelines(ckpt_list)
+
+    # copy best
+    if is_best:
+        shutil.copyfile(save_path, os.path.join(save_dir, 'best_model.ckpt'))
+
+
+def load_checkpoint(ckpt_dir_or_file: str, map_location=None, load_best=False):
+    """Loads torch model from checkpoint file.
+    Args:
+        ckpt_dir_or_file (str): Path to checkpoint directory or filename
+        map_location: Can be used to directly load to specific device
+        load_best (bool): If True loads ``best_model.ckpt`` if exists.
+
+    credit: pulled from https://github.com/IgorSusmelj/pytorch-styleguide
+    """
+    if os.path.isdir(ckpt_dir_or_file):
+        if load_best:
+            ckpt_path = os.path.join(ckpt_dir_or_file, 'best_model.ckpt')
+        else:
+            with open(os.path.join(ckpt_dir_or_file, 'latest_checkpoint.txt')) as f:
+                ckpt_path = os.path.join(ckpt_dir_or_file, f.readline()[:-1])
+    else:
+        ckpt_path = ckpt_dir_or_file
+    ckpt = torch.load(ckpt_path, map_location=map_location)
+    print(' [*] Loading checkpoint from %s succeed!' % ckpt_path)
+    return ckpt
+
+
+def ensure_dir(dir_name: str):
+    """Creates folder if not exists.
+
+    credit: pulled from https://github.com/IgorSusmelj/pytorch-styleguide
+    """
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+
+
+def ModelSummary(model, input_size, batch_size=-1, device=torch.device('cuda:0'), dtypes=None):
+    result, params_info = summary_string(
+        model, input_size, batch_size, device, dtypes)
+    print(result)
+
+    return params_info
+
+
+def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0'), dtypes=None):
+    if dtypes == None:
+        dtypes = [torch.FloatTensor]*len(input_size)
+
+    summary_str = ''
+
+    def register_hook(module):
+        def hook(module, input, output):
+            class_name = str(module.__class__).split(".")[-1].split("'")[0]
+            module_idx = len(summary)
+
+            m_key = "%s-%i" % (class_name, module_idx + 1)
+            summary[m_key] = OrderedDict()
+            summary[m_key]["input_shape"] = list(input[0].size())
+            summary[m_key]["input_shape"][0] = batch_size
+            if isinstance(output, (list, tuple)):
+                summary[m_key]["output_shape"] = [
+                    [-1] + list(o.size())[1:] for o in output
+                ]
+            else:
+                summary[m_key]["output_shape"] = list(output.size())
+                summary[m_key]["output_shape"][0] = batch_size
+
+            params = 0
+            if hasattr(module, "weight") and hasattr(module.weight, "size"):
+                params += torch.prod(torch.LongTensor(list(module.weight.size())))
+                summary[m_key]["trainable"] = module.weight.requires_grad
+            if hasattr(module, "bias") and hasattr(module.bias, "size"):
+                params += torch.prod(torch.LongTensor(list(module.bias.size())))
+            summary[m_key]["nb_params"] = params
+
+        if (
+            not isinstance(module, nn.Sequential)
+            and not isinstance(module, nn.ModuleList)
+        ):
+            hooks.append(module.register_forward_hook(hook))
+
+    # multiple inputs to the network
+    if isinstance(input_size, tuple):
+        input_size = [input_size]
+
+    # batch_size of 2 for batchnorm
+    x = [torch.rand(2, *in_size).type(dtype).to(device=device)
+         for in_size, dtype in zip(input_size, dtypes)]
+
+    # create properties
+    summary = OrderedDict()
+    hooks = []
+
+    # register hook
+    model.apply(register_hook)
+
+    # make a forward pass
+    # print(x.shape)
+    model(*x)
+
+    # remove these hooks
+    for h in hooks:
+        h.remove()
+
+    summary_str += "----------------------------------------------------------------" + "\n"
+    line_new = "{:>20}  {:>25} {:>15}".format(
+        "Layer (type)", "Output Shape", "Param #")
+    summary_str += line_new + "\n"
+    summary_str += "================================================================" + "\n"
+    total_params = 0
+    total_output = 0
+    trainable_params = 0
+    for layer in summary:
+        # input_shape, output_shape, trainable, nb_params
+        line_new = "{:>20}  {:>25} {:>15}".format(
+            layer,
+            str(summary[layer]["output_shape"]),
+            "{0:,}".format(summary[layer]["nb_params"]),
+        )
+        total_params += summary[layer]["nb_params"]
+
+        total_output += np.prod(summary[layer]["output_shape"])
+        if "trainable" in summary[layer]:
+            if summary[layer]["trainable"] == True:
+                trainable_params += summary[layer]["nb_params"]
+        summary_str += line_new + "\n"
+
+    # assume 4 bytes/number (float on cuda).
+    total_input_size = abs(np.prod(sum(input_size, ()))
+                           * batch_size * 4. / (1024 ** 2.))
+    total_output_size = abs(2. * total_output * 4. /
+                            (1024 ** 2.))  # x2 for gradients
+    total_params_size = abs(total_params * 4. / (1024 ** 2.))
+    total_size = total_params_size + total_output_size + total_input_size
+
+    summary_str += "================================================================" + "\n"
+    summary_str += "Total params: {0:,}".format(total_params) + "\n"
+    summary_str += "Trainable params: {0:,}".format(trainable_params) + "\n"
+    summary_str += "Non-trainable params: {0:,}".format(total_params -
+                                                        trainable_params) + "\n"
+    summary_str += "----------------------------------------------------------------" + "\n"
+    summary_str += "Input size (MB): %0.2f" % total_input_size + "\n"
+    summary_str += "Forward/backward pass size (MB): %0.2f" % total_output_size + "\n"
+    summary_str += "Params size (MB): %0.2f" % total_params_size + "\n"
+    summary_str += "Estimated Total Size (MB): %0.2f" % total_size + "\n"
+    summary_str += "----------------------------------------------------------------" + "\n"
+    # return summary
+    return summary_str, (total_params, trainable_params)

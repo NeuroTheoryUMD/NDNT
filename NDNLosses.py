@@ -27,10 +27,10 @@ class PoissonLoss_datafilter(nn.Module):
         self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
         #print('loss is on', self.device)
 
-    def __repr__(self):
-        s = super().__repr__()
-        s += 'poisson'
-        return s 
+    # def __repr__(self):
+    #     s = super().__repr__()
+    #     s += 'poisson'
+    #     return s 
 
     def forward(self, pred, target, data_filters = None ):        
         
@@ -42,7 +42,7 @@ class PoissonLoss_datafilter(nn.Module):
                 torch.div(
                     torch.mul(loss_full, data_filters), 
                     torch.maximum(
-                        torch.sum(data_filters, axis=0), torch.tensor(1.0)) ))
+                        torch.sum(data_filters, axis=0), torch.tensor(1.0, device=data_filters.device)) ))
             
         return loss
 
@@ -58,6 +58,6 @@ class PoissonLoss_datafilter(nn.Module):
             unitloss = torch.div(
                 torch.mul(loss_full, data_filters), 
                 torch.maximum(
-                    torch.sum(data_filters, axis=0), torch.tensor(1.0)) )
+                    torch.sum(data_filters, axis=0), torch.tensor(1.0, device=data_filters.device)) )
             
         return unitloss

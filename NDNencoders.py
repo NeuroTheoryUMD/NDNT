@@ -5,16 +5,13 @@
 
 import torch
 from torch import nn
-from torch.nn import functional as F
-
-from pytorch_lightning import LightningModule
 
 # import regularizers
-from .NDNlayer import *
-from .FFnetworks import *
+from NDNlayer import *
+from FFnetworks import *
 
 
-class Encoder(LightningModule):
+class Encoder(nn.Module):
     """Note that I'm using the "Encoder" here as a placeholder (for the NDN) since the forward is 
     essentially built with other code and passed in here. I'm leaving this in place with the intent:
     1. this can be passed in directly as a whole input-output Lightning module and could integrate
@@ -28,18 +25,7 @@ class Encoder(LightningModule):
         network_list=None,
         loss=None,
         val_loss=None,
-        detach_core=False,
-        learning_rate=1e-3,
-        batch_size=1000,
-        num_workers=0,
-        data_dir='',
-        optimizer='AdamW',
-        weight_decay=1e-2,
-        amsgrad=False,
-        betas=[.9,.999],
-        max_iter=10000,
-        ffnet_out = [-1],
-        **kwargs):
+        ffnet_out = [-1]):
 
         assert network_list is not None, 'Missing encoder' 
         assert loss is not None, 'Missing loss_function' 
@@ -47,14 +33,8 @@ class Encoder(LightningModule):
         super().__init__()
 
         # Assemble ffnetworks
-        #self.core = core
-        #self.readout = readout
         self.networks = network_list
         self.ffnet_out = ffnet_out
-        self.detach_core = detach_core
-        self.save_hyperparameters('learning_rate','batch_size',
-            'num_workers', 'data_dir', 'optimizer', 'weight_decay', 'amsgrad', 'betas',
-            'max_iter')          
         
         self.loss = loss
         if val_loss is None:
@@ -96,8 +76,8 @@ class Encoder(LightningModule):
         return net_outs[self.ffnet_out[0]]
     # END Encoder.forward
 
-    def training_step(self, batch, batch_idx):  # batch_indx not used, right?
-        x = batch['stim']
+    def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
+        x = batch['stim'] # TODO: this will have to handle the multiple Xstims in the future
         y = batch['robs']
         dfs = batch['dfs']
 
@@ -107,15 +87,13 @@ class Encoder(LightningModule):
         y_hat = self(x)
 
         loss = self.loss(y_hat, y, dfs)
-        #regularizers = int(not self.detach_core) * self.core.regularizer() + self.readout.regularizer()
-        regularizers = int(not self.detach_core) * self.compute_reg_loss()
 
-        self.log('train_loss', loss + regularizers, on_step=False, on_epoch=True)
-        #self.log('rloss', regularizers, on_step=False, on_epoch=True)
-        return {'loss': loss + regularizers}
+        regularizers = self.compute_reg_loss()
+
+        return {'loss': loss + regularizers, 'train_loss': loss, 'reg_loss': regularizers}
     # END Encoder.training_step
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx=None):
         x = batch['stim']
         y = batch['robs']
         dfs = batch['dfs']
@@ -126,70 +104,24 @@ class Encoder(LightningModule):
 
         y_hat = self(x)
         loss = self.val_loss(y_hat, y, dfs)
-        #reg_loss = int(not self.detach_core) * self.networks.regularizer()
-        reg_loss = int(not self.detach_core) * self.compute_reg_loss()
-        self.log('val_loss', loss)
-        self.log('reg_loss', reg_loss, on_step=False, on_epoch=True)
-        return {'loss': loss}
+        
+        reg_loss = self.compute_reg_loss()
+        
+        return {'loss': loss, 'val_loss': loss, 'reg_loss': reg_loss}
     # END Encoder.validation_step
 
-    def validation_epoch_end(self, validation_step_outputs):
-        # logging
-        if(self.current_epoch==1):
-            self.logger.experiment.add_text('network0', str(dict(self.networks[0].hparams)))
-            #self.logger.experiment.add_text('readout', str(dict(self.readout.hparams)))
-
-        #avg_val_loss = torch.tensor([x['loss'] for x in validation_step_outputs]).mean()
-        #avg_reg_loss = torch.tensor([x['reg_loss'] for x in validation_step_outputs]).mean()
-        #avg_reg_loss = torch.tensor(3.0)
-        #tqdm_dict = {'val_loss': avg_val_loss}
-
-        #return {
-        #        'progress_bar': tqdm_dict,
-        #        'log': {'val_loss': avg_val_loss, 'reg_lossX': avg_reg_loss}}
-
-    def configure_optimizers(self):
-        
-        if self.hparams.optimizer=='LBFGS':
-            optimizer = torch.optim.LBFGS(self.parameters(),
-                lr=self.hparams.learning_rate,
-                max_iter=10000) #, max_eval=None, tolerance_grad=1e-07, tolerance_change=1e-09, history_size=100)
-        elif self.hparams.optimizer=='AdamW':
-            optimizer = torch.optim.AdamW(self.parameters(),
-                lr=self.hparams.learning_rate,
-                betas=self.hparams.betas,
-                weight_decay=self.hparams.weight_decay,
-                amsgrad=self.hparams.amsgrad)
-        elif self.hparams.optimizer=='Adam':
-            optimizer = torch.optim.Adam(self.parameters(),
-            lr=self.hparams.learning_rate)
-        
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
-        
-        return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'val_loss'}
     
-    def on_save_checkpoint(self, checkpoint):
-        # track the core, readout, shifter class and state_dicts
-        # this is all temporary: to be replaced with new logging
-        checkpoint['core_type'] = type(self.networks[0])
-        checkpoint['core_hparams'] = self.networks[0].hparams
-        checkpoint['core_state_dict'] = self.networks[0].state_dict()
+    # def on_save_checkpoint(self, checkpoint):
+    #     # track the core, readout, shifter class and state_dicts
+    #     # this is all temporary: to be replaced with new logging
+    #     checkpoint['core_type'] = type(self.networks[0])
+    #     checkpoint['core_hparams'] = self.networks[0].hparams
+    #     checkpoint['core_state_dict'] = self.networks[0].state_dict()
 
-        # checkpoint['shifter_type'] = type(self.shifter)
-        # if checkpoint['shifter_type']!=type(None):
-        #     checkpoint['shifter_hparams'] = self.shifter.hparams
-        #     checkpoint['shifter_state_dict'] = self.shifter.state_dict() # TODO: is this necessary or included in model state_dict?
-
-    def on_load_checkpoint(self, checkpoint):
-        # properly handle core, readout, shifter state_dicts
-        #self.networks[0] = checkpoint['core_type'](**checkpoint['net0_hparams'])
-        #self.readout = checkpoint['readout_type'](**checkpoint['readout_hparams'])
-        # if checkpoint['shifter_type']!=type(None):
-        #     self.shifter = checkpoint['shifter_type'](**checkpoint['shifter_hparams'])
-        #     self.shifter.load_state_dict(checkpoint['shifter_state_dict'])
-        #self.core.load_state_dict(checkpoint['core_state_dict'])
-        #self.readout.load_state_dict(checkpoint['readout_state_dict'])
-        print('on_load_checkpoint needs to be reimplemented with new net structure.')
+    #     # checkpoint['shifter_type'] = type(self.shifter)
+    #     # if checkpoint['shifter_type']!=type(None):
+    #     #     checkpoint['shifter_hparams'] = self.shifter.hparams
+    #     #     checkpoint['shifter_state_dict'] = self.shifter.state_dict() # TODO: is this necessary or included in model state_dict?
 
     def compute_reg_loss(self):
         rloss = 0
@@ -199,27 +131,20 @@ class Encoder(LightningModule):
 ### END Encoder class
 
 
-def get_trainer(dataset,
-        version=1,
+def get_trainer(dataset, model,
+        version=None,
         save_dir='./checkpoints',
         name='jnkname',
-        opt_params = None,
-        #auto_lr=False,
-        #batchsize=1000,
-        #earlystopping=True,
-        seed=None):
+        opt_params = None):
     """
     Returns a pytorch lightning trainer and splits the training set into "train" and "valid"
     """
-    from torch.utils.data import Dataset, DataLoader, random_split
-    from pytorch_lightning import Trainer, seed_everything
-    from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-    from pytorch_lightning.loggers import TestTubeLogger
+    from torch.utils.data import DataLoader, random_split
+    from trainers import Trainer, EarlyStopping
     from pathlib import Path
 
     save_dir = Path(save_dir)
     batchsize = opt_params['batch_size']
-    #early_stopping = opt_params['early_stopping']
 
     n_val = np.floor(len(dataset)/5).astype(int)
     n_train = (len(dataset)-n_val).astype(int)
@@ -230,44 +155,45 @@ def get_trainer(dataset,
     train_dl = DataLoader(gd_train, batch_size=batchsize, num_workers=opt_params['num_workers'])
     valid_dl = DataLoader(gd_val, batch_size=batchsize, num_workers=opt_params['num_workers'])
 
-    # Train
-    early_stop_callback = EarlyStopping(
-        monitor='val_loss', 
-        min_delta=0.0,
-        patience=opt_params['early_stopping_patience'])
-    checkpoint_callback = ModelCheckpoint(monitor='val_loss')
+    # get optimizer: In theory this probably shouldn't happen here because it needs to know the model
+    # but this was the easiest insertion point I could find for now
+    if opt_params['optimizer']=='AdamW':
+        optimizer = torch.optim.AdamW(model.parameters(),
+                lr=opt_params['learning_rate'],
+                betas=opt_params['betas'],
+                weight_decay=opt_params['weight_decay'],
+                amsgrad=opt_params['amsgrad'])
 
-    logger = TestTubeLogger(
-        save_dir=save_dir,
-        name=name,
-        version=version  # fixed to one to ensure checkpoint load
-    )
+    elif opt_params['optimizer']=='Adam':
+        optimizer = torch.optim.Adam(model.parameters(),
+                lr=opt_params['learning_rate'],
+                betas=opt_params['betas'])
 
-    # ckpt_folder = save_dir / sessid / 'version_{}'.format(version) / 'checkpoints'
-    if opt_params['early_stopping']:
-        trainer = Trainer(gpus=opt_params['num_gpus'], 
-            callbacks=[early_stop_callback],
-            checkpoint_callback=checkpoint_callback,
-            logger=logger,
-            deterministic=False,
-            gradient_clip_val=0,
-            accumulate_grad_batches=1,
-            progress_bar_refresh_rate=opt_params['progress_bar_refresh'],
-            max_epochs=opt_params['max_epochs'],
-            auto_lr_find=opt_params['auto_lr'])
+    elif opt_params['optimizer']=='LBFGS':
+        from LBFGS import LBFGS
+        optimizer = LBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
+
+    elif opt_params['optimizer']=='FullBatchLBFGS':
+        from LBFGS import FullBatchLBFGS
+        optimizer = FullBatchLBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
+
     else:
-        trainer = Trainer(gpus=opt_params['num_gpus'],
-            checkpoint_callback=checkpoint_callback,
-            logger=logger,
-            deterministic=False,
-            gradient_clip_val=0,
-            accumulate_grad_batches=1,
-            progress_bar_refresh_rate=opt_params['progress_bar_refresh'],
-            max_epochs=opt_params['max_epochs'],
-            auto_lr_find=opt_params['auto_lr'])
+        raise ValueError('optimizer [%s] not supported' %opt_params['optimizer'])
+        
 
-    if seed:
-        seed_everything(seed)
+    if opt_params['early_stopping']:
+        if isinstance(opt_params['early_stopping'], EarlyStopping):
+            earlystopping = opt_params['early_stopping']
+        elif isinstance(opt_params['early_stopping'], dict):
+            earlystopping = EarlyStopping(patience=opt_params['early_stopping']['patience'],delta=opt_params['early_stopping']['delta'])
+        else:
+            earlystopping = EarlyStopping(patience=opt_params['early_stopping_patience'],delta=0.0)
+    else:
+        earlystopping = None
+
+    trainer = Trainer(model, optimizer, early_stopping=earlystopping,
+            dirpath=save_dir,
+            version=version) # TODO: how do we want to handle name? Variable name is currently unused
 
     return trainer, train_dl, valid_dl
 

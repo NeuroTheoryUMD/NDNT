@@ -1,26 +1,16 @@
 ### NDNtorch.py
 # this defines NDNclass
 import numpy as np
-from copy import deepcopy
 import torch
 from torch import nn
 
-# from pytorch_lightning import LightningModule
-from torch.nn import functional as F
-
-#from torch import Tensor
-from torch.nn.parameter import Parameter
-from torch.nn import init
-#from torch.nn.common_types import _size_2_t, _size_3_t # for conv2,conv3 default
-#from torch.nn.modules.utils import _triple # for posconv3
-
 # Imports from my code
-from .NDNLosses import *
-from .NDNencoders import Encoder
-from .NDNencoders import get_trainer
-from .NDNlayer import *
-from .FFnetworks import *
-from .NDNutils import create_optimizer_params
+from NDNLosses import *
+from NDNencoders import Encoder
+from NDNencoders import get_trainer
+from NDNlayer import *
+from FFnetworks import *
+from NDNutils import create_optimizer_params
 
 
 class NDN:
@@ -33,7 +23,6 @@ class NDN:
         optimizer_params = None,
         model_name='model',
         data_dir='',
-        detach_core=False  # what does this do?
         ):
 
         # Assign optimizer params
@@ -77,16 +66,7 @@ class NDN:
             network_list=network_list,
             loss=loss_func,
             #val_loss=val_loss, # what is this here for?
-            detach_core=detach_core,
-            learning_rate=optimizer_params['learning_rate'],
-            batch_size=optimizer_params['batch_size'],
-            num_workers=optimizer_params['num_workers'],
-            data_dir=data_dir,
-            optimizer=optimizer_params['optimizer'],
-            weight_decay=optimizer_params['weight_decay'],
-            amsgrad=optimizer_params['amsgrad'],
-            betas=optimizer_params['betas'],
-            max_iter=optimizer_params['max_iter'],
+            # data_dir=data_dir,
             ffnet_out=ffnet_out)
    
         self.opt_params = optimizer_params
@@ -155,24 +135,23 @@ class NDN:
         return self.encoder(x)
         #return self.encoder(x, shifter=shifter)
     
-    def train( self, dataset, version=1, save_dir='./checkpoints/', name='test', save_pkl=True):
+    def train( self, dataset, version=None, save_dir='./checkpoints/', name='test', seed=None, save_pkl=True):
 
         import time
 
+        # get trainer 
         trainer, train_dl, valid_dl = get_trainer(
-            dataset, version=version,
+            dataset, self.encoder,
+            version=version,
             save_dir=save_dir, name = name,
             opt_params = self.opt_params)
-            #auto_lr=self.opt_params['auto_lr'],
-            #earlystopping = self.opt_params['early_stopping'],
-            #batchsize= self.opt_params['batch_size'])
 
         # Make reg modules
         for network in self.encoder.networks:
             network.prepare_regularization()
 
         t0 = time.time()
-        trainer.fit( self.encoder, train_dl, valid_dl)
+        trainer.fit( self.encoder, train_dl, valid_dl, seed=seed)
         t1 = time.time()
 
         print('  Fit complete:', t1-t0, 'sec elapsed')

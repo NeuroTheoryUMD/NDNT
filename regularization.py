@@ -1,22 +1,11 @@
 ### regularization.py: managing regularization
-import numpy as np
 import torch
 from torch import nn
-from pytorch_lightning import LightningModule
 
-from torch.nn import functional as F
-
-from torch import Tensor
-from torch.nn.parameter import Parameter
-from torch.nn import init
-#from torch.nn.common_types import _size_2_t, _size_3_t # for conv2,conv3 default
-#from torch.nn.modules.utils import _triple # for posconv3
 
 from copy import deepcopy
 
-from . import create_reg_matrices as get_rmats
-
-class Regularization(LightningModule):
+class Regularization(nn.Module):
     """Class for handling layer-wise regularization
     
     Attributes:
@@ -59,7 +48,6 @@ class Regularization(LightningModule):
         dimension so that it will work with d2t regularization, if reshape is necessary]
         """
 
-        from copy import deepcopy
         super(Regularization, self).__init__()
 
         # check input
@@ -159,14 +147,13 @@ class Regularization(LightningModule):
     def reg_copy(self):
         """Copy regularization to new structure"""
 
-        from copy import deepcopy
         reg_target = Regularization(input_dims=self.input_dims)
         reg_target.vals = deepcopy(self.val)
 
         return reg_target
     # END Regularization.reg_copy
 
-class RegModule(LightningModule):
+class RegModule(nn.Module):
 
     def __init__(self, reg_type=None, reg_val=None, input_dims=None):
         """Constructor for Reg_module class"""
@@ -200,7 +187,7 @@ class RegModule(LightningModule):
         Args:
             reg_type (str): see `_allowed_reg_types` for options
         """
-        from . import create_reg_matrices as get_rmats
+        import create_reg_matrices as get_rmats
 
         if (reg_type == 'd2t') or (reg_type == 'd2x') or (reg_type == 'd2xt'):
             reg_mat = get_rmats.create_tikhonov_matrix(self.input_dims, reg_type)

@@ -154,8 +154,8 @@ x2 = np.expand_dims(x2, axis=3) # Y-spatial dim is 1
 
 
 # Now make pytorch dataset
-train_ds = dataset.generic_recording(x2[Ui,:], Robs[Ui,:], DFs[Ui,:], device=device)
-test_ds = dataset.generic_recording(x2[Xi,:], Robs[Xi,:], DFs[Xi,:], device=device)
+train_ds = dataset.generic_recording(Xstim[Ui,:], Robs[Ui,:], DFs[Ui,:], device=None)
+test_ds = dataset.generic_recording(Xstim[Xi,:], Robs[Xi,:], DFs[Xi,:], device=None)
 
 sample = train_ds[:10]
 print(sample['stim'].shape, sample['robs'].shape, sample['dfs'].shape)
@@ -176,13 +176,13 @@ opt_pars = NDNutils.create_optimizer_params(
 
 glm0 = NDN.NDN( ffnet_list= [glm_ffnet], model_name=idtag, optimizer_params=opt_pars)
 
-# Does it run?
+#%% Does it run?
 sample = train_ds[:10]
 out = glm0.out(sample['stim'])
 print(out.shape)
 
 #%% Train
-ver = 0
+ver = None # none will auto number versions
 glm0.train( dataset=train_ds, version=ver, name=idtag )
 
 #%% Plot filters
