@@ -337,3 +337,38 @@ def shift_mat_zpad(x, shift, dim=0):
 
     return xshifted
 # END shift_mat_zpad
+
+def generate_xv_folds(nt, num_folds=5, num_blocks=3, which_fold=None):
+    """Will generate unique and cross-validation indices, but subsample in each block
+        NT = number of time steps
+        num_folds = fraction of data (1/fold) to set aside for cross-validation
+        which_fold = which fraction of data to set aside for cross-validation (default: middle of each block)
+        num_blocks = how many blocks to sample fold validation from"""
+
+    test_inds = []
+    NTblock = np.floor(nt/num_blocks).astype(int)
+    block_sizes = np.zeros(num_blocks, dtype='int32')
+    block_sizes[range(num_blocks-1)] = NTblock
+    block_sizes[num_blocks-1] = nt-(num_blocks-1)*NTblock
+
+    if which_fold is None:
+        which_fold = num_folds//2
+    else:
+        assert which_fold < num_folds, 'Must choose XV fold within num_folds =' + str(num_folds)
+
+    # Pick XV indices for each block
+    cnt = 0
+    for bb in range(num_blocks):
+        tstart = np.floor(block_sizes[bb] * (which_fold / num_folds))
+        if which_fold < num_folds-1:
+            tstop = np.floor(block_sizes[bb] * ((which_fold+1) / num_folds))
+        else: 
+            tstop = block_sizes[bb]
+
+        test_inds = test_inds + list(range(int(cnt+tstart), int(cnt+tstop)))
+        cnt = cnt + block_sizes[bb]
+
+    test_inds = np.array(test_inds, dtype='int')
+    train_inds = np.setdiff1d(np.arange(0, nt, 1), test_inds)
+
+    return train_inds, test_inds
