@@ -40,7 +40,7 @@ class NDNlayer(nn.Module):
         elif self.NLtype == 'quad':
             self.NL = F.square  # this doesn't exist: just apply exponent?
         elif self.NLtype == 'softplus':
-            self.NL = F.softplus
+            self.NL = nn.Softplus()
         elif self.NLtype == 'tanh':
             self.NL = F.tanh
         elif self.NLtype == 'sigmoid':
