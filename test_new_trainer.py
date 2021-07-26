@@ -145,12 +145,12 @@ Ui, Xi = Eadd_info['TRinds'], Eadd_info['TEinds']
 print( "%d SUs, %d / %d used time points"%(NC, len(used_inds), NT) )
 
 
-# Jake torch models expect [samples x Lags x Xspace x Yspace]
-# if there is no Yspace, leave it off, but it's no longer a 2D model and we'll have to implement 1D convolutions.
-# For now, let's fit a model with no convolutions
-x2 = np.reshape(Xstim, (NT, NX, num_lags))
-x2 = np.transpose(x2, (0, 2, 1))
-x2 = np.expand_dims(x2, axis=3) # Y-spatial dim is 1
+# # Jake torch models expect [samples x Lags x Xspace x Yspace]
+# # if there is no Yspace, leave it off, but it's no longer a 2D model and we'll have to implement 1D convolutions.
+# # For now, let's fit a model with no convolutions
+# x2 = np.reshape(Xstim, (NT, NX, num_lags))
+# x2 = np.transpose(x2, (0, 2, 1))
+# x2 = np.expand_dims(x2, axis=3) # Y-spatial dim is 1
 
 
 # Now make pytorch dataset
@@ -185,6 +185,13 @@ print(out.shape)
 ver = None # none will auto number versions
 glm0.train( dataset=train_ds, version=ver, name=idtag )
 
+#%%
+fpath = './NDNT/checkpoints/version7/model.pt'
+model = torch.load(fpath)
+
+#%%
+
+torch.save(glm0.encoder, 'model.pt')
 #%% Plot filters
 ws = glm0.encoder.networks[0].layers[0].weights.detach().cpu().numpy()
 fig = plt.figure()
