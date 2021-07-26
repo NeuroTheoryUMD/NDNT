@@ -459,7 +459,7 @@ class Trainer:
         self.model.eval()
 
         # save model
-        torch.save(self.model, os.path.join(self.dirpath, 'model.pth'))
+        torch.save(self.model, os.path.join(self.dirpath, 'model.pt'))
 
         # log final value of loss along with hyperparameters
         defopts = dict()
