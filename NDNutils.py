@@ -567,3 +567,114 @@ def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0
     summary_str += "----------------------------------------------------------------" + "\n"
     # return summary
     return summary_str, (total_params, trainable_params)
+
+def get_fit_versions(data_dir, model_name):
+    '''
+        Find versions of the fit model
+        Arguments:
+            data_dir: directory where the checkpoints are stored
+            model_name: name of the model
+    '''
+
+    import re
+    from tensorboard.backend.event_processing import event_accumulator
+
+    dirlist = [x for x in os.listdir(os.path.join(data_dir, model_name)) if os.path.isdir(os.path.join(data_dir, model_name, x))]
+        
+    versionlist = [re.findall('(?!version)\d+', x) for x in dirlist]
+    versionlist = [int(x[0]) for x in versionlist if not not x]
+
+    outdict = {'version_num': [],
+        'events_file': [],
+        'model_file': [],
+        'val_loss': [],
+        'val_loss_steps': []}
+
+    for v in versionlist:
+        vpath = os.path.join(data_dir, model_name, 'version%d' %v)
+        vplist = os.listdir(vpath)
+
+        tfeventsfiles = [x for x in vplist if 'events.out.tfevents' in x]
+        modelfiles = [x for x in vplist if 'model.pt' in x]
+
+        if len(tfeventsfiles) == 1 and len(modelfiles) == 1:
+            outdict['version_num'].append(v)
+            outdict['events_file'].append(os.path.join(vpath, tfeventsfiles[0]))
+            outdict['model_file'].append(os.path.join(vpath, modelfiles[0]))
+
+            # read from tensorboard backend
+            ea = event_accumulator.EventAccumulator(outdict['events_file'][-1])
+            ea.Reload()
+            val = np.asarray([x.value for x in ea.scalars.Items("Loss/Validation (Epoch)")])
+            bestval = np.min(val)
+            outdict['val_loss_steps'].append(val)
+            outdict['val_loss'].append(bestval)
+
+    return outdict
+
+def get_trainer(dataset, model,
+        version=None,
+        save_dir='./checkpoints',
+        name='test_model',
+        opt_params = None):
+    """
+    Returns a pytorch lightning trainer and splits the training set into "train" and "valid"
+    """
+    from torch.utils.data import DataLoader, random_split
+    from trainers import Trainer, EarlyStopping
+    # from pathlib import Path
+    import os
+    # save_dir = Path(save_dir)
+    save_dir = os.path.join(save_dir, name)
+    batchsize = opt_params['batch_size']
+
+    n_val = np.floor(len(dataset)/5).astype(int)
+    n_train = (len(dataset)-n_val).astype(int)
+
+    gd_train, gd_val = random_split(dataset, lengths=[n_train, n_val])
+
+    # build dataloaders
+    train_dl = DataLoader(gd_train, batch_size=batchsize, num_workers=opt_params['num_workers'])
+    valid_dl = DataLoader(gd_val, batch_size=batchsize, num_workers=opt_params['num_workers'])
+
+    # get optimizer: In theory this probably shouldn't happen here because it needs to know the model
+    # but this was the easiest insertion point I could find for now
+    if opt_params['optimizer']=='AdamW':
+        optimizer = torch.optim.AdamW(model.parameters(),
+                lr=opt_params['learning_rate'],
+                betas=opt_params['betas'],
+                weight_decay=opt_params['weight_decay'],
+                amsgrad=opt_params['amsgrad'])
+
+    elif opt_params['optimizer']=='Adam':
+        optimizer = torch.optim.Adam(model.parameters(),
+                lr=opt_params['learning_rate'],
+                betas=opt_params['betas'])
+
+    elif opt_params['optimizer']=='LBFGS':
+        from LBFGS import LBFGS
+        optimizer = LBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
+
+    elif opt_params['optimizer']=='FullBatchLBFGS':
+        from LBFGS import FullBatchLBFGS
+        optimizer = FullBatchLBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
+
+    else:
+        raise ValueError('optimizer [%s] not supported' %opt_params['optimizer'])
+        
+
+    if opt_params['early_stopping']:
+        if isinstance(opt_params['early_stopping'], EarlyStopping):
+            earlystopping = opt_params['early_stopping']
+        elif isinstance(opt_params['early_stopping'], dict):
+            earlystopping = EarlyStopping(patience=opt_params['early_stopping']['patience'],delta=opt_params['early_stopping']['delta'])
+        else:
+            earlystopping = EarlyStopping(patience=opt_params['early_stopping_patience'],delta=0.0)
+    else:
+        earlystopping = None
+
+    trainer = Trainer(model, optimizer, early_stopping=earlystopping,
+            dirpath=save_dir,
+            version=version) # TODO: how do we want to handle name? Variable name is currently unused
+
+    return trainer, train_dl, valid_dl

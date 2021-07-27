@@ -134,16 +134,17 @@ class Encoder(nn.Module):
 def get_trainer(dataset, model,
         version=None,
         save_dir='./checkpoints',
-        name='jnkname',
+        name='test_model',
         opt_params = None):
     """
     Returns a pytorch lightning trainer and splits the training set into "train" and "valid"
     """
     from torch.utils.data import DataLoader, random_split
     from trainers import Trainer, EarlyStopping
-    from pathlib import Path
-
-    save_dir = Path(save_dir)
+    # from pathlib import Path
+    import os
+    # save_dir = Path(save_dir)
+    save_dir = os.path.join(save_dir, name)
     batchsize = opt_params['batch_size']
 
     n_val = np.floor(len(dataset)/5).astype(int)

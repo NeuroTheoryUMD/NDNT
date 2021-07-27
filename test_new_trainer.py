@@ -3,6 +3,7 @@ This script will test standalone NDN without lightning.
 '''
 #%% Import Libraries
 import sys
+import os
 
 # setup paths
 iteration = 1 # which version of this tutorial to run (in case want results in different dirs)
@@ -26,7 +27,7 @@ else:
     dirname = '/home/dbutts/V1/Monocular/'
 
 
-import os
+
 
 # loading data
 import scipy.io as sio
@@ -160,15 +161,17 @@ test_ds = dataset.generic_recording(Xstim[Xi,:], Robs[Xi,:], DFs[Xi,:], device=N
 sample = train_ds[:10]
 print(sample['stim'].shape, sample['robs'].shape, sample['dfs'].shape)
 
+
+#%% test load
+model_name = 'glm0'
+idtag = NBname + '/' + model_name # what to call these data
+print(idtag)
+
+# glm0 = NDN.NDN.load_model('./checkpoints', idtag)
 #%% Test GLM
 glm_ffnet = NDNutils.ffnet_dict_NIM(
     input_dims = [1, NX, 1, num_lags], layer_sizes = [NC], act_funcs = ['softplus'],
     reg_list={'d2xt':[0.001], 'l1':[1e-4]})
-#glm_ffnet
-
-model_name = 'glm0'
-idtag = NBname + '/' + model_name # what to call these data
-print(idtag)
 
 opt_pars = NDNutils.create_optimizer_params(
     learning_rate=.01, early_stopping_patience=10,
@@ -178,22 +181,16 @@ glm0 = NDN.NDN( ffnet_list= [glm_ffnet], model_name=idtag, optimizer_params=opt_
 
 #%% Does it run?
 sample = train_ds[:10]
-out = glm0.out(sample['stim'])
+out = glm0(sample['stim'])
 print(out.shape)
 
 #%% Train
 ver = None # none will auto number versions
-glm0.train( dataset=train_ds, version=ver, name=idtag )
+glm0.fit( dataset=train_ds, version=ver)
 
-#%%
-fpath = './NDNT/checkpoints/version7/model.pt'
-model = torch.load(fpath)
 
-#%%
-
-torch.save(glm0.encoder, 'model.pt')
 #%% Plot filters
-ws = glm0.encoder.networks[0].layers[0].weights.detach().cpu().numpy()
+ws = glm0.networks[0].layers[0].weights.detach().cpu().numpy()
 fig = plt.figure()
 fig.set_size_inches(16, 4)
 for nn in range(10):
@@ -205,3 +202,20 @@ plt.show()
 #%% Evaluate model
 LLs0 = glm0.eval_models(sample=test_ds[:], null_adjusted=True)
 print(LLs0)
+# %%
+glm1 = NDN.NDN.load_model('./checkpoints', idtag)
+# %%
+LLs0 = glm1.eval_models(sample=test_ds[:], null_adjusted=True)
+print(LLs0)
+
+# %%
+ws = glm1.networks[0].layers[0].weights.detach().cpu().numpy()
+fig = plt.figure()
+fig.set_size_inches(16, 4)
+for nn in range(10):
+    plt.subplot(2,5,nn+1)
+    plt.imshow(ws[:,nn].reshape([NX,num_lags]).T, cmap='gray')
+plt.tight_layout()
+plt.show()
+
+# %%
