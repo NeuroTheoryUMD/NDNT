@@ -1,8 +1,7 @@
-from .NDNutils import layer_dict
+
 import numpy as np
 import torch
 from torch import nn
-from pytorch_lightning import LightningModule
 
 from torch.nn import functional as F
 
@@ -12,16 +11,16 @@ from torch.nn import init
 #from torch.nn.common_types import _size_2_t, _size_3_t # for conv2,conv3 default
 #from torch.nn.modules.utils import _triple # for posconv3
 
-from .regularization import Regularization
+from regularization import Regularization
 from copy import deepcopy
 
 
-#class NDNlayer(nn.Module):
-class NDNlayer(LightningModule):
 
-    def __repr__(self):
-        s = super().__repr__()
-        s += 'NDNlayer'
+class NDNlayer(nn.Module):
+
+    # def __repr__(self):
+    #     s = super().__repr__()
+    #     s += 'NDNlayer'
 
     def __init__(self, layer_params, reg_vals=None):
         super(NDNlayer, self).__init__()
@@ -41,7 +40,7 @@ class NDNlayer(LightningModule):
         elif self.NLtype == 'quad':
             self.NL = F.square  # this doesn't exist: just apply exponent?
         elif self.NLtype == 'softplus':
-            self.NL = F.softplus
+            self.NL = nn.Softplus()
         elif self.NLtype == 'tanh':
             self.NL = F.tanh
         elif self.NLtype == 'sigmoid':

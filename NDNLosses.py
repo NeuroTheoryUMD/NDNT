@@ -9,11 +9,10 @@
 
 import torch
 from torch import nn
-from pytorch_lightning import LightningModule
 
 
 #### LOSS FUNCTIONS: could ideally be in separate file and imported directly
-class PoissonLoss_datafilter(LightningModule):
+class PoissonLoss_datafilter(nn.Module):
     """The standard way would be to weight a neurons contribution in a given batch by the number of spikes it happens
     to fire in that batch, relative to other neurons. But this means that the fit overall will be dominated by high-
     firing rate neurons. But also you cannot calc LL/spk within a batch because the number of spikes are too variable
@@ -28,10 +27,10 @@ class PoissonLoss_datafilter(LightningModule):
         self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
         #print('loss is on', self.device)
 
-    def __repr__(self):
-        s = super().__repr__()
-        s += 'poisson'
-        return s 
+    # def __repr__(self):
+    #     s = super().__repr__()
+    #     s += 'poisson'
+    #     return s 
 
     def forward(self, pred, target, data_filters = None ):        
         
@@ -43,7 +42,7 @@ class PoissonLoss_datafilter(LightningModule):
                 torch.div(
                     torch.mul(loss_full, data_filters), 
                     torch.maximum(
-                        torch.sum(data_filters, axis=0), torch.tensor(1.0)) ))
+                        torch.sum(data_filters, axis=0), torch.tensor(1.0, device=data_filters.device)) ))
             
         return loss
 
@@ -59,6 +58,6 @@ class PoissonLoss_datafilter(LightningModule):
             unitloss = torch.div(
                 torch.mul(loss_full, data_filters), 
                 torch.maximum(
-                    torch.sum(data_filters, axis=0), torch.tensor(1.0)) )
+                    torch.sum(data_filters, axis=0), torch.tensor(1.0, device=data_filters.device)) )
             
         return unitloss
