@@ -11,7 +11,7 @@ from collections import OrderedDict
 def layer_dict(
     input_dims=None, num_filters=1, NLtype='relu', 
     norm_type=0, pos_constraint=False, num_inh=0,
-    conv=False, conv_width=None):
+    conv=False, conv_width=None, stride=None, dilation=None):
 
     """input dims are [num_filters, space1, space2, num_lags]"""
 
@@ -45,6 +45,8 @@ def layer_dict(
         'norm_type': norm_type, 
         'pos_constraint': pos_constraint,
         'conv': conv,
+        'stride': stride,
+        'dilation': dilation,
         'num_inh': num_inh,
         'initializer': 'uniform',
         'bias': True}
@@ -77,6 +79,7 @@ def ffnet_params_default(xstim_n=None, ffnet_n=None):
 
     ffnet_params = {
         'ffnet_type': 'normal',
+        'layer_types': None,
         'layer_list': None,
         'input_dims': None,
         'xstim_n': xstim_n,
@@ -91,8 +94,10 @@ def ffnet_params_default(xstim_n=None, ffnet_n=None):
 def ffnet_dict_NIM(
     input_dims=None, 
     layer_sizes=None, 
+    layer_types=None,
     act_funcs=None,
     ei_layers=None,
+    conv_widths=None,
     norm_list=None,
     reg_list=None):
 
@@ -106,14 +111,22 @@ def ffnet_dict_NIM(
     num_layers = len(layer_sizes)
     assert len(act_funcs) == num_layers, "act_funcs is wrong length."
 
-    layer_list = []   
     indims = input_dims  # starts with network input dims
 
     if ei_layers is None:
         ei_layers = [None]*num_layers
     if norm_list is None:
-        norm_list = [None]*num_layers
+        norm_list = [0]*num_layers
 
+    if layer_types is None:
+        layer_types = ['normal']*num_layers
+    assert len(layer_types) == num_layers, 'layer_types is wrong length.'
+    ffnet_params['layer_types'] = layer_types
+
+    if conv_widths is None:
+        conv_widths = [None]*num_layers
+
+    layer_list = []   
     for ll in range(num_layers):
         pos_con = False
         if ll > 0:
@@ -131,6 +144,8 @@ def ffnet_dict_NIM(
                 NLtype = act_funcs[ll],
                 norm_type = norm_list[ll],
                 pos_constraint = pos_con,
+                conv=layer_types[ll] == 'conv',
+                conv_width = conv_widths[ll], 
                 num_inh = num_inh))
 
         indims = layer_list[-1]['output_dims']

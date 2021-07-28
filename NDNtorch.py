@@ -6,7 +6,7 @@ from torch import nn
 
 # Imports from my code
 from NDNLosses import *
-from NDNencoders import Encoder
+#from NDNencoders import Encoder
 from NDNutils import get_trainer
 from NDNlayer import *
 from FFnetworks import *

@@ -14,9 +14,22 @@ from torch.nn import init
 from regularization import Regularization
 from copy import deepcopy
 
-
+NLtypes = {
+    'lin': None,
+    'relu': nn.ReLU(),
+    'square': torch.square, # this doesn't exist: just apply exponent?
+    'softplus': nn.Softplus(),
+    'tanh': nn.Tanh(),
+    'sigmoid': nn.Sigmoid()
+    }
 
 class NDNlayer(nn.Module):
+    """This is meant to be a base layer-class and overloaded to create other types of layers.
+    As a result, it is meant to establish the basic components of a layer, which includes parameters
+    corresponding to weights (num_filters, filter_dims), biases, nonlinearity ("NLtype"), and regularization. 
+    Other operations that are performed in the base-layer would be pos_constraint (including setting the
+    eimask), and normalization. All aspects can be overloaded, although if so, there may be no need
+    to inherit NDNLayer as a base class."""
 
     # def __repr__(self):
     #     s = super().__repr__()
@@ -25,26 +38,16 @@ class NDNlayer(nn.Module):
     def __init__(self, layer_params, reg_vals=None):
         super(NDNlayer, self).__init__()
 
-        assert not layer_params['conv'], "layer_params error: This is not a conv layer."
+        #assert not layer_params['conv'], "layer_params error: This is not a conv layer."
         self.input_dims = layer_params['input_dims']
         self.num_filters = layer_params['num_filters']
         self.filter_dims = layer_params['filter_dims']
         self.output_dims = layer_params['output_dims']
         self.NLtype = layer_params['NLtype']
         
-        # Will want to replace this with Jake's fancy function
-        if self.NLtype == 'lin':
-            self.NL = None
-        elif self.NLtype == 'relu':
-            self.NL = F.relu
-        elif self.NLtype == 'quad':
-            self.NL = F.square  # this doesn't exist: just apply exponent?
-        elif self.NLtype == 'softplus':
-            self.NL = nn.Softplus()
-        elif self.NLtype == 'tanh':
-            self.NL = F.tanh
-        elif self.NLtype == 'sigmoid':
-            self.NL = F.sigmoid
+        # Was this implemented correctly? Where should NLtypes (the dictionary) live?
+        if self.NLtype in NLtypes:
+            self.NL = NLtypes[self.NLtype]
         else:
             print("Nonlinearity undefined.")
             # return error
@@ -52,7 +55,7 @@ class NDNlayer(nn.Module):
         #self.in_features = in_features
         # self.flatten = nn.Flatten()
         
-        self.shape = tuple([np.prod(self.input_dims), self.num_filters])
+        self.shape = tuple([np.prod(self.filter_dims), self.num_filters])
         self.norm_type = layer_params['norm_type']
         self.pos_constraint = layer_params['pos_constraint']
 
@@ -91,13 +94,25 @@ class NDNlayer(nn.Module):
             bound = 1 / np.sqrt(fan_in)
             init.uniform_(self.bias, -bound, bound)          
 
-    def forward(self, x):
-        w = self.weights
+    def prepare_weights(self):
+        # Apply positive constraints
         if self.pos_constraint:
-            w = torch.maximum(w, self.minval)
-
+            w = torch.maximum(self.weights, self.minval)
+        else:
+            w = self.weights
         # Add normalization
+        if self.norm_type > 0: # so far just standard filter-specific normalization
+            w = F.normalize( w, dim=0 )
+        return w
+
+    def forward(self, x):
+        # Pull weights and process given pos_constrain and normalization conditions
+        w = self.prepare_weights()
+
+        # Simple linear processing and bias
         x = torch.matmul(x, w) + self.bias
+
+        # Nonlinearity
         if self.NL is not None:
             x = self.NL(x)
         return x 
@@ -112,4 +127,81 @@ class NDNlayer(nn.Module):
             return ws.reshape(self.filter_dims + [num_filts]).squeeze()
         else:
             return ws.squeeze()
-    
+    ## END NDNLayer class
+
+class ConvLayer(NDNlayer):
+    """Making this handle 1 or 2-d although could overload to make 1-d from the 2-d""" 
+    def __repr__(self):
+        s = super().__repr__()
+        s += 'Convlayer'
+
+    def __init__(self, layer_params, reg_vals=None):
+        # All parameters of filter (weights) should be correctly fit in layer_params
+        super(ConvLayer, self).__init__(layer_params, reg_vals=reg_vals)
+        if layer_params['stride'] is None:
+            self.stride = 1   
+        else: 
+            self.stride = layer_params['stride']
+        if layer_params['dilation'] is None:
+            self.dilation = 1
+        else:
+            self.dilation = layer_params['dilation']
+        # Check if 1 or 2-d convolution required
+        self.is1D = (self.input_dims[2] == 1)
+        if self.stride > 1:
+            print('Warning: Manual padding not yet implemented when stride > 1')
+            self.padding = 0
+        else:
+            #self.padding = 'same' # even though in documentation, doesn't seem to work
+            # Do padding by hand
+            w = self.filter_dims[1]
+            if w%2 == 0:
+                print('warning: only works with odd kernels, so far')
+            self.padding = (w-1)//2 # this will result in same/padding
+
+        # Combine filter and temporal dimensions for conv -- collapses over both
+        self.folded_dims = self.input_dims[0]*self.input_dims[3]
+        self.num_outputs = np.prod(self.output_dims)
+        # QUESTION: note that this and other constants are used as function-arguments in the 
+        # forward, but the numbers are not combined directly. Is that mean they are ok to be
+        # numpy, versus other things? (check...) 
+
+    def forward(self, x):
+
+        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
+        w = self.prepare_weights().reshape(self.filter_dims+[-1]).permute(4,0,3,1,2)
+        # puts output_dims first, as required for conv
+        # Collapse over irrelevant dims for dim-specific convs
+        if self.is1D:
+            y = F.conv1d(
+                torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) ),
+                torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1]) ), 
+                bias=self.bias,
+                stride=self.stride, padding=self.padding, dilation=self.dilation)
+        else:
+            y = F.conv2d(
+                torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) ),
+                torch.reshape( w, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) ), 
+                bias=self.bias,
+                stride=self.stride, padding=self.padding, dilation=self.dilation)
+
+        y = torch.reshape(y, (-1, self.num_outputs))
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+        return y
+
+class Readout(nn.Module):
+    def initialize(self, *args, **kwargs):
+        raise NotImplementedError("initialize is not implemented for ", self.__class__.__name__)
+
+    def __repr__(self):
+        s = super().__repr__()
+        s += " [{} regularizers: ".format(self.__class__.__name__)
+        ret = []
+        for attr in filter(
+                lambda x: not x.startswith("_") and ("gamma" in x or "pool" in x or "positive" in x), dir(self)
+        ):
+            ret.append("{} = {}".format(attr, getattr(self, attr)))
+        return s + "|".join(ret) + "]\n"

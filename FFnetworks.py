@@ -6,7 +6,10 @@ from copy import deepcopy
 #from .regularization import reg_setup_ffnet
 from NDNlayer import *
 
-
+LayerTypes = {
+    'normal': NDNlayer,
+    'conv': ConvLayer
+}
 class FFnetwork(nn.Module):
 
     #def __repr__(self):
@@ -21,9 +24,10 @@ class FFnetwork(nn.Module):
 
         # Format and record inputs into ffnet
         self.layer_list = deepcopy(ffnet_params['layer_list'])
+        self.layer_types = deepcopy(ffnet_params['layer_types'])
         self.xstim_n = ffnet_params['xstim_n']
         self.ffnets_in = deepcopy(ffnet_params['ffnet_n'])
-        self.conv = ffnet_params['conv']    
+        #self.conv = ffnet_params['conv']    # I don't think this does anything
 
         num_layers = len(self.layer_list)
 
@@ -39,9 +43,11 @@ class FFnetwork(nn.Module):
         # Make each layer as part of an array
         self.layers = nn.ModuleList()
         for ll in range(num_layers):
+            layer_type = self.layer_types
             self.layers.append(
-                NDNlayer(self.layer_list[ll], reg_vals=reg_params[ll]) )
-        
+                LayerTypes[self.layer_types[ll]](self.layer_list[ll], reg_vals=reg_params[ll]) )
+    # END FFnetwork.__init__
+ 
     def forward(self, x):        
         for layer in self.layers:
             x = layer(x)

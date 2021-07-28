@@ -127,7 +127,6 @@ class Regularization(nn.Module):
 
         if self.need_reshape:
             wsize = weights.size()
-            print(wsize)
             num_filters = wsize[-1]
             w = torch.reshape(
                     torch.reshape(
@@ -233,9 +232,8 @@ class RegModule(nn.Module):
         elif self.reg_type in ['max', 'max_filt', 'max_space', 'local', 'glocal', 'center']:  # [custom]
             # my old implementation didnt square weights before passing into center. should it? I think....
             w2 = torch.square(weights)
-            reg_pen = torch.trace( torch.matmul(
-                    torch.transpose(w2),
-                    torch.matmul(self.rmat, w2) ))
+            reg_pen = torch.trace(
+                torch.matmul( w2.T, torch.matmul(self.rmat, w2) ))
         # ORTH MORE COMPLICATED: needs another buffer?
         #elif self.reg_type == 'orth':  # [custom]
         #    diagonal = np.ones(weights.shape[1], dtype='float32')
