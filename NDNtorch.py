@@ -12,6 +12,10 @@ from NDNlayer import *
 from FFnetworks import *
 from NDNutils import create_optimizer_params
 
+FFnetTypes = {
+    'normal': FFnetwork,
+    'readout': Readout
+}
 
 class NDN(nn.Module):
 
