@@ -146,3 +146,40 @@ def ffnet_dict_NIM(
 
     return ffnet_params
 # END ffnet_dict_NIM
+
+
+def ffnet_dict_readout(
+    ffnet_n=None, 
+    shifter_network=None,
+    num_cells=0,
+    act_func='softplus',
+    bias=True,
+    init_mu_range=0.1,
+    init_sigma=1,
+    batch_sample=True,
+    align_corners=True,
+    gauss_type='uncorrelated',
+    constrain_positive=False,
+    reg_list=None):
+    """This sets up dictionary parameters for readout ffnetwork, establishing all the relevant
+    info"""
+
+    assert ffnet_n is not None, 'Must specify input ffnetwork (ffnet_n).'
+    assert num_cells > 0, 'Must specify num_cells.'
+
+    ffnet_params = ffnet_params_default(xstim_n=None, ffnet_n=ffnet_n)
+    ffnet_params['ffnet_type'] = 'readout'
+    ffnet_params['shifter_network'] = shifter_network
+    # save rest of params in ffnet dictionary
+    ffnet_params['reg_list'] = reg_list   
+    ffnet_params['num_cells'] = num_cells
+    ffnet_params['act_func'] = act_func
+    ffnet_params['bias'] = bias
+    ffnet_params['init_mu_range'] = init_mu_range
+    ffnet_params['init_sigma'] = init_sigma
+    ffnet_params['batch_sample'] = batch_sample
+    ffnet_params['align_corners'] = align_corners
+    ffnet_params['gauss_type='] = gauss_type
+    ffnet_params['constrain_positive'] = constrain_positive
+
+    return ffnet_params

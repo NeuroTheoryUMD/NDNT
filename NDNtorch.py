@@ -7,12 +7,12 @@ from torch import nn
 # Imports from my code
 from NDNLosses import *
 #from NDNencoders import Encoder
-from NDNutils import get_trainer
+#from NDNutils import get_trainer
 from NDNlayer import *
 from FFnetworks import *
 from NDNutils import create_optimizer_params
 
-FFnetTypes = {
+FFnets = {
     'normal': FFnetwork,
     'readout': Readout
 }
@@ -22,23 +22,21 @@ class NDN(nn.Module):
     def __init__(self,
         ffnet_list = None,
         loss_type = 'poisson',
-        ffnet_out = [-1], # Default output is last
-        # not sure what val_loss does and if we need....
+        ffnet_out = [-8], # Default output is last
         optimizer_params = None,
         model_name='NDN_model',
-        data_dir='./checkpoints',
-        ):
+        data_dir='./checkpoints'):
 
+        print('first', ffnet_out)
         super().__init__()
         self.model_name = model_name
         self.data_dir = data_dir
-
+        print('first', ffnet_out)
         # Assign optimizer params
         if optimizer_params is None:
             optimizer_params = create_optimizer_params()
 
         # Assign loss function (from list)
-        
         if isinstance(loss_type, str):
             self.loss_type = loss_type
             if loss_type == 'poisson':
@@ -64,12 +62,13 @@ class NDN(nn.Module):
             network_list = [ffnet_list]  # list of single network with forward
 
         # Check and record output of network
-        if type(ffnet_out) is not list:
+        if not isinstance(ffnet_out, list):
             ffnet_out = [ffnet_out]
+        print(ffnet_out)        
         for nn in range(len(ffnet_out)):
             if ffnet_out[nn] == -1:
                 ffnet_out[nn] = len(network_list)-1
-
+        print(ffnet_out)
         assert network_list is not None, 'Missing encoder' 
         assert loss_func is not None, 'Missing loss_function' 
         
@@ -99,11 +98,11 @@ class NDN(nn.Module):
         
         num_networks = len(ffnet_list)
         # Make list of lightning modules
-        network_list = nn.ModuleList()
+        networks = nn.ModuleList()
 
         for mm in range(num_networks):
 
-            # Determine network input
+            # Dete rmine network input
             if ffnet_list[mm]['ffnet_n'] is None:
                 # then external input (assume from one source)
                 input_dims = ffnet_list[mm]['input_dims']
@@ -118,11 +117,11 @@ class NDN(nn.Module):
                     assert nets_in[ii] < mm, "FFnet%d (%d): input networks must come earlier"%(mm, ii)
                     
                     # How reads input networks depends on what type of network this is
-                    if ffnet_list[mm]['ffnet_type'] == 'normal':
+                    #if ffnet_list[mm]['ffnet_type'] == 'normal':
                         # this means that just takes output of last layer of input network
-                        input_dim_list.append(network_list[nets_in[ii]].layers[-1].output_dims)
-                    else:
-                        print('currently no dim combo rules for non-normal ffnetworks')
+                    input_dim_list.append(networks[nets_in[ii]].layers[-1].output_dims)
+                    #else:
+                    #    print('currently no dim combo rules for non-normal ffnetworks')
                     if ii == 0:
                         num_cat_filters = input_dim_list[0][0]
                     else:
@@ -135,11 +134,12 @@ class NDN(nn.Module):
                 input_dims = [num_cat_filters] + input_dim_list[0][1:]
 
             ffnet_list[mm]['input_dims'] = input_dims
+            net_type = ffnet_list[mm]['ffnet_type']
 
             # Create corresponding FFnetwork
-            network_list.append( FFnetwork(ffnet_list[mm]) )
+            networks.append( FFnets[net_type](ffnet_list[mm]) )
 
-            return network_list
+        return networks
     # END assemble_ffnetworks
 
     def compute_network_outputs( self, Xs):
@@ -213,7 +213,7 @@ class NDN(nn.Module):
     def out( self, x):
         return self(x)
     
-    def get_trainer(dataset, model,
+    def get_trainer(self, dataset,
         version=None,
         save_dir='./checkpoints',
         name='jnkname',
@@ -224,10 +224,10 @@ class NDN(nn.Module):
         from torch.utils.data import DataLoader, random_split
         from trainers import Trainer, EarlyStopping
         from pathlib import Path
-
+    
         save_dir = Path(save_dir)
         batchsize = opt_params['batch_size']
-
+        model = self
         n_val = np.floor(len(dataset)/5).astype(int)
         n_train = (len(dataset)-n_val).astype(int)
 
@@ -296,8 +296,8 @@ class NDN(nn.Module):
             name = self.name
 
         # get trainer 
-        trainer, train_dl, valid_dl = get_trainer(
-            dataset, self,
+        trainer, train_dl, valid_dl = self.get_trainer(
+            dataset,
             version=version,
             save_dir=save_dir, name = name,
             opt_params = self.opt_params)
