@@ -38,12 +38,16 @@ class NDNlayer(nn.Module):
     def __init__(self, layer_params, reg_vals=None):
         super(NDNlayer, self).__init__()
 
-        #assert not layer_params['conv'], "layer_params error: This is not a conv layer."
         self.input_dims = layer_params['input_dims']
         self.num_filters = layer_params['num_filters']
+        # In input_dims is determined by network (and not filled in previously), this fills in with input_dims
+        if layer_params['filter_dims'] is None:
+            layer_params['filter_dims'] = deepcopy(layer_params['input_dims'])
         self.filter_dims = layer_params['filter_dims']
         self.output_dims = layer_params['output_dims']
         self.NLtype = layer_params['NLtype']
+        self.norm_type = layer_params['norm_type']
+        self.pos_constraint = layer_params['pos_constraint']
         
         # Was this implemented correctly? Where should NLtypes (the dictionary) live?
         if self.NLtype in NLtypes:
@@ -52,12 +56,7 @@ class NDNlayer(nn.Module):
             print("Nonlinearity undefined.")
             # return error
 
-        #self.in_features = in_features
-        # self.flatten = nn.Flatten()
-        
         self.shape = tuple([np.prod(self.filter_dims), self.num_filters])
-        self.norm_type = layer_params['norm_type']
-        self.pos_constraint = layer_params['pos_constraint']
 
         # Make layer variables
         self.weights = Parameter(torch.Tensor(size=self.shape))
@@ -83,7 +82,6 @@ class NDNlayer(nn.Module):
     # END NDNlayer.__init__
 
     def reset_parameters(self, initializer=None) -> None:
-        
         # Default initializer, although others possible
         if initializer is None:
             initializer = 'uniform'
@@ -94,7 +92,7 @@ class NDNlayer(nn.Module):
             bound = 1 / np.sqrt(fan_in)
             init.uniform_(self.bias, -bound, bound)          
 
-    def prepare_weights(self):
+    def preprocess_weights(self):
         # Apply positive constraints
         if self.pos_constraint:
             w = torch.maximum(self.weights, self.minval)
@@ -107,7 +105,7 @@ class NDNlayer(nn.Module):
 
     def forward(self, x):
         # Pull weights and process given pos_constrain and normalization conditions
-        w = self.prepare_weights()
+        w = self.preprocess_weights()
 
         # Simple linear processing and bias
         x = torch.matmul(x, w) + self.bias
@@ -153,7 +151,7 @@ class ConvLayer(NDNlayer):
             self.padding = 0
         else:
             #self.padding = 'same' # even though in documentation, doesn't seem to work
-            # Do padding by hand
+            # Do padding by hand -- will want to generalize this for two-ds
             w = self.filter_dims[1]
             if w%2 == 0:
                 print('warning: only works with odd kernels, so far')
@@ -170,7 +168,7 @@ class ConvLayer(NDNlayer):
 
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
-        w = self.prepare_weights().reshape(self.filter_dims+[-1]).permute(4,0,3,1,2)
+        w = self.preprocess_weights().reshape(self.filter_dims+[-1]).permute(4,0,3,1,2)
         # puts output_dims first, as required for conv
         # Collapse over irrelevant dims for dim-specific convs
         if self.is1D:
@@ -192,16 +190,203 @@ class ConvLayer(NDNlayer):
             y = self.NL(y)
         return y
 
-class Readout(nn.Module):
+class ReadoutLayer(NDNlayer):
     def initialize(self, *args, **kwargs):
         raise NotImplementedError("initialize is not implemented for ", self.__class__.__name__)
 
     def __repr__(self):
         s = super().__repr__()
-        s += " [{} regularizers: ".format(self.__class__.__name__)
+        #s += " [{} regularizers: ".format(self.__class__.__name__)
         ret = []
         for attr in filter(
                 lambda x: not x.startswith("_") and ("gamma" in x or "pool" in x or "positive" in x), dir(self)
         ):
             ret.append("{} = {}".format(attr, getattr(self, attr)))
         return s + "|".join(ret) + "]\n"
+
+    def __init__(self, layer_params, shifter_present=False, reg_vals=None):
+
+        # Make sure filter_dims is filled in, and to single the spatial filter dimensions
+        if layer_params['filter_dims'] is None:
+            layer_params['filter_dims'] = deepcopy(layer_params['input_dims'])
+        layer_params['filter_dims'][1:3] = [1,1]
+
+        super(ReadoutLayer,self).__init__(layer_params)
+        assert layer_params['filter_dims'][3] == 1, 'Cant handle temporal filter dims here, yet.'
+
+        # Determine whether one- or two-dimensional readout
+        if layer_params['input_dims'][2] == 1:
+            self.num_space_dims = 1
+        else:
+            self.num_space_dims = 2
+        # pytorch lightning helper to save all hyperparamters
+        #self.save_hyperparameters()
+
+        # Additional readout parameters (below)
+        if self.pos_constraint:
+            self.register_buffer("minval", torch.tensor(0.0))
+            # Does this apply to both weights and biases? Should be separate?
+
+        # self.flatten = nn.Flatten()
+        self.batch_sample = layer_params['batch_sample']
+        self.init_mu_range = layer_params['init_mu_range']
+        self.init_sigma = layer_params['init_sigma']
+        if self.init_mu_range > 1.0 or self.init_mu_range <= 0.0 or self.init_sigma <= 0.0:
+            raise ValueError("either init_mu_range doesn't belong to [0.0, 1.0] or init_sigma_range is non-positive")
+        
+        self.gauss_type = layer_params['gauss_type=']
+        self.align_corners = layer_params['align_corners']
+
+        # position grid shape
+        self.grid_shape = (1, self.num_filters, 1, self.num_space_dims)
+        self.sigma_shape = (1, self.num_filters, 1, self.num_space_dims)
+        # initialize means and spreads
+
+        self._mu = Parameter(torch.Tensor(*self.grid_shape))  # mean location of gaussian for each neuron
+        self.sigma = Parameter(torch.Tensor(*self.sigma_shape))  # standard deviation for gaussian for each neuron
+
+        self.initialize_spatial_mapping()
+        # Not needed anymore: automatically handled by NDNlayer
+        #self.initialize_features()
+        
+        # Not clear yet how best to handle regularization -- leaving current and ability to pass in
+        #self.register_buffer("regvalplaceholder", torch.zeros((1,2)))
+
+    @property
+    def features(self):
+        ## WHAT DOES THIS FUNCTION DO? ###############################
+        ## looks like it modifies param weights (_features is paramters, but applies constraints if set)
+        if self.pos_constraint:
+            feat = F.relu(self.weights)
+        else:
+            feat = self.weights
+        
+        return feat
+
+    @property
+    def grid(self):
+        return self.sample_grid(batch_size=1, sample=False)
+
+    @property
+    def mu(self):
+        return self._mu
+
+    def initialize_spatial_mapping(self):
+        """
+        Initializes the mean, and sigma of the Gaussian readout 
+        """
+        self._mu.data.uniform_(-self.init_mu_range, self.init_mu_range)  # random initializations uniformly spread....
+        self.sigma.data.uniform_(-self.init_sigma, self.init_sigma)
+
+    def sample_grid(self, batch_size, sample=None):
+        """
+        Returns the grid locations from the core by sampling from a Gaussian distribution
+        DAN: more specifically, it returns sampled positions for each batch over all elements, given mus and sigmas
+        DAN: if not 'sample', it just gives mu back (so testing has no randomness)
+        DAN: this is some funny bit of code, but don't think I need to touch it past what I did
+        Args:
+            batch_size (int): size of the batch
+            sample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(mu,sigma), defined per neuron
+                            or use the mean, mu, of the Gaussian distribution without sampling.
+                           if sample is None (default), samples from the N(mu,sigma) during training phase and
+                             fixes to the mean, mu, during evaluation phase.
+                           if sample is True/False, overrides the model_state (i.e training or eval) and does as instructed
+        """
+        with torch.no_grad():
+            self.mu.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
+            self.sigma.clamp(min=0)  # sigma/variance i    s always a positive quantity
+
+        grid_shape = (batch_size,) + self.grid_shape[1:]
+                
+        sample = self.training if sample is None else sample
+        if sample:
+            norm = self.mu.new(*grid_shape).normal_()
+        else:
+            norm = self.mu.new(*grid_shape).zero_()  # for consistency and CUDA capability
+
+        grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
+        grid2d[:,:,:,0] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
+        return grid2d
+        #return (norm * self.sigma + self.mu).clamp(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
+
+    def forward(self, x, sample=None, shift=None):
+        """
+        Propagates the input forwards through the readout
+        Args:
+            x: input data
+            sample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(mu,sigma), defined per neuron
+                            or use the mean, mu, of the Gaussian distribution without sampling.
+                           if sample is None (default), samples from the N(mu,sigma) during training phase and
+                             fixes to the mean, mu, during evaluation phase.
+                           if sample is True/False, overrides the model_state (i.e training or eval) and does as instructed
+            shift (bool): shifts the location of the grid (from eye-tracking data)
+            out_idx (bool): index of neurons to be predicted
+
+        Returns:
+            y: neuronal activity
+        """
+        x = x.reshape([-1]+self.input_dims[:3])
+        N, c, w, h = x.size()   # N is number of time points -- note that its full dimensional....
+
+        #c_in, w_in, h_in = self.in_shape
+        c_in, w_in, h_in = self.input_dims[:3]
+        #print(c, w, h)
+        #print(c_in, w_in, h_in)
+        if (c_in, w_in, h_in) != (c, w, h):
+            raise ValueError("the specified feature map dimension is not the readout's expected input dimension")
+        feat = self.features  # this is the filter weights for each unit
+        feat = feat.reshape(1, c, self.num_filters)
+        bias = self.bias
+        outdims = self.num_filters
+
+        if self.batch_sample:
+            # sample the grid_locations separately per sample per batch
+            grid = self.sample_grid(batch_size=N, sample=sample)  # sample determines sampling from Gaussian
+        else:
+            # use one sampled grid_locations for all sample in the batch
+            grid = self.sample_grid(batch_size=1, sample=sample).expand(N, outdims, 1, self.num_space.dims)
+        
+        if shift is not None:
+            # shifter is run outside the readout forward
+            grid = grid + shift[:, None, None, :]
+
+        y = F.grid_sample(x, grid, align_corners=self.align_corners)
+
+        y = (y.squeeze(-1) * feat).sum(1).view(N, outdims)
+
+        if self.bias is not None:
+            y = y + bias
+        
+        if self.NL is not None:
+            y = self.NL(y)
+        return y
+
+    def set_readout_locations(self, locs):
+        """This hasn't been tested yet, but should be self-explanatory"""
+        if len(locs.shape) == 1:
+            locs = np.expand_dims(locs,1)
+        NC, num_dim = locs.shape
+        assert num_dim == self.num_space_dims, 'Incorrect number of spatial dimensions'
+        assert NC == self.num_filters, 'Incorrect number of neuron positions.'
+        self._mu = deepcopy(locs)
+
+    def get_readout_locations(self):
+        """Currently returns center location and sigmas, as list"""
+        return self.mu.detach().cpu().numpy().squeeze(), self.sigma.detach().cpu().numpy().squeeze()
+
+    def __repr__(self):
+        """
+        returns a string with setup of this model
+        """
+        c, w, h = self.input_dims[:3] #self.in_shape
+        r = self.__class__.__name__ + " (" + "{} x {} x {}".format(c, w, h) + " -> " + str(self.num_filters) + ")"
+        if self.bias is not None:
+            r += " with bias"
+        if self.shifter is not None:
+            r += " with shifter"
+
+        for ch in self.children():
+            r += "  -> " + ch.__repr__() + "\n"
+        return r
+
+

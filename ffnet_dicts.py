@@ -12,8 +12,6 @@ def layer_dict(
     val_nls = ['lin', 'relu', 'quad', 'softplus', 'tanh', 'sigmoid']
     assert NLtype in val_nls, 'NLtype not valid.'
 
-    if input_dims is None:
-        input_dims = [1,1,1,1]
     output_dims = [num_filters, 1, 1, 1]
     if conv:
         output_dims[1:3] = input_dims[1:3]
@@ -74,7 +72,7 @@ def ffnet_params_default(xstim_n=None, ffnet_n=None):
         'ffnet_type': 'normal',
         'layer_types': None,
         'layer_list': None,
-        'input_dims': None,
+        'input_dims_list': None,
         'xstim_n': xstim_n,
         'ffnet_n': ffnet_n,
         'conv': False,
@@ -98,7 +96,7 @@ def ffnet_dict_NIM(
     Note that input_dims can be set to none"""
 
     ffnet_params = ffnet_params_default(xstim_n=0, ffnet_n=None)
-    ffnet_params['input_dims'] = input_dims
+    ffnet_params['input_dims_list'] = [input_dims]
     ffnet_params['reg_list'] = reg_list
 
     num_layers = len(layer_sizes)
@@ -149,8 +147,8 @@ def ffnet_dict_NIM(
 
 
 def ffnet_dict_readout(
-    ffnet_n=None, 
-    shifter_network=None,
+    ffnet_n=None,
+    shiter_n=None,
     num_cells=0,
     act_func='softplus',
     bias=True,
@@ -159,27 +157,34 @@ def ffnet_dict_readout(
     batch_sample=True,
     align_corners=True,
     gauss_type='uncorrelated',
-    constrain_positive=False,
+    pos_constraint=False,
     reg_list=None):
-    """This sets up dictionary parameters for readout ffnetwork, establishing all the relevant
-    info"""
+    """This sets up dictionary parameters for readout ffnetwork, establishing all the relevant info"""
 
     assert ffnet_n is not None, 'Must specify input ffnetwork (ffnet_n).'
     assert num_cells > 0, 'Must specify num_cells.'
 
     ffnet_params = ffnet_params_default(xstim_n=None, ffnet_n=ffnet_n)
     ffnet_params['ffnet_type'] = 'readout'
-    ffnet_params['shifter_network'] = shifter_network
+    ffnet_params['layer_types'] = ['readout']
+    
+    #ffnet_params['shifter_network'] = shifter_network
     # save rest of params in ffnet dictionary
     ffnet_params['reg_list'] = reg_list   
-    ffnet_params['num_cells'] = num_cells
-    ffnet_params['act_func'] = act_func
-    ffnet_params['bias'] = bias
-    ffnet_params['init_mu_range'] = init_mu_range
-    ffnet_params['init_sigma'] = init_sigma
-    ffnet_params['batch_sample'] = batch_sample
-    ffnet_params['align_corners'] = align_corners
-    ffnet_params['gauss_type='] = gauss_type
-    ffnet_params['constrain_positive'] = constrain_positive
+    layer_params = layer_dict(
+        input_dims = None, 
+        num_filters = num_cells,
+        NLtype = act_func,
+        pos_constraint = pos_constraint)
+
+    # Add extra parameters to get passed into layer function
+    layer_params['bias'] = bias
+    layer_params['init_mu_range'] = init_mu_range
+    layer_params['init_sigma'] = init_sigma
+    layer_params['batch_sample'] = batch_sample
+    layer_params['align_corners'] = align_corners
+    layer_params['gauss_type='] = gauss_type
+
+    ffnet_params['layer_list'] = [layer_params]
 
     return ffnet_params

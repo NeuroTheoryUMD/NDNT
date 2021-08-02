@@ -14,7 +14,7 @@ from NDNutils import create_optimizer_params
 
 FFnets = {
     'normal': FFnetwork,
-    'readout': Readout
+    'readout': ReadoutNetwork
 }
 
 class NDN(nn.Module):
@@ -22,16 +22,21 @@ class NDN(nn.Module):
     def __init__(self,
         ffnet_list = None,
         loss_type = 'poisson',
-        ffnet_out = [-8], # Default output is last
+        ffnet_out = None,
         optimizer_params = None,
         model_name='NDN_model',
         data_dir='./checkpoints'):
 
-        print('first', ffnet_out)
+        assert ffnet_list is not None, 'Missing networks' 
+
         super().__init__()
+
+        if (ffnet_out is None) or (ffnet_out == -1):
+            ffnet_out = len(ffnet_list)-1
+
         self.model_name = model_name
         self.data_dir = data_dir
-        print('first', ffnet_out)
+
         # Assign optimizer params
         if optimizer_params is None:
             optimizer_params = create_optimizer_params()
@@ -54,26 +59,23 @@ class NDN(nn.Module):
         # Has both reduced and non-reduced for other eval functions
         self.loss_module = loss_func
 
-        # Assemble FFnetworks and put into encoder (f passed in network-list)
+        # Assemble FFnetworks from if passed in network-list -- else can embed model
         if type(ffnet_list) is list:
-            network_list = self.assemble_ffnetworks(ffnet_list)
+            networks = self.assemble_ffnetworks(ffnet_list)
         else:  # assume passed in external module
             # can check type here if we want
-            network_list = [ffnet_list]  # list of single network with forward
+            networks = nn.ModuleList([ffnet_list])  # list of single network with forward
 
         # Check and record output of network
         if not isinstance(ffnet_out, list):
             ffnet_out = [ffnet_out]
-        print(ffnet_out)        
+        
         for nn in range(len(ffnet_out)):
             if ffnet_out[nn] == -1:
-                ffnet_out[nn] = len(network_list)-1
-        print(ffnet_out)
-        assert network_list is not None, 'Missing encoder' 
-        assert loss_func is not None, 'Missing loss_function' 
-        
+                ffnet_out[nn] = len(networks)-1
+                
         # Assemble ffnetworks
-        self.networks = network_list
+        self.networks = networks
         self.ffnet_out = ffnet_out
         
         self.loss = loss_func
@@ -102,47 +104,24 @@ class NDN(nn.Module):
 
         for mm in range(num_networks):
 
-            # Dete rmine network input
-            if ffnet_list[mm]['ffnet_n'] is None:
-                # then external input (assume from one source)
-                input_dims = ffnet_list[mm]['input_dims']
-                assert input_dims is not None, "FFnet%d: External input dims must be specified"%mm
-            else: 
+            # Determine internal network input to each subsequent network (if exists)
+            if ffnet_list[mm]['ffnet_n'] is not None:
                 nets_in = ffnet_list[mm]['ffnet_n']
-                num_input_networks = len(nets_in)
-
-                # Concatenate input dimensions into first filter dims and make sure valid
-                input_dim_list, valid_concat = [], True
-                for ii in range(num_input_networks):
+                input_dims_list = []
+                for ii in range(len(nets_in)):
                     assert nets_in[ii] < mm, "FFnet%d (%d): input networks must come earlier"%(mm, ii)
-                    
-                    # How reads input networks depends on what type of network this is
-                    #if ffnet_list[mm]['ffnet_type'] == 'normal':
-                        # this means that just takes output of last layer of input network
-                    input_dim_list.append(networks[nets_in[ii]].layers[-1].output_dims)
-                    #else:
-                    #    print('currently no dim combo rules for non-normal ffnetworks')
-                    if ii == 0:
-                        num_cat_filters = input_dim_list[0][0]
-                    else:
-                        if input_dim_list[ii][1:] == input_dim_list[0][1:]:
-                            num_cat_filters += input_dim_list[ii][0]
-                        else:
-                            valid_concat = False
-                            print("FFnet%d: invalid concatenation %d:"%(mm,ii), input_dim_list[ii][1:], input_dim_list[0][1:] )
-                assert valid_concat, "Dim concat error. Exiting."
-                input_dims = [num_cat_filters] + input_dim_list[0][1:]
-
-            ffnet_list[mm]['input_dims'] = input_dims
-            net_type = ffnet_list[mm]['ffnet_type']
-
+                    input_dims_list.append(networks[nets_in[ii]].layers[-1].output_dims)
+                ffnet_list[mm]['input_dims_list'] = input_dims_list
+        
             # Create corresponding FFnetwork
+            net_type = ffnet_list[mm]['ffnet_type']
             networks.append( FFnets[net_type](ffnet_list[mm]) )
 
         return networks
     # END assemble_ffnetworks
 
     def compute_network_outputs( self, Xs):
+        """Note this could return net_ins and net_outs, but currently just saving net_outs (no reason for net_ins yet"""
         if type(Xs) is not list:
             Xs = [Xs]
 
@@ -150,17 +129,22 @@ class NDN(nn.Module):
         for nn in range(len(self.networks)):
             if self.networks[nn].ffnets_in is None:
                 # then getting external input
-                #net_ins.append( Xs[self.networks[nn].xstim_n] )
-                net_outs.append( self.networks[nn]( Xs[self.networks[nn].xstim_n] ) )
+                #net_ins.append( [Xs[self.networks[nn].xstim_n]] )
+                net_outs.append( self.networks[nn]( [Xs[self.networks[nn].xstim_n]] ) )
             else:
-                # Concatenate the previous relevant network outputs
                 in_nets = self.networks[nn].ffnets_in
-                input_cat = net_outs[in_nets[0]]
-                for mm in range(1, len(in_nets)):
-                    input_cat = torch.cat( (input_cat, net_outs[in_nets[mm]]), 1 )
+                # Assemble network inputs in list, which will be used by FFnetwork
+                inputs = []
+                for mm in range(len(in_nets)):
+                    inputs.append( net_outs[in_nets[mm]] )
 
-                #net_ins.append( input_cat )
-                net_outs.append( self.networks[nn](input_cat) ) 
+                # This would automatically  concatenate, which will be FFnetwork-specfic instead (and handled in FFnetwork)
+                #input_cat = net_outs[in_nets[0]]
+                #for mm in range(1, len(in_nets)):
+                #    input_cat = torch.cat( (input_cat, net_outs[in_nets[mm]]), 1 )
+
+                #net_ins.append( inputs )
+                net_outs.append( self.networks[nn](inputs) ) 
         return net_ins, net_outs
     # END compute_network_outputs
 
@@ -170,7 +154,6 @@ class NDN(nn.Module):
         Note that the external inputs is actually in principle a list of inputs"""
 
         net_ins, net_outs = self.compute_network_outputs( Xs )
-
         # For now assume its just one output, given by the first value of self.ffnet_out
         return net_outs[self.ffnet_out[0]]
     # END Encoder.forward
@@ -358,8 +341,14 @@ class NDN(nn.Module):
         return self.networks[ffnet_target].layers[layer_target].get_weights(to_reshape)
 
     def get_readout_positions(self):
-        return self.network.mu.detach().cpu().numpy().squeeze()
-
+        """This currently retuns list of readout locations and sigmas -- set in readout network"""
+        # Find readout network
+        net_n = -1
+        for nn in range(len(self.networks)):
+            if self.networks[nn].network_type == 'readout':
+                net_n = nn
+        assert net_n >= 0, 'No readout network found.'
+        return self.networks[net_n].get_readout_locations()
 
     def plot_filters(self, cmaps):
         import matplotlib.pyplot as plt
