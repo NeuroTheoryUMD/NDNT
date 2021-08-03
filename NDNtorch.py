@@ -82,7 +82,6 @@ class NDN(nn.Module):
         self.val_loss = loss_func
    
         self.opt_params = optimizer_params
-        self.name = model_name
     # END NDN.__init__
 
     def assemble_ffnetworks(self, ffnet_list):
@@ -206,9 +205,10 @@ class NDN(nn.Module):
         """
         from torch.utils.data import DataLoader, random_split
         from trainers import Trainer, EarlyStopping
-        from pathlib import Path
+        # from pathlib import Path
+        import os
     
-        save_dir = Path(save_dir)
+        # save_dir = Path(save_dir)
         batchsize = opt_params['batch_size']
         model = self
         n_val = np.floor(len(dataset)/5).astype(int)
@@ -257,7 +257,7 @@ class NDN(nn.Module):
             earlystopping = None
 
         trainer = Trainer(model, optimizer, early_stopping=earlystopping,
-                dirpath=save_dir,
+                dirpath=os.path.join(save_dir, name),
                 version=version) # TODO: how do we want to handle name? Variable name is currently unused
 
         return trainer, train_dl, valid_dl
@@ -276,7 +276,7 @@ class NDN(nn.Module):
             save_dir = self.data_dir
         
         if name is None:
-            name = self.name
+            name = self.model_name
 
         # get trainer 
         trainer, train_dl, valid_dl = self.get_trainer(
@@ -368,7 +368,7 @@ class NDN(nn.Module):
             if alt_dirname != '/':
                 fn += '/'
         if filename is None:
-            fn += self.name + '.pkl'
+            fn += self.model_name + '.pkl'
         else :
             fn += filename
         print( '  Saving model at', fn)
