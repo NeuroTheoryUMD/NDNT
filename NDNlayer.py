@@ -129,9 +129,9 @@ class NDNlayer(nn.Module):
 
 class ConvLayer(NDNlayer):
     """Making this handle 1 or 2-d although could overload to make 1-d from the 2-d""" 
-    def __repr__(self):
-        s = super().__repr__()
-        s += 'Convlayer'
+    # def __repr__(self):
+    #     s = super().__repr__()
+    #     s += 'Convlayer'
 
     def __init__(self, layer_params, reg_vals=None):
         # All parameters of filter (weights) should be correctly fit in layer_params
@@ -191,21 +191,44 @@ class ConvLayer(NDNlayer):
         return y
 
 
-class DivNormLayer(NDNLayer):
+class DivNormLayer(NDNlayer):
     """Jake's div normalization implementation: not explicitly convolutional""" 
 
-    def __repr__(self):
-        s = super().__repr__()
-        s += 'DivNormLayer'
+    # def __repr__(self):
+    #     s = super().__repr__()
+    #     s += 'DivNormLayer'
 
     def __init__(self, layer_params, reg_vals=None):
         # number of filters (and size of filters) is set by channel dims on the input
         num_filters = layer_params['input_dims'][0]
         layer_params['num_filters']  = num_filters
         layer_params['filter_dims'] = [num_filters, 1, 1, 1]
+        layer_params['pos_constraint'] = True # normalization weights must be positive
         super(DivNormLayer, self).__init__(layer_params, reg_vals=reg_vals)
 
     def forward( self, x):
+        # Pull weights and process given pos_constrain and normalization conditions
+        w = self.preprocess_weights()
+
+        # Nonlinearity (apply first)
+        if self.NL is not None:
+            x = self.NL(x)
+
+        # Linear processing to create divisive drive
+        xdiv = torch.einsum('nc...,ck->nk...', x, w)
+
+        if len(x.shape)==2:
+            xdiv = xdiv + self.bias[None,:]
+        elif len(x.shape)==3:
+            xdiv = xdiv + self.bias[None,:,None] # is 1D convolutional
+        elif len(x.shape)==4:
+            xdiv = xdiv + self.bias[None,:,None,None] # is 2D convolutional
+        else:
+            raise NotImplementedError('DivNormLayer only supports 2D, 3D, and 4D tensors')
+            
+        # apply divisive drive
+        x = x / xdiv.clamp_(0.001) # divide
+
         return x
 
 
@@ -393,19 +416,19 @@ class ReadoutLayer(NDNlayer):
         """Currently returns center location and sigmas, as list"""
         return self.mu.detach().cpu().numpy().squeeze(), self.sigma.detach().cpu().numpy().squeeze()
 
-    def __repr__(self):
-        """
-        returns a string with setup of this model
-        """
-        c, w, h = self.input_dims[:3] #self.in_shape
-        r = self.__class__.__name__ + " (" + "{} x {} x {}".format(c, w, h) + " -> " + str(self.num_filters) + ")"
-        if self.bias is not None:
-            r += " with bias"
-        if self.shifter is not None:
-            r += " with shifter"
+    # def __repr__(self):
+    #     """
+    #     returns a string with setup of this model
+    #     """
+    #     c, w, h = self.input_dims[:3] #self.in_shape
+    #     r = self.__class__.__name__ + " (" + "{} x {} x {}".format(c, w, h) + " -> " + str(self.num_filters) + ")"
+    #     if self.bias is not None:
+    #         r += " with bias"
+    #     if self.shifter is not None:
+    #         r += " with shifter"
 
-        for ch in self.children():
-            r += "  -> " + ch.__repr__() + "\n"
-        return r
+    #     for ch in self.children():
+    #         r += "  -> " + ch.__repr__() + "\n"
+    #     return r
 
 

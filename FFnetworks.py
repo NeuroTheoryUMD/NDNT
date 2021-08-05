@@ -9,7 +9,8 @@ from NDNlayer import *
 LayerTypes = {
     'normal': NDNlayer,
     'conv': ConvLayer,
-    'readout': ReadoutLayer
+    'readout': ReadoutLayer,
+    'divnorm': DivNormLayer
 }
 
 class FFnetwork(nn.Module):
