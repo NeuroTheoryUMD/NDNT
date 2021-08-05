@@ -190,6 +190,25 @@ class ConvLayer(NDNlayer):
             y = self.NL(y)
         return y
 
+
+class DivNormLayer(NDNLayer):
+    """Jake's div normalization implementation: not explicitly convolutional""" 
+
+    def __repr__(self):
+        s = super().__repr__()
+        s += 'DivNormLayer'
+
+    def __init__(self, layer_params, reg_vals=None):
+        # number of filters (and size of filters) is set by channel dims on the input
+        num_filters = layer_params['input_dims'][0]
+        layer_params['num_filters']  = num_filters
+        layer_params['filter_dims'] = [num_filters, 1, 1, 1]
+        super(DivNormLayer, self).__init__(layer_params, reg_vals=reg_vals)
+
+    def forward( self, x):
+        return x
+
+
 class ReadoutLayer(NDNlayer):
     def initialize(self, *args, **kwargs):
         raise NotImplementedError("initialize is not implemented for ", self.__class__.__name__)
