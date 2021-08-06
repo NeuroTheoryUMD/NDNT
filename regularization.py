@@ -2,7 +2,6 @@
 import torch
 from torch import nn
 
-
 from copy import deepcopy
 
 class Regularization(nn.Module):
@@ -117,7 +116,11 @@ class Regularization(nn.Module):
         self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
         #self.reg_modules.clear()  # no 'clear' exists for module lists
         for kk, vv in self.vals.items():
-            self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims) )
+            # Awkwardly, old regularization (inherited uses 3-d input_dims, but new reg uses the 4-d)
+            if kk in ['d2xt', 'd2x', 'd2t']:
+                self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims_original) )
+            else: # old-way: 3-d input_dims
+                self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims) )
 
     def compute_reg_loss(self, weights):  # this could also be a forward?
         """Define regularization loss. Will reshape weights as needed"""
@@ -166,6 +169,7 @@ class RegModule(nn.Module):
         self.reg_type = reg_type
         self.register_buffer( 'val', torch.tensor(reg_val))
         self.input_dims = input_dims
+        self.num_dims = 0 # this is the relevant number of dimensions for some filters -- will be set within functions
 
         # Make appropriate reg_matrix as buffer (non-fit parameter)
         reg_tensor = self._build_reg_mats( reg_type)
@@ -189,8 +193,9 @@ class RegModule(nn.Module):
         import create_reg_matrices as get_rmats
 
         if (reg_type == 'd2t') or (reg_type == 'd2x') or (reg_type == 'd2xt'):
-            reg_mat = get_rmats.create_tikhonov_matrix(self.input_dims, reg_type)
+            #reg_mat = get_rmats.create_tikhonov_matrix(self.input_dims, reg_type)
             #name = reg_type + '_laplacian'
+            reg_mat = self.make_laplacian(reg_type)
         elif (reg_type == 'max') or (reg_type == 'max_filt') or (reg_type == 'max_space'):
             reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
             #name = reg_type + '_reg'
@@ -224,7 +229,8 @@ class RegModule(nn.Module):
             reg_pen = torch.sum(torch.square(weights))
 
         elif self.reg_type in ['d2t', 'd2x', 'd2xt']:
-            reg_pen = torch.sum( torch.square( torch.matmul(self.rmat, weights) ) )
+            #reg_pen = torch.sum( torch.square( torch.matmul(self.rmat, weights) ) )
+            reg_pen = self.d2xt( weights )
 
         elif self.reg_type == 'norm2':  # [custom] convex (I think) soft-normalization regularization
             reg_pen = torch.square( torch.mean(torch.square(weights))-1 )
@@ -245,3 +251,67 @@ class RegModule(nn.Module):
 
         return self.val*reg_pen
     # END RegModule.forward
+
+    def make_laplacian( self, reg_type ):
+        """This will make the Laplacian of the right dimensionality depending on d2xt, d2t, d2x"""
+
+        import numpy as np
+
+        # Determine number of dimensions for laplacian matrix
+        dim_mask = np.array(self.input_dims[1:]) > 1  # filter dimension will be ignored
+        if reg_type == 'd2t':
+            dim_mask[:2] = False  # zeros out spatial dimensions
+        elif reg_type == 'd2x':
+            dim_mask[2] = False # zeros out temporal dimensions
+        self.num_dims = np.sum(dim_mask)
+        
+        # note all the extra brackets are so the first two dims [out_chan, in_chan] are 1,1
+        if self.num_dims == 1:
+            rmat = np.array([[[-1, 2, -1]]])
+        elif self.num_dims == 2:
+            rmat = np.array([[[[0,-1,0],[-1, 4, -1], [0,-1,0]]]])
+        elif self.num_dims == 2:
+            rmat = np.array(
+                [[[[[0, 0, 0],[0, -1, 0], [0, 0, 0]],
+                [[0, -1, 0],[-1, 6, -1], [0, -1, 0]],
+                [[0, 0, 0],[0, -1, 0], [0, 0, 0]]]]])
+        else:
+            rmat = np.array([1])
+            print("Warning: %s regularization does not have the necessary filter dimensions.")
+        return rmat
+
+    def d2xt(self, weights):
+        """I'm separating the code for more complicated regularization penalties in the simplest possible way here, but
+        this can be done more (or less) elaborately in the future. The challenge here is that the dimension of the weight
+        vector (1-D, 2-D, 3-D) determines what sort of Laplacian matrix, and convolution, to do
+        Note that all convolutions are implicitly 'valid' so no boundary conditions"""
+        from torch.nn import functional as F
+        
+        weight_dims = self.input_dims + [weights.shape[1]]
+        w = weights.view(weight_dims)
+        # puts in [C, W, H, T, num_filters]: to reorder depending on reg type
+        # default reg_dims
+        if self.reg_type == 'd2t':
+            reg_dims = [weight_dims[3]]
+            w = w.permute(4,0,1,2,3) # needs temporal dimension last so only convolved
+        else:
+            w = w.permute(4,0,3,1,2)  # rotate temporal dimensions next to filter dims
+            if self.reg_type == 'd2x':  # then skip temporal dimensions
+                reg_dims = [weight_dims[1], weight_dims[2]]
+            else:
+                reg_dims = [weight_dims[3], weight_dims[1], weight_dims[2]]
+
+        if self.num_dims == 1:
+            # prepare for 1-d convolve
+            rpen = torch.sum(F.conv1d( 
+                w.reshape( [-1, 1] + reg_dims[:1] ),  # [batch_dim, all non-conv dims, conv_dim] reshape needed, not view
+                self.rmat ))
+        elif self.num_dims == 2:
+            rpen = torch.sum(F.conv2d( 
+                w.view( [-1, 1] + reg_dims[:2] ), 
+                self.rmat ))
+        elif self.num_dims == 3:
+            rpen = torch.sum(F.conv3d( 
+                w.view( [-1,1] + reg_dims),
+                self.rmat ))
+        return rpen
