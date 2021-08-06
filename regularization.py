@@ -305,13 +305,13 @@ class RegModule(nn.Module):
             # prepare for 1-d convolve
             rpen = torch.sum(F.conv1d( 
                 w.reshape( [-1, 1] + reg_dims[:1] ),  # [batch_dim, all non-conv dims, conv_dim] reshape needed, not view
-                self.rmat ))
+                self.rmat ).pow(2))
         elif self.num_dims == 2:
             rpen = torch.sum(F.conv2d( 
                 w.view( [-1, 1] + reg_dims[:2] ), 
-                self.rmat ))
+                self.rmat ).pow(2))
         elif self.num_dims == 3:
             rpen = torch.sum(F.conv3d( 
                 w.view( [-1,1] + reg_dims),
-                self.rmat ))
+                self.rmat ).pow(2))
         return rpen
