@@ -116,10 +116,11 @@ class NDNlayer(nn.Module):
         return x 
         
     def compute_reg_loss(self):
-        return self.reg.compute_reg_loss(self.weights)
+        #return self.reg.compute_reg_loss(self.weights)
+        return self.reg.compute_reg_loss(self.preprocess_weights())
 
     def get_weights(self, to_reshape=True):
-        ws = self.weights.detach().cpu().numpy()
+        ws = self.preprocess_weights().detach().cpu().numpy()
         if to_reshape:
             num_filts = ws.shape[-1]
             return ws.reshape(self.filter_dims + [num_filts]).squeeze()
