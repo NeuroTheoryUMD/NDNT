@@ -397,15 +397,52 @@ class NDN(nn.Module):
         if bits:
             ll/=np.log(2)
         return ll
+    
+    def get_activations(self, sample, ffnet_target=0, layer_target=0, NL=False):
+        """
+        Returns the inputs and outputs of a specified ffnet and layer
+        Args:
+            sample: dictionary of sample data from a dataset
+            ffnet_target: which network to target (default: 0)
+            layer_target: which layer to target (default: 0)
+            NL: get activations using the nonlinearity as the module target
+        Output:
+            activations: dictionary of activations
+            with keys:
+                'input' : input to layer
+                'output' : output of layer
+        """
+        
+        activations = {}
+
+        def hook_fn(m, i, o):
+            activations['input'] = i
+            activations['output'] = o
+
+        if NL:
+            if self.networks[ffnet_target].layers[layer_target].NL:
+                handle = self.networks[ffnet_target].layers[layer_target].NL.register_forward_hook(hook_fn)
+            else:
+                raise ValueError('This layer does not have a non-linearity. Call with NL=False')
+        else:
+            handle = self.networks[ffnet_target].layers[layer_target].register_forward_hook(hook_fn)
+
+        out = self(sample['stim'])
+        handle.remove()
+        return activations
 
     @classmethod
     def load_model(cls, checkpoint_path=None, model_name=None, version=None):
         '''
             Load a model from disk.
             Arguments:
-
-
+                checkpoint_path: path to directory containing model checkpoints
+                model_name: name of model (from model.model_name)
+                version: which checkpoint to load (default: best)
+            Returns:
+                model: loaded model
         '''
+        
         from NDNutils import get_fit_versions
 
         assert checkpoint_path is not None, "Need to provide a checkpoint_path"
@@ -416,7 +453,7 @@ class NDN(nn.Module):
             version = out['version_num'][np.argmax(np.asarray(out['val_loss']))]
             print("No version requested. Using (best) version (v=%d)" %version)
 
-        assert version in out['version_num'], "Version %d not found in %s" %(version, checkpoint_path)
+        assert version in out['version_num'], "Version %d not found in %s. Must be: %s" %(version, checkpoint_path, str(out['version_num']))
         ver_ix = np.where(version==np.asarray(out['version_num']))[0][0]
         # Load the model
         model = torch.load(out['model_file'][ver_ix])
