@@ -121,8 +121,8 @@ class NDN(nn.Module):
 
     def compute_network_outputs( self, Xs):
         """Note this could return net_ins and net_outs, but currently just saving net_outs (no reason for net_ins yet"""
-        if type(Xs) is not list:
-            Xs = [Xs]
+        # if type(Xs) is not list:
+        #     Xs = [Xs]
 
         net_ins, net_outs = [], []
         for nn in range(len(self.networks)):
@@ -158,14 +158,14 @@ class NDN(nn.Module):
     # END Encoder.forward
 
     def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
-        x = batch['stim'] # TODO: this will have to handle the multiple Xstims in the future
+        # x = batch['stim'] # TODO: this will have to handle the multiple Xstims in the future
         y = batch['robs']
         dfs = batch['dfs']
 
         #if self.readout.shifter is not None and batch['eyepos'] is not None and self.readout.shifter:
         #    y_hat = self(x, shifter=batch['eyepos'])
         #else:
-        y_hat = self(x)
+        y_hat = self(batch)
 
         loss = self.loss(y_hat, y, dfs)
 
@@ -175,11 +175,11 @@ class NDN(nn.Module):
     # END Encoder.training_step
 
     def validation_step(self, batch, batch_idx=None):
-        x = batch['stim']
+        # x = batch['stim']
         y = batch['robs']
         dfs = batch['dfs']
 
-        y_hat = self(x)
+        y_hat = self(batch)
         loss = self.val_loss(y_hat, y, dfs)
         
         reg_loss = self.compute_reg_loss()
@@ -303,7 +303,7 @@ class NDN(nn.Module):
         bits=True will return in units of bits/spike
         '''
         m0 = self.cpu()
-        yhat = m0(sample['stim'])
+        yhat = m0(sample)
         y = sample['robs']
         dfs = sample['dfs']
 
@@ -410,7 +410,7 @@ class NDN(nn.Module):
         
         lnull = -loss(torch.ones(sample['robs'].shape)*sample['robs'].mean(axis=0), sample['robs']).detach().cpu().numpy().sum(axis=0)
         #yhat = m0(sample['stim'], shifter=sample['eyepos'])
-        yhat = m0(sample['stim'])
+        yhat = m0(sample)
         llneuron = -loss(yhat,sample['robs']).detach().cpu().numpy().sum(axis=0)
         rbar = sample['robs'].sum(axis=0).numpy()
         ll = (llneuron - lnull)/rbar
@@ -447,7 +447,7 @@ class NDN(nn.Module):
         else:
             handle = self.networks[ffnet_target].layers[layer_target].register_forward_hook(hook_fn)
 
-        out = self(sample['stim'])
+        out = self(sample)
         handle.remove()
         return activations
 

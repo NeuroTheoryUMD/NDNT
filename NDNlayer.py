@@ -197,7 +197,7 @@ class ConvLayer(NDNlayer):
         else:
             y = F.conv2d(
                 torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) ),
-                torch.reshape( w, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) ), 
+                torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]) ), 
                 bias=self.bias,
                 stride=self.stride, padding=self.padding, dilation=self.dilation)
 
@@ -223,6 +223,9 @@ class DivNormLayer(NDNlayer):
         layer_params['pos_constraint'] = True # normalization weights must be positive
         super(DivNormLayer, self).__init__(layer_params, reg_vals=reg_vals)
 
+        self.output_dims = self.input_dims
+        self.num_outputs = np.prod(self.output_dims)
+
     def forward( self, x):
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
@@ -230,6 +233,8 @@ class DivNormLayer(NDNlayer):
         # Nonlinearity (apply first)
         if self.NL is not None:
             x = self.NL(x)
+
+        x = x.reshape([-1] + self.input_dims)
 
         # Linear processing to create divisive drive
         xdiv = torch.einsum('nc...,ck->nk...', x, w)
@@ -240,12 +245,15 @@ class DivNormLayer(NDNlayer):
             xdiv = xdiv + self.bias[None,:,None] # is 1D convolutional
         elif len(x.shape)==4:
             xdiv = xdiv + self.bias[None,:,None,None] # is 2D convolutional
+        elif len(x.shape)==5:
+            xdiv = xdiv + self.bias[None,:,None,None,None] # is 2D convolutional
         else:
             raise NotImplementedError('DivNormLayer only supports 2D, 3D, and 4D tensors')
             
         # apply divisive drive
         x = x / xdiv.clamp_(0.001) # divide
-
+        
+        x = x.reshape((-1, self.num_outputs))
         return x
 
 
@@ -363,8 +371,12 @@ class ReadoutLayer(NDNlayer):
         else:
             norm = self.mu.new(*grid_shape).zero_()  # for consistency and CUDA capability
 
-        grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
-        grid2d[:,:,:,0] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
+        # grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
+        # grid2d[:,:,:,:] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
+
+        return (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
+        # if self.num_space_dims:
+
         return grid2d
         #return (norm * self.sigma + self.mu).clamp(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
 

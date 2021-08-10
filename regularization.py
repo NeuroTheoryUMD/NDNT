@@ -270,7 +270,7 @@ class RegModule(nn.Module):
             rmat = np.array([[[-1, 2, -1]]])
         elif self.num_dims == 2:
             rmat = np.array([[[[0,-1,0],[-1, 4, -1], [0,-1,0]]]])
-        elif self.num_dims == 2:
+        elif self.num_dims == 3:
             rmat = np.array(
                 [[[[[0, 0, 0],[0, -1, 0], [0, 0, 0]],
                 [[0, -1, 0],[-1, 6, -1], [0, -1, 0]],

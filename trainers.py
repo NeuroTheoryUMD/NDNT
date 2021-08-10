@@ -164,7 +164,7 @@ class Trainer:
             self.model.to(self.device)
 
         # Print Model Summary: has to happen after model is moved to device
-        _ = ModelSummary(self.model, train_loader.dataset[0]['stim'].shape, batch_size=train_loader.batch_size, device=self.device, dtypes=None)
+        # _ = ModelSummary(self.model, train_loader.dataset[0]['stim'].shape, batch_size=train_loader.batch_size, device=self.device, dtypes=None)
 
         # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
         try:

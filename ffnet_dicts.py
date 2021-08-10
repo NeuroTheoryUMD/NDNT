@@ -61,7 +61,7 @@ def ffnet_params_default(xstim_n=None, ffnet_n=None):
 
     if ffnet_n is None:
         if xstim_n is None:
-            xstim_n = 0  # default to first external input if unspecified
+            xstim_n = 'stim'  # default to first external input if unspecified
     else:
         # currently does not concatenate internal and external inputs (should it?)
         assert xstim_n is None, "Currently cannot have external and internal inputs."
@@ -90,12 +90,13 @@ def ffnet_dict_NIM(
     ei_layers=None,
     conv_widths=None,
     norm_list=None,
-    reg_list=None):
+    reg_list=None,
+    xstim_n='stim'):
 
     """This creates will make a list of layer dicts corresponding to a non-convolutional NIM].
     Note that input_dims can be set to none"""
 
-    ffnet_params = ffnet_params_default(xstim_n=0, ffnet_n=None)
+    ffnet_params = ffnet_params_default(xstim_n=xstim_n, ffnet_n=None)
     ffnet_params['input_dims_list'] = [input_dims]
     ffnet_params['reg_list'] = reg_list
 
