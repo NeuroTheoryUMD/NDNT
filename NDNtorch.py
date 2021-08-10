@@ -350,6 +350,26 @@ class NDN(nn.Module):
         assert net_n >= 0, 'No readout network found.'
         return self.networks[net_n].get_readout_locations()
 
+    def list_params(self, ffnet_target=None, layer_target=None):
+        if ffnet_target is None:
+            ffnet_target = np.arange(len(self.networks), dtype='int32')
+        elif not isinstance(ffnet_target, list):
+            ffnet_target = [ffnet_target]
+        for nn in ffnet_target:
+            assert(nn < len(self.networks)), 'Invalid network %d.'%nn
+            print("Network %d:"%nn)
+            self.networks[nn].list_params(layer_target=layer_target)
+
+    def set_params(self, ffnet_target=None, layer_target=None, name=None, val=None ):
+        """Set parameters for listed layer or for all layers."""
+        if ffnet_target is None:
+            ffnet_target = np.arange(len(self.networks), dtype='int32')
+        elif not isinstance(ffnet_target, list):
+            ffnet_target = [ffnet_target]
+        for nn in ffnet_target:
+            assert(nn < len(self.networks)), 'Invalid network %d.'%nn
+            self.networks[nn].set_params(layer_target=layer_target, name=name, val=val)
+
     def plot_filters(self, cmaps):
         import matplotlib.pyplot as plt
         self.network.plot_filters(cmaps=cmaps)

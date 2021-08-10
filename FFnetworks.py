@@ -137,7 +137,26 @@ class FFnetwork(nn.Module):
             rloss += layer.compute_reg_loss()
         return rloss
 
+    def list_params(self, layer_target=None):
+        if layer_target is None:
+            layer_target = np.arange(len(self.layers), dtype='int32')
+        elif not isinstance(layer_target, list):
+            layer_target = [layer_target]
+        for nn in layer_target:
+            assert nn < len(self.layers), '  Invalid layer %d.'%nn
+            print("  Layer %d:"%nn)
+            self.layers[nn].list_params()
 
+    def set_params(self, layer_target=None, name=None, val=None ):
+        """Set parameters for listed layer or for all layers."""
+        if layer_target is None:
+            layer_target = np.arange(len(self.layers), dtype='int32')
+        elif not isinstance(layer_target, list):
+            layer_target = [layer_target]
+        for nn in layer_target:
+            assert nn < len(self.layers), '  Invalid layer %d.'%nn
+            self.layers[nn].set_params(name=name, val=val)
+    # END FFnetwork class
 class ReadoutNetwork(FFnetwork):
     """
     A readout using a spatial transformer layer whose positions are sampled from one Gaussian per neuron. Mean

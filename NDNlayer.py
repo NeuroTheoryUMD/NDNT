@@ -126,6 +126,22 @@ class NDNlayer(nn.Module):
             return ws.reshape(self.filter_dims + [num_filts]).squeeze()
         else:
             return ws.squeeze()
+
+    def list_params(self):
+        for nm, pp in self.named_parameters(recurse=False):
+            if pp.requires_grad:
+                print("      %s:"%nm, pp.size())
+            else:
+                print("      NOT FIT: %s:"%nm, pp.size())
+
+    def set_params(self, name=None, val=None ):
+        """Turn fitting for named params on or off. If name is none, do for whole layer."""
+        assert isinstance(val, bool), 'val must be set.'
+        for nm, pp in self.named_parameters(recurse=False):
+            if name is None:
+                pp.requires_grad = val
+            elif nm == name:
+                pp.requires_grad = val
     ## END NDNLayer class
 
 class ConvLayer(NDNlayer):
