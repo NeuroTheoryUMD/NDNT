@@ -371,13 +371,14 @@ class ReadoutLayer(NDNlayer):
         else:
             norm = self.mu.new(*grid_shape).zero_()  # for consistency and CUDA capability
 
-        # grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
-        # grid2d[:,:,:,:] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
-
-        return (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
-        # if self.num_space_dims:
-
-        return grid2d
+        if self.num_space_dims == 1:
+            # this is dan's 1-d kluge code -- necessary because grid_sampler has to have last dimension of 2. maybe problem....
+            grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
+            grid2d[:,:,:,0] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
+            return grid2d
+            #return (norm * self.sigma + self.mu).clamp(-1,1) # this needs second dimension
+        else:
+            return (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
         #return (norm * self.sigma + self.mu).clamp(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
 
     def forward(self, x, sample=None, shift=None):
