@@ -301,14 +301,24 @@ class ReadoutLayer(NDNlayer):
         if self.init_mu_range > 1.0 or self.init_mu_range <= 0.0 or self.init_sigma <= 0.0:
             raise ValueError("either init_mu_range doesn't belong to [0.0, 1.0] or init_sigma_range is non-positive")
         
-        self.gauss_type = layer_params['gauss_type=']
+        if self.num_space_dims == 1:
+            self.gauss_type = 'isotropic'  # only 1-d to sample sigma in
+        else:
+            self.gauss_type = layer_params['gauss_type']
         self.align_corners = layer_params['align_corners']
 
         # position grid shape
         self.grid_shape = (1, self.num_filters, 1, self.num_space_dims)
-        self.sigma_shape = (1, self.num_filters, 1, self.num_space_dims)
-        # initialize means and spreads
+        if self.gauss_type == 'full':
+            self.sigma_shape = (1, self.num_filters, 2, 2)
+        elif self.gauss_type == 'uncorrelated':
+            self.sigma_shape = (1, self.num_filters, 1, 2)
+        elif self.gauss_type == 'isotropic':
+            self.sigma_shape = (1, self.num_filters, 1, 1)
+        else:
+            raise ValueError(f'gauss_type "{self.gauss_type}" not known')
 
+        # initialize means and spreads
         self._mu = Parameter(torch.Tensor(*self.grid_shape))  # mean location of gaussian for each neuron
         self.sigma = Parameter(torch.Tensor(*self.sigma_shape))  # standard deviation for gaussian for each neuron
 
@@ -343,7 +353,10 @@ class ReadoutLayer(NDNlayer):
         Initializes the mean, and sigma of the Gaussian readout 
         """
         self._mu.data.uniform_(-self.init_mu_range, self.init_mu_range)  # random initializations uniformly spread....
-        self.sigma.data.uniform_(-self.init_sigma, self.init_sigma)
+        if self.gauss_type != 'full':
+            self.sigma.data.fill_(self.init_sigma)
+        else:
+            self.sigma.data.uniform_(-self.init_sigma, self.init_sigma)
 
     def sample_grid(self, batch_size, sample=None):
         """
@@ -361,7 +374,8 @@ class ReadoutLayer(NDNlayer):
         """
         with torch.no_grad():
             self.mu.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
-            self.sigma.clamp(min=0)  # sigma/variance i    s always a positive quantity
+            if self.gauss_type != 'full':
+                self.sigma.clamp(min=0)  # sigma/variance is always a positive quantity
 
         grid_shape = (batch_size,) + self.grid_shape[1:]
                 
@@ -378,8 +392,10 @@ class ReadoutLayer(NDNlayer):
             return grid2d
             #return (norm * self.sigma + self.mu).clamp(-1,1) # this needs second dimension
         else:
-            return (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
-        #return (norm * self.sigma + self.mu).clamp(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
+            if self.gauss_type != 'full':
+                return (norm * self.sigma + self.mu).clamp(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
+            else:
+                return (torch.einsum('ancd,bnid->bnic', self.sigma, norm) + self.mu).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
 
     def forward(self, x, sample=None, shift=None):
         """
@@ -398,14 +414,12 @@ class ReadoutLayer(NDNlayer):
             y: neuronal activity
         """
         x = x.reshape([-1]+self.input_dims[:3])
-        N, c, w, h = x.size()   # N is number of time points -- note that its full dimensional....
 
-        #c_in, w_in, h_in = self.in_shape
+        N, c, w, h = x.size()   # N is number of time points -- note that its full dimensional....
         c_in, w_in, h_in = self.input_dims[:3]
-        #print(c, w, h)
-        #print(c_in, w_in, h_in)
         if (c_in, w_in, h_in) != (c, w, h):
             raise ValueError("the specified feature map dimension is not the readout's expected input dimension")
+        
         feat = self.features  # this is the filter weights for each unit
         feat = feat.reshape(1, c, self.num_filters)
         bias = self.bias
