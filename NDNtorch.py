@@ -21,6 +21,7 @@ class NDN(nn.Module):
 
     def __init__(self,
         ffnet_list = None,
+        external_modules = None,
         loss_type = 'poisson',
         ffnet_out = None,
         optimizer_params = None,
@@ -60,12 +61,9 @@ class NDN(nn.Module):
         self.loss_module = loss_func
 
         # Assemble FFnetworks from if passed in network-list -- else can embed model
-        if type(ffnet_list) is list:
-            networks = self.assemble_ffnetworks(ffnet_list)
-        else:  # assume passed in external module
-            # can check type here if we want
-            networks = nn.ModuleList([ffnet_list])  # list of single network with forward
-
+        assert type(ffnet_list) is list, 'FFnetwork list in NDN constructor must be a list.'
+        networks = self.assemble_ffnetworks(ffnet_list, external_modules)
+        
         # Check and record output of network
         if not isinstance(ffnet_out, list):
             ffnet_out = [ffnet_out]
@@ -84,7 +82,7 @@ class NDN(nn.Module):
         self.opt_params = optimizer_params
     # END NDN.__init__
 
-    def assemble_ffnetworks(self, ffnet_list):
+    def assemble_ffnetworks(self, ffnet_list, external_nets=None):
         """This function takes a list of ffnetworks and puts them together 
         in order. This has to do two steps for each ffnetwork: 
         1. Plug in the inputs to each ffnetwork as specified
@@ -114,7 +112,10 @@ class NDN(nn.Module):
         
             # Create corresponding FFnetwork
             net_type = ffnet_list[mm]['ffnet_type']
-            networks.append( FFnets[net_type](ffnet_list[mm]) )
+            if net_type == 'external':  # separate case because needs to pass in external modules directly
+                networks.append( FFnet_external(ffnet_list[mm], external_nets))
+            else:
+                networks.append( FFnets[net_type](ffnet_list[mm]) )
 
         return networks
     # END assemble_ffnetworks
