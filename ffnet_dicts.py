@@ -184,7 +184,7 @@ def ffnet_dict_readout(
     layer_params['init_sigma'] = init_sigma
     layer_params['batch_sample'] = batch_sample
     layer_params['align_corners'] = align_corners
-    layer_params['gauss_type='] = gauss_type
+    layer_params['gauss_type'] = gauss_type
 
     ffnet_params['layer_list'] = [layer_params]
 
