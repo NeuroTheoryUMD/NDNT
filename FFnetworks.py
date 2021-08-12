@@ -240,3 +240,21 @@ class ReadoutNetwork(FFnetwork):
 
     def set_readout_locations(self, locs):
         self.layers[0].set_readout_locations(locs)
+
+
+class FFexternal(FFnetwork):
+    """
+
+"""
+    #def __repr__(self):
+    #    s = super().__repr__()
+    #    # Add information about module to print out
+
+    def __init__(self, ffnet_params, external_module_dict):
+        """
+        This essentially used the constructor for Point1DGaussian, with dicationary input.
+        Currently there is no extra code required at the network level. I think the constructor
+        can be left off entirely, but leaving in in case want to add something.
+        """
+        super(FFexternal, self).__init__(ffnet_params)
+        self.network_type = 'external'
