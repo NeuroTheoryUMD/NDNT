@@ -476,3 +476,20 @@ class ReadoutLayer(NDNlayer):
     #     return r
 
 
+class ExternalLayer(nn.Module):
+    """This is a dummy 'layer' for the Extenal network that gets filled in by the passed-in network."""
+
+    def __init__(self, layer_params, reg_vals=None):
+        """Make module constructor and set some 'shell' values that might be queried later"""
+        super(ExternalLayer, self).__init__()
+        self.input_dims = layer_params['input_dims']
+        self.num_filters = layer_params['num_filters']
+        self.filter_dims = [0,0,0,0]  # setting in case its used somewhere later -- probably not....
+        self.output_dims = layer_params['output_dims']
+        self.reg = None
+        # External network will be plugged in after the FFnetwork constructor that called this, so not done here.
+
+    def forward(self, x):
+        y = self.external_network(x) 
+        return y
+    

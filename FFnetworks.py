@@ -10,7 +10,8 @@ LayerTypes = {
     'normal': NDNlayer,
     'conv': ConvLayer,
     'readout': ReadoutLayer,
-    'divnorm': DivNormLayer
+    'divnorm': DivNormLayer,
+    'external': ExternalLayer
 }
 
 class FFnetwork(nn.Module):
@@ -98,9 +99,12 @@ class FFnetwork(nn.Module):
     def forward(self, inputs):   
 
         # Concatenate network inputs (if relevant)
-        x = inputs[0]
-        for mm in range(1, len(inputs)):
-            x = torch.cat( (x, inputs[mm]), 1 )
+        if isinstance(inputs, list):
+            x = inputs[0]
+            for mm in range(1, len(inputs)):
+                x = torch.cat( (x, inputs[mm]), 1 )
+        else:
+            x = inputs
 
         # Process through layers
         for layer in self.layers:
@@ -242,8 +246,9 @@ class ReadoutNetwork(FFnetwork):
         self.layers[0].set_readout_locations(locs)
 
 
-class FFexternal(FFnetwork):
-    """
+class FFnet_external(FFnetwork):
+    """This is a 'shell' that lets an external network be plugged into the NDN. It establishes all the basics
+    so that information requested to this network from other parts of the NDN will behave correctly.
 
 """
     #def __repr__(self):
@@ -251,10 +256,54 @@ class FFexternal(FFnetwork):
     #    # Add information about module to print out
 
     def __init__(self, ffnet_params, external_module_dict):
-        """
-        This essentially used the constructor for Point1DGaussian, with dicationary input.
-        Currently there is no extra code required at the network level. I think the constructor
-        can be left off entirely, but leaving in in case want to add something.
-        """
-        super(FFexternal, self).__init__(ffnet_params)
+
+        # The parent construct will make a 'dummy layer' that will be filled in with module 0 below
+        super(FFnet_external, self).__init__(ffnet_params)
         self.network_type = 'external'
+
+        # Extract relevant network fom extenal_module_dict using the ffnet_params['layer_types']
+        net_name = ffnet_params['layer_types'][0]
+        assert net_name in external_module_dict, 'External network %s not found in external_modules dict.'%net_name
+
+        # This network will be made to be a layer (so the ffnet forward is the layer forward). Now place external network here
+        self.layers[0].external_network = external_module_dict[net_name]
+        self.input_dims_reshape = ffnet_params['input_dims_reshape']
+    # END FFnet_external.__init__
+
+    def forward(self, inputs):   
+        # Leave all heavy lifting to the external module, which is in layers[0]. But concatenate network inputs, as needed
+        x = inputs[0]
+        for mm in range(1, len(inputs)):
+            x = torch.cat( (x, inputs[mm]), 1 )
+        batch_size = x.shape[0]
+
+        # Reshape dimensions for layer as needed
+        if self.input_dims_reshape is not None:
+            x = torch.reshape( x, [-1] + self.input_dims_reshape)
+        
+        # Pass into external network
+        y = self.layers[0](x)
+
+        # Ensure that output is flattened
+        return y.reshape((batch_size, -1))
+    
+    def compute_reg_loss(self):
+        # Since we do not implement regularization within the external network, this returns nothing
+        return 0
+
+    def list_params(self, layer_target=None):
+        assert layer_target is None, 'No ability to directly distinguish layers in the external network.'
+        for nm, pp in self.named_parameters(recurse=True):
+            if pp.requires_grad:
+                print("    %s:"%nm, pp.size())
+            else:
+                print("    NOT FIT: %s:"%nm, pp.size())
+
+    def set_params(self, layer_target=None, name=None, val=None ):
+        assert layer_target is None, 'No ability to directly distinguish layers in the external network.'
+        assert isinstance(val, bool), 'val must be set.'
+        for nm, pp in self.named_parameters(recurse=True):
+            if name is None:
+                pp.requires_grad = val
+            elif nm == name:
+                pp.requires_grad = val

@@ -45,7 +45,7 @@ def layer_dict(
     return params_dict
 # END layer_dict
 
-def ffnet_params_default(xstim_n=None, ffnet_n=None):
+def ffnet_params_default(xstim_n=None, ffnet_n=None, input_dims=None):
     """This creates a ffnetwork_params object that specifies details of ffnetwork
     ffnetwork dicts have these fields:
         ffnet_type: string specifying network type (default = 'normal')
@@ -72,7 +72,7 @@ def ffnet_params_default(xstim_n=None, ffnet_n=None):
         'ffnet_type': 'normal',
         'layer_types': None,
         'layer_list': None,
-        'input_dims_list': None,
+        'input_dims_list': [input_dims],
         'xstim_n': xstim_n,
         'ffnet_n': ffnet_n,
         'conv': False,
@@ -185,6 +185,43 @@ def ffnet_dict_readout(
     layer_params['batch_sample'] = batch_sample
     layer_params['align_corners'] = align_corners
     layer_params['gauss_type'] = gauss_type
+
+    ffnet_params['layer_list'] = [layer_params]
+
+    return ffnet_params
+
+
+def ffnet_dict_external(
+    name='external',
+    xstim_n='stim',
+    ffnet_n=None,
+    input_dims=None, 
+    input_dims_reshape=None,
+    output_dims=None):
+    """The network information passed in must simply be:
+        1. The name of the network in the network dictionary that is passed into the constructor.
+        2. The source of network input (external stim or otherwise).
+        3. If external input, its input dims must also be specified.
+        4. If the network takes input that needs to be reshaped, pass in 'input_dims_reshaped' that adds the 
+        batch dimension and then reshapes before passing into external network. Note this will be the dimensionality
+        that the network takes as input, so does not need to be the NDN convention [CWHT]
+        5. The output dims that are passed to the rest of the network (needs to be [CWHT]"""
+
+    ffnet_params = ffnet_params_default(xstim_n=xstim_n, ffnet_n=ffnet_n, input_dims=input_dims)
+    ffnet_params['ffnet_type'] = 'external'
+    ffnet_params['layer_types'] = [name]
+    ffnet_params['input_dims_reshape'] = input_dims_reshape
+
+    if not isinstance(output_dims, list):  # then passing out just filters?
+        output_dims = [output_dims, 1, 1, 1]
+
+    layer_params = layer_dict(
+        input_dims = input_dims, 
+        num_filters = output_dims[0],  # first argument of passed-in output_dims, by definition
+        NLtype = 'lin') # this is dummy value so doesnt hurt calling this dict)
+
+    layer_params['output_dims'] = output_dims
+    layer_params['bias'] = False
 
     ffnet_params['layer_list'] = [layer_params]
 
