@@ -262,7 +262,7 @@ class FFnet_external(FFnetwork):
         self.network_type = 'external'
 
         # Extract relevant network fom extenal_module_dict using the ffnet_params['layer_types']
-        net_name = ffnet_params['layer_types'][0]
+        net_name = ffnet_params['external_module_name']
         assert net_name in external_module_dict, 'External network %s not found in external_modules dict.'%net_name
 
         # This network will be made to be a layer (so the ffnet forward is the layer forward). Now place external network here

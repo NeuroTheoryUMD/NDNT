@@ -209,9 +209,10 @@ def ffnet_dict_external(
 
     ffnet_params = ffnet_params_default(xstim_n=xstim_n, ffnet_n=ffnet_n, input_dims=input_dims)
     ffnet_params['ffnet_type'] = 'external'
-    ffnet_params['layer_types'] = [name]
+    ffnet_params['layer_types'] = ['external']
     ffnet_params['input_dims_reshape'] = input_dims_reshape
-
+    ffnet_params['external_module_name'] = name
+    
     if not isinstance(output_dims, list):  # then passing out just filters?
         output_dims = [output_dims, 1, 1, 1]
 
