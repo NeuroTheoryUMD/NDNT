@@ -292,14 +292,18 @@ class RegModule(nn.Module):
         # puts in [C, W, H, T, num_filters]: to reorder depending on reg type
         # default reg_dims
         if self.reg_type == 'd2t':
-            reg_dims = [weight_dims[3]]
             w = w.permute(4,0,1,2,3) # needs temporal dimension last so only convolved
-        else:
-            w = w.permute(4,0,3,1,2)  # rotate temporal dimensions next to filter dims
-            if self.reg_type == 'd2x':  # then skip temporal dimensions
-                reg_dims = [weight_dims[1], weight_dims[2]]
+            reg_dims = [weight_dims[3]]
+        elif self.reg_type == 'd2xt':
+            w = w.permute(4,0,1,2,3) 
+            # Reg-dims will depend on whether space is one- or two-dimensional
+            if weight_dims[2] > 1:
+                reg_dims = [weight_dims[1], weight_dims[2], weight_dims[3]]
             else:
-                reg_dims = [weight_dims[3], weight_dims[1], weight_dims[2]]
+                reg_dims = [weight_dims[1], weight_dims[3]]
+        else:  # then d2x
+            w = w.permute(4,0,3,1,2)  # rotate temporal dimensions next to filter dims
+            reg_dims = [weight_dims[1], weight_dims[2]]
 
         if self.num_dims == 1:
             # prepare for 1-d convolve
@@ -309,7 +313,7 @@ class RegModule(nn.Module):
         elif self.num_dims == 2:
             rpen = torch.sum(F.conv2d( 
                 w.view( [-1, 1] + reg_dims[:2] ), 
-                self.rmat ).pow(2))
+                self.rmat, padding=(0,0) ).pow(2))
         elif self.num_dims == 3:
             rpen = torch.sum(F.conv3d( 
                 w.view( [-1,1] + reg_dims),
