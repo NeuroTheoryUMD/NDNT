@@ -70,9 +70,9 @@ class NDN(nn.Module):
         if not isinstance(ffnet_out, list):
             ffnet_out = [ffnet_out]
         
-        for nn in range(len(ffnet_out)):
-            if ffnet_out[nn] == -1:
-                ffnet_out[nn] = len(networks)-1
+        for ii in range(len(ffnet_out)):
+            if ffnet_out[ii] == -1:
+                ffnet_out[ii] = len(networks)-1
                 
         # Assemble ffnetworks
         self.networks = networks
@@ -125,13 +125,13 @@ class NDN(nn.Module):
         #     Xs = [Xs]
 
         net_ins, net_outs = [], []
-        for nn in range(len(self.networks)):
-            if self.networks[nn].ffnets_in is None:
+        for ii in range(len(self.networks)):
+            if self.networks[ii].ffnets_in is None:
                 # then getting external input
-                #net_ins.append( [Xs[self.networks[nn].xstim_n]] )
-                net_outs.append( self.networks[nn]( [Xs[self.networks[nn].xstim_n]] ) )
+                #net_ins.append( [Xs[self.networks[ii].xstim_n]] )
+                net_outs.append( self.networks[ii]( [Xs[self.networks[ii].xstim_n]] ) )
             else:
-                in_nets = self.networks[nn].ffnets_in
+                in_nets = self.networks[ii].ffnets_in
                 # Assemble network inputs in list, which will be used by FFnetwork
                 inputs = []
                 for mm in range(len(in_nets)):
@@ -143,7 +143,7 @@ class NDN(nn.Module):
                 #    input_cat = torch.cat( (input_cat, net_outs[in_nets[mm]]), 1 )
 
                 #net_ins.append( inputs )
-                net_outs.append( self.networks[nn](inputs) ) 
+                net_outs.append( self.networks[ii](inputs) ) 
         return net_ins, net_outs
     # END compute_network_outputs
 
@@ -344,9 +344,9 @@ class NDN(nn.Module):
         """This currently retuns list of readout locations and sigmas -- set in readout network"""
         # Find readout network
         net_n = -1
-        for nn in range(len(self.networks)):
-            if self.networks[nn].network_type == 'readout':
-                net_n = nn
+        for ii in range(len(self.networks)):
+            if self.networks[ii].network_type == 'readout':
+                net_n = ii
         assert net_n >= 0, 'No readout network found.'
         return self.networks[net_n].get_readout_locations()
 
@@ -355,10 +355,10 @@ class NDN(nn.Module):
             ffnet_target = np.arange(len(self.networks), dtype='int32')
         elif not isinstance(ffnet_target, list):
             ffnet_target = [ffnet_target]
-        for nn in ffnet_target:
-            assert(nn < len(self.networks)), 'Invalid network %d.'%nn
-            print("Network %d:"%nn)
-            self.networks[nn].list_params(layer_target=layer_target)
+        for ii in ffnet_target:
+            assert(ii < len(self.networks)), 'Invalid network %d.'%ii
+            print("Network %d:"%ii)
+            self.networks[ii].list_params(layer_target=layer_target)
 
     def set_params(self, ffnet_target=None, layer_target=None, name=None, val=None ):
         """Set parameters for listed layer or for all layers."""
@@ -366,9 +366,9 @@ class NDN(nn.Module):
             ffnet_target = np.arange(len(self.networks), dtype='int32')
         elif not isinstance(ffnet_target, list):
             ffnet_target = [ffnet_target]
-        for nn in ffnet_target:
-            assert(nn < len(self.networks)), 'Invalid network %d.'%nn
-            self.networks[nn].set_params(layer_target=layer_target, name=name, val=val)
+        for ii in ffnet_target:
+            assert(ii < len(self.networks)), 'Invalid network %d.'%ii
+            self.networks[ii].set_params(layer_target=layer_target, name=name, val=val)
 
     def plot_filters(self, cmaps):
         import matplotlib.pyplot as plt

@@ -303,7 +303,8 @@ class Trainer:
         # bring models to evaluation mode
         self.model.eval()
         runningloss = 0
-        pbar = tqdm(val_loader, total=len(val_loader), bar_format=None)
+        nsteps = len(val_loader)
+        pbar = tqdm(val_loader, total=nsteps, bar_format=None)
         pbar.set_description("Validating")
         with torch.no_grad():
             for data in pbar:
@@ -318,8 +319,8 @@ class Trainer:
                 else:
                     out = self.model.validation_step(data)
 
-                runningloss += out['val_loss']
-                pbar.set_postfix({'val_loss': runningloss.detach().cpu().numpy()})
+                runningloss += out['val_loss']/nsteps
+                pbar.set_postfix({'val_loss': runningloss.item()})
 
         return {'val_loss': runningloss}
             
