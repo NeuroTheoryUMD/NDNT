@@ -323,7 +323,7 @@ class Trainer:
                 else:
                     out = self.model.validation_step(data)
 
-                runningloss += out['val_loss']
+                runningloss += out['val_loss']/nsteps
                 pbar.set_postfix({'val_loss': runningloss.item()})
 
         return {'val_loss': runningloss}
@@ -352,7 +352,7 @@ class Trainer:
             self.n_iter += 1
             self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
 
-            runningloss += out['train_loss']
+            runningloss += out['train_loss']/nsteps
             # update progress bar
             pbar.set_postfix({'train_loss': runningloss.item()})
         
