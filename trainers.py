@@ -126,6 +126,10 @@ class Trainer:
         self.max_epochs = max_epochs
         self.n_iter = 0
         self.val_loss_min = np.Inf
+        
+        # scheduler defaults
+        self.step_scheduler_after = 'epoch' # this is the only option for now
+        self.step_scheduler_metric = None
 
 
     def fit(self, model, train_loader, val_loader, seed=None):

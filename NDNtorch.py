@@ -257,8 +257,15 @@ class NDN(nn.Module):
         else:
             earlystopping = None
 
+        if 'optimize_graph' in opt_params.keys(): # specifies whether to attempt to optimize the graph
+            optimize_graph = opt_params['optimize_graph']
+            # NOTE: will cause big problems if the batch size is variable
+        else:
+            optimize_graph = True
+
         trainer = Trainer(model, optimizer, early_stopping=earlystopping,
                 dirpath=os.path.join(save_dir, name),
+                optimize_graph=optimize_graph,
                 version=version) # TODO: how do we want to handle name? Variable name is currently unused
 
         return trainer, train_dl, valid_dl
