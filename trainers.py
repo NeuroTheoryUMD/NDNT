@@ -120,7 +120,7 @@ class Trainer:
 
         self.device = device
         self.logger = SummaryWriter(log_dir=self.dirpath, comment="version%d" % version) # use tensorboard to keep track of experiments
-
+        self.version = version
         self.model = model # initialize model attribute
         self.epoch = 0
         self.max_epochs = max_epochs
@@ -309,7 +309,7 @@ class Trainer:
         runningloss = 0
         nsteps = len(val_loader)
         pbar = tqdm(val_loader, total=nsteps, bar_format=None)
-        pbar.set_description("Validating")
+        pbar.set_description("Validating ver=%d" %self.version)
         with torch.no_grad():
             for data in pbar:
                 
@@ -323,7 +323,7 @@ class Trainer:
                 else:
                     out = self.model.validation_step(data)
 
-                runningloss += out['val_loss']/nsteps
+                runningloss += out['val_loss']
                 pbar.set_postfix({'val_loss': runningloss.item()})
 
         return {'val_loss': runningloss}
@@ -352,7 +352,7 @@ class Trainer:
             self.n_iter += 1
             self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
 
-            runningloss += out['train_loss']/nsteps
+            runningloss += out['train_loss']
             # update progress bar
             pbar.set_postfix({'train_loss': runningloss.item()})
         
@@ -475,8 +475,6 @@ class Trainer:
         for k in defopts.keys():
             if isinstance(defopts[k], (int, float, str, bool, torch.Tensor)):
                 newopts[k] = defopts[k]
-
-        self.logger.add_hparams(newopts, {'hparam/loss': self.val_loss_min})
     
         # self.logger.export_scalars_to_json(os.path.join(self.dirpath, "all_scalars.json"))
         self.logger.close()
