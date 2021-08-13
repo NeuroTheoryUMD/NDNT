@@ -178,6 +178,10 @@ class RegModule(nn.Module):
         else:
             self.register_buffer( 'rmat', reg_tensor)
 
+        # Default boundary conditions for convolutional regularization
+        self.BC = 0
+        if reg_type in ['d2t', 'd2xt', 'd2x']:
+            self.BC = 1
     # END RegModule.__init__
 
     #def __repr__(self):
@@ -257,7 +261,18 @@ class RegModule(nn.Module):
 
         import numpy as np
 
-        # Determine number of dimensions for laplacian matrix
+        # Determine relevant reg_dims for Laplacian
+        if self.reg_type == 'd2t':
+            self.reg_dims = [self.input_dims[3]]
+        elif self.reg_type == 'd2x':
+            self.reg_dims = [self.input_dims[1], self.input_dims[2]]
+        else:  # d2xt
+            if self.input_dims[2] == 1:
+                self.reg_dims = [self.input_dims[1], self.input_dims[3]]
+            else:
+                self.reg_dims = self.input_dims[1:]
+
+        # Determine number of dimensions for laplacian matrix (and convolution)
         dim_mask = np.array(self.input_dims[1:]) > 1  # filter dimension will be ignored
         if reg_type == 'd2t':
             dim_mask[:2] = False  # zeros out spatial dimensions
@@ -288,34 +303,35 @@ class RegModule(nn.Module):
         from torch.nn import functional as F
         
         weight_dims = self.input_dims + [weights.shape[1]]
-        w = weights.view(weight_dims)
+        w = weights.reshape(weight_dims)
         # puts in [C, W, H, T, num_filters]: to reorder depending on reg type
         # default reg_dims
         if self.reg_type == 'd2t':
             w = w.permute(4,0,1,2,3) # needs temporal dimension last so only convolved
-            reg_dims = [weight_dims[3]]
+            #reg_dims = [weight_dims[3]]
         elif self.reg_type == 'd2xt':
             w = w.permute(4,0,1,2,3) 
             # Reg-dims will depend on whether space is one- or two-dimensional
-            if weight_dims[2] > 1:
-                reg_dims = [weight_dims[1], weight_dims[2], weight_dims[3]]
-            else:
-                reg_dims = [weight_dims[1], weight_dims[3]]
+            #if weight_dims[2] > 1:
+            #    reg_dims = [weight_dims[1], weight_dims[2], weight_dims[3]]
+            #else:
+            #    reg_dims = [weight_dims[1], weight_dims[3]]
         else:  # then d2x
             w = w.permute(4,0,3,1,2)  # rotate temporal dimensions next to filter dims
-            reg_dims = [weight_dims[1], weight_dims[2]]
+            #reg_dims = [weight_dims[1], weight_dims[2]]
 
+        # Apply boundary conditions dependent on default values (that can be set by hand):
         if self.num_dims == 1:
             # prepare for 1-d convolve
             rpen = torch.sum(F.conv1d( 
-                w.reshape( [-1, 1] + reg_dims[:1] ),  # [batch_dim, all non-conv dims, conv_dim] reshape needed, not view
-                self.rmat ).pow(2))
+                w.reshape( [-1, 1] + self.reg_dims[:1] ),  # [batch_dim, all non-conv dims, conv_dim]
+                self.rmat, padding=self.BC ).pow(2) )
         elif self.num_dims == 2:
             rpen = torch.sum(F.conv2d( 
-                w.view( [-1, 1] + reg_dims[:2] ), 
-                self.rmat, padding=(0,0) ).pow(2))
+                w.reshape( [-1, 1] + self.reg_dims[:2] ), 
+                self.rmat, padding=self.BC ).pow(2) )
         elif self.num_dims == 3:
             rpen = torch.sum(F.conv3d( 
-                w.view( [-1,1] + reg_dims),
-                self.rmat ).pow(2))
+                w.reshape( [-1,1] + self.reg_dims),
+                self.rmat, padding=self.BC ).pow(2) )
         return rpen
