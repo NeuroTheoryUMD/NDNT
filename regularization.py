@@ -291,13 +291,13 @@ class RegModule(nn.Module):
             rmat = np.array([[[-1, 2, -1]]])
         elif self.num_dims == 2:            
             #rmat = np.array([[[[0,-1,0],[-1, 4, -1], [0,-1,0]]]])
-            # Instead, use isotropic form of discrete Laplacian operator (https://en.wikipedia.org/wiki/Discrete_Laplace_operator)
-            rmat = np.array([[[[0.25,5,0.25],[0.5, -3, 0.5], [0.25,0.5,0.25]]]])
+            # Isotropic form of discrete Laplacian operator (https://en.wikipedia.org/wiki/Discrete_Laplace_operator)
+            rmat = np.array([[[[0.25,0.5,0.25],[0.5, -3, 0.5], [0.25,0.5,0.25]]]])
         elif self.num_dims == 3:
             #rmat = np.array(
-                #[[[[[0, 0, 0],[0, -1, 0], [0, 0, 0]],
-                #[[0, -1, 0],[-1, 6, -1], [0, -1, 0]],
-                #[[0, 0, 0],[0, -1, 0], [0, 0, 0]]]]])
+            #    [[[[[0, 0, 0],[0, -1, 0], [0, 0, 0]],
+            #    [[0, -1, 0],[-1, 6, -1], [0, -1, 0]],
+            #    [[0, 0, 0],[0, -1, 0], [0, 0, 0]]]]])
             # Isotropic form:
             rmat = 1/26*np.array(
                 [[[[[2, 3, 2],[3, 6, 3], [2, 3, 2]],
