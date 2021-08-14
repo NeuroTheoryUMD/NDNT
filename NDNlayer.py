@@ -493,3 +493,69 @@ class ExternalLayer(nn.Module):
         y = self.external_network(x) 
         return y
     
+
+class STconvLayer(NDNlayer):
+    """Handle spatiotemporal convolutions without time expand in convolutional 1-D output""" 
+    # def __repr__(self):
+    #     s = super().__repr__()
+    #     s += 'Convlayer'
+
+    def __init__(self, layer_params, reg_vals=None):
+        """Note that passed in stimulus should not be time-expanded, but input-dimensions should have desired lag"""
+        
+        # All parameters of filter (weights) should be correctly fit in layer_params
+        super(STconvLayer, self).__init__(layer_params, reg_vals=reg_vals)
+
+        if layer_params['stride'] is not None:
+            assert layer_params['stride'] == 1, 'Cannot handle greater strides than 1.'
+        if layer_params['dilation'] is None:
+            assert layer_params['dilation'] == 1, 'Cannot handle greater dilations than 1.'
+
+        self.num_lags = self.input_dims[3]
+        self.input_dims[3] = 1  # take lag info and use for temporal convolution
+
+        # Check if 1 or 2-d convolution required
+        self.is1D = (self.input_dims[2] == 1)
+        #assert self.input_dims[2] == 1, 'Input must be 1-d spatial for this layer to work.'
+
+        # Do spatial padding by hand -- will want to generalize this for two-ds
+        w = self.filter_dims[1]
+        if w%2 == 0:
+            print('warning: only works with odd kernels, so far')
+        self.padding = (w-1)//2 # this will result in same/padding
+
+        # Combine filter and temporal dimensions for conv -- collapses over both
+        self.folded_dims = self.input_dims[0]*self.input_dims[3]
+        self.num_outputs = np.prod(self.output_dims)
+
+    def forward(self, x):
+
+        # Reshape stim matrix LACKING temporal dimension [bcwh] 
+        # and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        B = x.size()[0]
+        if self.is1D:
+            s = x.reshape([1, B]+self.input_dims[:3]).permute(0,2,1,3)  # this makes batch dimension 1, and puts batch in space-1
+            w = self.preprocess_weights().reshape(self.filter_dims+[-1]).permute(4,0,3,1,2)
+        else:
+            print('gonna implement 2-d next, but not yet')
+        
+        # GOT THIS FAR -- will come back to it.
+        if self.is1D:
+            y = F.conv1d(
+                torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) ),
+                torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1]) ), 
+                bias=self.bias,
+                stride=self.stride, padding=self.padding, dilation=self.dilation)
+        else:
+            y = F.conv2d(
+                torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) ),
+                torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]) ), 
+                bias=self.bias,
+                stride=self.stride, padding=self.padding, dilation=self.dilation)
+
+        y = torch.reshape(y, (-1, self.num_outputs))
+        
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+        return y

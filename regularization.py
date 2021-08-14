@@ -73,6 +73,9 @@ class Regularization(nn.Module):
             for reg_type, reg_val in vals.items():
                 if reg_val is not None:
                     self.set_reg_val(reg_type, reg_val)
+        
+        # Set default boundary-conditons (that can be reset)
+        self.boundary_conditions = {'d2xt':1, 'd2x':1, 'd2t':1}
     # END Regularization.__init__
 
     #def __repr__(self):
@@ -116,9 +119,14 @@ class Regularization(nn.Module):
         self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
         #self.reg_modules.clear()  # no 'clear' exists for module lists
         for kk, vv in self.vals.items():
+            if kk in self.boundary_conditions:
+                bc = self.boundary_conditions[kk]
+            else:
+                bc = 0
             # Awkwardly, old regularization (inherited uses 3-d input_dims, but new reg uses the 4-d)
             if kk in ['d2xt', 'd2x', 'd2t']:
-                self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims_original) )
+                self.reg_modules.append( 
+                    RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims_original, bc_val=bc ) )
             else: # old-way: 3-d input_dims
                 self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims) )
 
@@ -157,7 +165,7 @@ class Regularization(nn.Module):
 
 class RegModule(nn.Module):
 
-    def __init__(self, reg_type=None, reg_val=None, input_dims=None):
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, bc_val=0):
         """Constructor for Reg_module class"""
 
         assert reg_type is not None, 'Need reg_type.'
@@ -179,9 +187,7 @@ class RegModule(nn.Module):
             self.register_buffer( 'rmat', reg_tensor)
 
         # Default boundary conditions for convolutional regularization
-        self.BC = 0
-        if reg_type in ['d2t', 'd2xt', 'd2x']:
-            self.BC = 1
+        self.BC = bc_val
     # END RegModule.__init__
 
     #def __repr__(self):
@@ -283,13 +289,20 @@ class RegModule(nn.Module):
         # note all the extra brackets are so the first two dims [out_chan, in_chan] are 1,1
         if self.num_dims == 1:
             rmat = np.array([[[-1, 2, -1]]])
-        elif self.num_dims == 2:
-            rmat = np.array([[[[0,-1,0],[-1, 4, -1], [0,-1,0]]]])
+        elif self.num_dims == 2:            
+            #rmat = np.array([[[[0,-1,0],[-1, 4, -1], [0,-1,0]]]])
+            # Instead, use isotropic form of discrete Laplacian operator (https://en.wikipedia.org/wiki/Discrete_Laplace_operator)
+            rmat = np.array([[[[0.25,5,0.25],[0.5, -3, 0.5], [0.25,0.5,0.25]]]])
         elif self.num_dims == 3:
-            rmat = np.array(
-                [[[[[0, 0, 0],[0, -1, 0], [0, 0, 0]],
-                [[0, -1, 0],[-1, 6, -1], [0, -1, 0]],
-                [[0, 0, 0],[0, -1, 0], [0, 0, 0]]]]])
+            #rmat = np.array(
+                #[[[[[0, 0, 0],[0, -1, 0], [0, 0, 0]],
+                #[[0, -1, 0],[-1, 6, -1], [0, -1, 0]],
+                #[[0, 0, 0],[0, -1, 0], [0, 0, 0]]]]])
+            # Isotropic form:
+            rmat = 1/26*np.array(
+                [[[[[2, 3, 2],[3, 6, 3], [2, 3, 2]],
+                [[3, 6, 3],[6, -88, 6], [3, 6, 3]],
+                [[2, 3, 2],[3, 6, 3], [2, 3, 2]]]]])
         else:
             rmat = np.array([1])
             print("Warning: %s regularization does not have the necessary filter dimensions.")
