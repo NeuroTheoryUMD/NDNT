@@ -169,10 +169,12 @@ class ConvLayer(NDNlayer):
         else:
             #self.padding = 'same' # even though in documentation, doesn't seem to work
             # Do padding by hand -- will want to generalize this for two-ds
-            w = self.filter_dims[1]
-            if w%2 == 0:
-                print('warning: only works with odd kernels, so far')
-            self.padding = (w-1)//2 # this will result in same/padding
+            # w = self.filter_dims[1]
+            # if w%2 == 0:
+            #     print('warning: only works with odd kernels, so far')
+            # self.padding = (w-1)//2 # this will result in same/padding
+            w = self.filter_dims[1:3] # handle 2D if necessary
+            self.padding = (w[0]//2, (w[0]-1+w[0]%2)//2, w[1]//2, (w[1]-1+w[1]%2)//2)
 
         # Combine filter and temporal dimensions for conv -- collapses over both
         self.folded_dims = self.input_dims[0]*self.input_dims[3]
@@ -189,17 +191,29 @@ class ConvLayer(NDNlayer):
         # puts output_dims first, as required for conv
         # Collapse over irrelevant dims for dim-specific convs
         if self.is1D:
+            s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) )
             y = F.conv1d(
-                torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) ),
+                F.pad(s, self.padding, "constant", 0), # we do our own padding
                 torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1]) ), 
                 bias=self.bias,
-                stride=self.stride, padding=self.padding, dilation=self.dilation)
+                stride=self.stride, dilation=self.dilation)
+            # y = F.conv1d(
+            #     torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) ),
+            #     torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1]) ), 
+            #     bias=self.bias,
+            #     stride=self.stride, padding=self.padding, dilation=self.dilation)
         else:
+            s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
             y = F.conv2d(
-                torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) ),
+                F.pad(s, self.padding, "constant", 0), # we do our own padding
                 torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]) ), 
                 bias=self.bias,
                 stride=self.stride, padding=self.padding, dilation=self.dilation)
+            # y = F.conv2d(
+            #     torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) ),
+            #     torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]) ), 
+            #     bias=self.bias,
+            #     stride=self.stride, padding=self.padding, dilation=self.dilation)
 
         y = torch.reshape(y, (-1, self.num_outputs))
         # Nonlinearity
