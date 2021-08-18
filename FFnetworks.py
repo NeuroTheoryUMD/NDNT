@@ -11,7 +11,7 @@ LayerTypes = {
     'conv': ConvLayer,
     'readout': ReadoutLayer,
     'divnorm': DivNormLayer,
-    'stconv1d': STconvLayer,
+    'stconv': STconvLayer,
     'external': ExternalLayer
 }
 
