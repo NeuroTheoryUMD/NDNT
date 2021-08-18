@@ -27,6 +27,12 @@ def layer_dict(
         print("Warning: num_inh is too large. Adjusted to ", num_filters)
         num_inh = num_filters
         
+    if conv:
+        if stride is None:
+            stride = 1
+        if dilation is None:
+            dilation = 1
+            
     params_dict = {
         'input_dims': input_dims,
         'output_dims': output_dims,
@@ -136,7 +142,7 @@ def ffnet_dict_NIM(
                 NLtype = act_funcs[ll],
                 norm_type = norm_list[ll],
                 pos_constraint = pos_con,
-                conv=layer_types[ll] == 'conv',
+                conv="conv" in layer_types[ll],
                 conv_width = conv_widths[ll], 
                 num_inh = num_inh))
 
