@@ -558,16 +558,18 @@ class STconvLayer(NDNlayer):
 
         w = self.preprocess_weights()
         if self.is1D:
-            s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [1,C,B,W]
-            w = w.reshape(self.filter_dims[:2] + self.filter_dims[3] +[-1]).permute(4,0,3,1,2)
+            s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
+            #w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(4,0,3,1,2)  # original
+            # w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # original running 
+            w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
             y = F.conv2d(
                 F.pad(s, self.padding, "constant", 0),
                 w, 
                 bias=self.bias,
                 stride=self.stride, dilation=self.dilation)
-            y = y.permute(2,1,3,0)
-        else:
+            y = y.permute(2,1,3,0) # [1,N,B,W] -> [B,N,W,1]
 
+        else:
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
             w = w.reshape(self.filter_dims+[-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
             y = F.conv3d(
@@ -577,7 +579,8 @@ class STconvLayer(NDNlayer):
                 stride=self.stride, dilation=self.dilation)
             y = y.permute(2,1,3,4,0)    
         
-        y = torch.reshape(y, (-1, self.num_outputs))
+        #y = torch.reshape(y, (-1, self.num_outputs))
+        y = y.reshape((-1, self.num_outputs))
         
         # Nonlinearity
         if self.NL is not None:
