@@ -8,15 +8,17 @@ from torch.nn import functional as F
 from torch import Tensor
 from torch.nn.parameter import Parameter
 from torch.nn import init
-#from torch.nn.common_types import _size_2_t, _size_3_t # for conv2,conv3 default
+#from torch.nn  .common_types import _size_2_t, _size_3_t # for conv2,conv3 default
 #from torch.nn.modules.utils import _triple # for posconv3
 
 from regularization import Regularization
 from copy import deepcopy
+from activations import AdaptiveELU
 
 NLtypes = {
     'lin': None,
     'relu': nn.ReLU(),
+    'elu': AdaptiveELU(0.0, 1.0),
     'square': torch.square, # this doesn't exist: just apply exponent?
     'softplus': nn.Softplus(),
     'tanh': nn.Tanh(),

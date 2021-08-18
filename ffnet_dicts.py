@@ -9,7 +9,7 @@ def layer_dict(
     """input dims are [num_filters, space1, space2, num_lags]"""
 
     # Add any other nonlinaerities here (and pass to functionals below)
-    val_nls = ['lin', 'relu', 'quad', 'softplus', 'tanh', 'sigmoid']
+    val_nls = ['lin', 'relu', 'elu', 'quad', 'softplus', 'tanh', 'sigmoid']
     assert NLtype in val_nls, 'NLtype not valid.'
 
     output_dims = [num_filters, 1, 1, 1]
