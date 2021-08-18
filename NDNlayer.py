@@ -524,49 +524,59 @@ class STconvLayer(NDNlayer):
             assert layer_params['stride'] == 1, 'Cannot handle greater strides than 1.'
         if layer_params['dilation'] is None:
             assert layer_params['dilation'] == 1, 'Cannot handle greater dilations than 1.'
+        
+        self.stride = layer_params['stride']
+        self.dilation = layer_params['dilation']
 
         self.num_lags = self.input_dims[3]
         self.input_dims[3] = 1  # take lag info and use for temporal convolution
 
         # Check if 1 or 2-d convolution required
         self.is1D = (self.input_dims[2] == 1)
-        #assert self.input_dims[2] == 1, 'Input must be 1-d spatial for this layer to work.'
+        # "1D" really means a 2D convolution (1D space, 1D time) since time is handled with
+        # convolutions instead of embedding lags
 
         # Do spatial padding by hand -- will want to generalize this for two-ds
-        w = self.filter_dims[1]
-        if w%2 == 0:
-            print('warning: only works with odd kernels, so far')
-        self.padding = (w-1)//2 # this will result in same/padding
+        if self.is1D:
+            self.padding = (self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+                self.num_lags-1, 0)
+        else:
+            self.padding = (self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+                self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2,
+                self.num_lags-1, 0)
 
         # Combine filter and temporal dimensions for conv -- collapses over both
-        self.folded_dims = self.input_dims[0]*self.input_dims[3]
+        self.folded_dims = self.input_dims[0]
         self.num_outputs = np.prod(self.output_dims)
 
     def forward(self, x):
 
         # Reshape stim matrix LACKING temporal dimension [bcwh] 
         # and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
-        B = x.size()[0]
-        if self.is1D:
-            s = x.reshape([1, B]+self.input_dims[:3]).permute(0,2,1,3)  # this makes batch dimension 1, and puts batch in space-1
-            w = self.preprocess_weights().reshape(self.filter_dims+[-1]).permute(4,0,3,1,2)
-        else:
-            print('gonna implement 2-d next, but not yet')
-        
-        # GOT THIS FAR -- will come back to it.
-        if self.is1D:
-            y = F.conv1d(
-                torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) ),
-                torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1]) ), 
-                bias=self.bias,
-                stride=self.stride, padding=self.padding, dilation=self.dilation)
-        else:
-            y = F.conv2d(
-                torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) ),
-                torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]) ), 
-                bias=self.bias,
-                stride=self.stride, padding=self.padding, dilation=self.dilation)
+        # pytorch likes 3D convolutions to be [B,C,T,W,H].
+        # I benchmarked this and it'sd a 20% speedup to put the "Time" dimension first.
 
+        w = self.preprocess_weights()
+        if self.is1D:
+            s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [1,C,B,W]
+            w = w.reshape(self.filter_dims[:2] + self.filter_dims[3] +[-1]).permute(4,0,3,1,2)
+            y = F.conv2d(
+                F.pad(s, self.padding, "constant", 0),
+                w, 
+                bias=self.bias,
+                stride=self.stride, dilation=self.dilation)
+            y = y.permute(2,1,3,0)
+        else:
+
+            s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
+            w = w.reshape(self.filter_dims+[-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
+            y = F.conv3d(
+                F.pad(s, self.padding, "constant", 0),
+                w, 
+                bias=self.bias,
+                stride=self.stride, dilation=self.dilation)
+            y = y.permute(2,1,3,4,0)    
+        
         y = torch.reshape(y, (-1, self.num_outputs))
         
         # Nonlinearity
