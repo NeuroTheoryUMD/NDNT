@@ -200,6 +200,7 @@ class NDN(nn.Module):
         version=None,
         save_dir='./checkpoints',
         name='jnkname',
+        optimizer = None,
         opt_params = None):
         """
             Returns a trainer and object splits the training set into "train" and "valid"
@@ -235,30 +236,31 @@ class NDN(nn.Module):
         train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=opt_params['num_workers'])
         valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=opt_params['num_workers'])
 
-        # get optimizer: In theory this probably shouldn't happen here because it needs to know the model
-        # but this was the easiest insertion point I could find for now
-        if opt_params['optimizer']=='AdamW':
-            optimizer = torch.optim.AdamW(model.parameters(),
-                    lr=opt_params['learning_rate'],
-                    betas=opt_params['betas'],
-                    weight_decay=opt_params['weight_decay'],
-                    amsgrad=opt_params['amsgrad'])
+        if optimizer is None:
+            # get optimizer: In theory this probably shouldn't happen here because it needs to know the model
+            # but this was the easiest insertion point I could find for now
+            if opt_params['optimizer']=='AdamW':
+                optimizer = torch.optim.AdamW(model.parameters(),
+                        lr=opt_params['learning_rate'],
+                        betas=opt_params['betas'],
+                        weight_decay=opt_params['weight_decay'],
+                        amsgrad=opt_params['amsgrad'])
 
-        elif opt_params['optimizer']=='Adam':
-            optimizer = torch.optim.Adam(model.parameters(),
-                    lr=opt_params['learning_rate'],
-                    betas=opt_params['betas'])
+            elif opt_params['optimizer']=='Adam':
+                optimizer = torch.optim.Adam(model.parameters(),
+                        lr=opt_params['learning_rate'],
+                        betas=opt_params['betas'])
 
-        elif opt_params['optimizer']=='LBFGS':
-            from LBFGS import LBFGS
-            optimizer = LBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
+            elif opt_params['optimizer']=='LBFGS':
+                from LBFGS import LBFGS
+                optimizer = LBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
 
-        elif opt_params['optimizer']=='FullBatchLBFGS':
-            from LBFGS import FullBatchLBFGS
-            optimizer = FullBatchLBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
+            elif opt_params['optimizer']=='FullBatchLBFGS':
+                from LBFGS import FullBatchLBFGS
+                optimizer = FullBatchLBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
 
-        else:
-            raise ValueError('optimizer [%s] not supported' %opt_params['optimizer'])
+            else:
+                raise ValueError('optimizer [%s] not supported' %opt_params['optimizer'])
             
 
         if opt_params['early_stopping']:
@@ -284,7 +286,7 @@ class NDN(nn.Module):
 
         return trainer, train_dl, valid_dl
     
-    def fit( self, dataset, version=None, save_dir=None, name=None, seed=None):
+    def fit( self, dataset, version=None, save_dir=None, name=None, seed=None, optimizer=None):
         '''
         This is the main training loop.
         Steps:
@@ -304,6 +306,7 @@ class NDN(nn.Module):
         trainer, train_dl, valid_dl = self.get_trainer(
             dataset,
             version=version,
+            optimizer=optimizer,
             save_dir=save_dir, name = name,
             opt_params = self.opt_params)
 
