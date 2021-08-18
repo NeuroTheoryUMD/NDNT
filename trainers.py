@@ -339,8 +339,10 @@ class Trainer:
         pbar.set_description("Epoch %i" %epoch)
         for data in pbar:
             # Data to device if it's not already there
+            moved_to_device = False
             for dsub in data:
                 if data[dsub].device != self.device:
+                    moved_to_device = True
                     data[dsub] = data[dsub].to(self.device)
             
             # handle optimization step
@@ -349,6 +351,11 @@ class Trainer:
             else:
                 out = self.train_one_step(data)
             
+            # Move Data off device
+            if moved_to_device:
+                for dsub in data:
+                    data[dsub] = data[dsub].to('cpu')
+
             self.n_iter += 1
             self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
 
