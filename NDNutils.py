@@ -460,6 +460,7 @@ def get_fit_versions(data_dir, model_name):
         'val_loss_steps': []}
 
     for v in versionlist:
+        # events_file = os.path.join(data_dir, model_name, 'version_%d' %v, 'events.out.tfevents.%d' %v)
         vpath = os.path.join(data_dir, model_name, 'version%d' %v)
         vplist = os.listdir(vpath)
 
@@ -467,16 +468,20 @@ def get_fit_versions(data_dir, model_name):
         modelfiles = [x for x in vplist if 'model.pt' in x]
 
         if len(tfeventsfiles) == 1 and len(modelfiles) == 1:
-            outdict['version_num'].append(v)
-            outdict['events_file'].append(os.path.join(vpath, tfeventsfiles[0]))
-            outdict['model_file'].append(os.path.join(vpath, modelfiles[0]))
-
+            evfile = os.path.join(vpath, tfeventsfiles[0])
             # read from tensorboard backend
-            ea = event_accumulator.EventAccumulator(outdict['events_file'][-1])
+            ea = event_accumulator.EventAccumulator(evfile)
             ea.Reload()
-            val = np.asarray([x.value for x in ea.scalars.Items("Loss/Validation (Epoch)")])
-            bestval = np.min(val)
-            outdict['val_loss_steps'].append(val)
-            outdict['val_loss'].append(bestval)
+            try:
+                val = np.asarray([x.value for x in ea.scalars.Items("Loss/Validation (Epoch)")])
+                bestval = np.min(val)
+
+                outdict['version_num'].append(v)
+                outdict['events_file'].append(evfile)
+                outdict['model_file'].append(os.path.join(vpath, modelfiles[0]))
+                outdict['val_loss_steps'].append(val)
+                outdict['val_loss'].append(bestval)
+            except:
+                continue
 
     return outdict
