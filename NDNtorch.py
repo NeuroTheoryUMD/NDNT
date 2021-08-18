@@ -215,11 +215,25 @@ class NDN(nn.Module):
         n_val = np.floor(len(dataset)/5).astype(int)
         n_train = (len(dataset)-n_val).astype(int)
 
-        gd_train, gd_val = random_split(dataset, lengths=[n_train, n_val])
+        train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator().manual_seed(42))
 
-        # build dataloaders
-        train_dl = DataLoader(gd_train, batch_size=batchsize, num_workers=opt_params['num_workers'])
-        valid_dl = DataLoader(gd_val, batch_size=batchsize, num_workers=opt_params['num_workers'])
+        # build dataloaders:
+
+        # we use a batch sampler to sample the data because it generates indices for the whole batch at one time
+        # instead of iterating over each sample. This is both faster (probably) for our cases, and it allows us
+        # to use the "Fixation" datasets and concatenate along a variable-length batch dimension
+        train_sampler = torch.utils.data.sampler.BatchSampler(
+            torch.utils.data.sampler.SubsetRandomSampler(train_ds.indices),
+            batch_size=batchsize,
+            drop_last=False)
+        
+        val_sampler = torch.utils.data.sampler.BatchSampler(
+            torch.utils.data.sampler.SubsetRandomSampler(val_ds.indices),
+            batch_size=batchsize,
+            drop_last=False)
+
+        train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=opt_params['num_workers'])
+        valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=opt_params['num_workers'])
 
         # get optimizer: In theory this probably shouldn't happen here because it needs to know the model
         # but this was the easiest insertion point I could find for now
