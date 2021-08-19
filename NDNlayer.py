@@ -80,16 +80,26 @@ class NDNlayer(nn.Module):
             self.register_buffer('ei_mask', torch.ones(self.num_filters))  
             self.ei_mask[-(layer_params['num_inh']+1):0] = -1
 
-        self.reset_parameters( layer_params['initializer'] )
+        self.reset_parameters( layer_params['weights_initializer'], layer_params['bias_initializer'] )
     # END NDNlayer.__init__
 
-    def reset_parameters(self, initializer=None) -> None:
+    def reset_parameters(self, weights_initializer=None, bias_initializer=None) -> None:
         # Default initializer, although others possible
-        if initializer is None:
-            initializer = 'uniform'
+        if weights_initializer is None:
+            weights_initializer = 'uniform'
+        if bias_initializer is None:
+            bias_initializer = 'zeros'
 
-        init.kaiming_uniform_(self.weights, a=np.sqrt(5))
-        if self.bias is not None:
+        if weights_initializer == 'uniform':
+            init.kaiming_uniform_(self.weights, a=np.sqrt(5))
+        elif weights_initializer == 'zeros':
+            init.zeros_(self.weights)
+        else:
+            print('weights initializer not defined')
+
+        if bias_initializer == 'zeros':
+            init.zeros_(self.bias)
+        elif bias_initializer == 'uniform':
             fan_in, _ = init._calculate_fan_in_and_fan_out(self.weights)
             bound = 1 / np.sqrt(fan_in)
             init.uniform_(self.bias, -bound, bound)          

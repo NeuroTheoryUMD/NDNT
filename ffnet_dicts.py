@@ -45,7 +45,8 @@ def layer_dict(
         'stride': stride,
         'dilation': dilation,
         'num_inh': num_inh,
-        'initializer': 'uniform',
+        'weights_initializer': 'uniform',
+        'bias_initializer': 'zeros',
         'bias': True}
 
     return params_dict

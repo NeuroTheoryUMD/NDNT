@@ -1,5 +1,7 @@
 import numpy as np
 import scipy.io as sio
+from copy import deepcopy
+import NDNT.NDNutils as NDNutils
 
 def binocular_data_import( datadir, expt_num ):
     """Usage: stim, Robs, DFs, used_inds, Eadd_info = binocular_data_import( datadir, expt_num )
@@ -175,7 +177,7 @@ def monocular_data_import( datadir, exptn, time_shift=1, num_lags=20):
     matdata = sio.loadmat( datadir+filename )
 
     sus = matdata['goodSUs'][:,0] - 1  # switch from matlab indexing
-    print('SUs:', sus)
+    #print('SUs:', sus)
     NC = len(sus)
     layers = matdata['layers'][0,:]
     block_list = matdata['block_inds'] # note matlab indexing
@@ -191,13 +193,15 @@ def monocular_data_import( datadir, exptn, time_shift=1, num_lags=20):
     Ub = np.array(list(set(list(range(NBL)))-set(Xb)), dtype='int')
     
     # Make block indxs #used_inds = make_block_inds( block_list, gap=num_lags )
+    # Also further modify DFs to incorporate gaps (for this purpose) 
     used_inds = []
     for nn in range(block_list.shape[0]):
         used_inds = np.concatenate( 
             (used_inds, 
             np.arange(block_list[nn,0]-1+num_lags, block_list[nn,1], dtype='int')),
             axis=0)
-
+        DFs_all[np.arange(block_list[nn,0]-1, block_list[nn,0]+num_lags, dtype='int'), :] = 0.0
+    
     #Ui, Xi = NDNutils.generate_xv_folds( len(used_inds) )
     #Rinds, TEinds = used_inds[Ui].astype(int), used_inds[Xi].astype(int)
 
