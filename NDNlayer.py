@@ -373,6 +373,11 @@ class ReadoutLayer(NDNlayer):
             self.sigma.data.fill_(self.init_sigma)
         else:
             self.sigma.data.uniform_(-self.init_sigma, self.init_sigma)
+        
+        self.weights.data.fill_(1 / self.input_dims[0])
+
+        if self.bias is not None:
+            self.bias.data.fill_(0)
 
     def sample_grid(self, batch_size, sample=None):
         """
@@ -550,6 +555,15 @@ class STconvLayer(NDNlayer):
         # Combine filter and temporal dimensions for conv -- collapses over both
         self.folded_dims = self.input_dims[0]
         self.num_outputs = np.prod(self.output_dims)
+
+        # Initialize weights
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        """Initialize weights and biases"""
+        nn.init.xavier_normal_(self.weights.data)
+        if self.bias is not None:
+            self.bias.data.fill_(0)
 
     def forward(self, x):
 
