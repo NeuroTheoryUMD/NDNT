@@ -201,6 +201,7 @@ class NDN(nn.Module):
         save_dir='./checkpoints',
         name='jnkname',
         optimizer = None,
+        scheduler = None,
         opt_params = None):
         """
             Returns a trainer and object splits the training set into "train" and "valid"
@@ -282,11 +283,12 @@ class NDN(nn.Module):
         trainer = Trainer(model, optimizer, early_stopping=earlystopping,
                 dirpath=os.path.join(save_dir, name),
                 optimize_graph=optimize_graph,
+                scheduler=scheduler,
                 version=version) # TODO: how do we want to handle name? Variable name is currently unused
 
         return trainer, train_dl, valid_dl
     
-    def fit( self, dataset, version=None, save_dir=None, name=None, seed=None, optimizer=None):
+    def fit( self, dataset, version=None, save_dir=None, name=None, seed=None, optimizer=None, scheduler=None):
         '''
         This is the main training loop.
         Steps:
@@ -307,6 +309,7 @@ class NDN(nn.Module):
             dataset,
             version=version,
             optimizer=optimizer,
+            scheduler=scheduler,
             save_dir=save_dir, name = name,
             opt_params = self.opt_params)
 
