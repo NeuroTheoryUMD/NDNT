@@ -365,8 +365,8 @@ class NDN(nn.Module):
             LLneuron/=np.log(2)
         return LLneuron
 
-    def get_weights(self, ffnet_target=0, layer_target=0, to_reshape=True):
-        return self.networks[ffnet_target].layers[layer_target].get_weights(to_reshape)
+    def get_weights(self, ffnet_target=0, layer_target=0, to_reshape=True, time_reverse=False):
+        return self.networks[ffnet_target].layers[layer_target].get_weights(to_reshape, time_reverse=time_reverse)
 
     def get_readout_positions(self):
         """This currently retuns list of readout locations and sigmas -- set in readout network"""

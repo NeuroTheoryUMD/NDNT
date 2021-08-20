@@ -41,10 +41,11 @@ def layer_dict(
         'NLtype': NLtype, 
         'norm_type': norm_type, 
         'pos_constraint': pos_constraint,
+        'num_inh': num_inh,
         'conv': conv,
         'stride': stride,
         'dilation': dilation,
-        'num_inh': num_inh,
+        'temporal_tent_spacing': None,  # only useful for STconv thus far
         'weights_initializer': 'uniform',
         'bias_initializer': 'zeros',
         'bias': True}
@@ -98,12 +99,16 @@ def ffnet_dict_NIM(
     conv_widths=None,
     norm_list=None,
     reg_list=None,
-    xstim_n='stim'):
+    xstim_n='stim',
+    ffnet_type='normal'):
 
     """This creates will make a list of layer dicts corresponding to a non-convolutional NIM].
     Note that input_dims can be set to none"""
 
     ffnet_params = ffnet_params_default(xstim_n=xstim_n, ffnet_n=None)
+
+    assert ffnet_type in ['normal', 'add', 'mult'], "ffnet_type must be 'normal', 'add', or 'mult' for this type of network."
+    ffnet_params['ffnet_type'] = ffnet_type
     ffnet_params['input_dims_list'] = [input_dims]
     ffnet_params['reg_list'] = reg_list
 
@@ -156,7 +161,6 @@ def ffnet_dict_NIM(
 
 def ffnet_dict_readout(
     ffnet_n=None,
-    shiter_n=None,
     num_cells=0,
     act_func='softplus',
     bias=True,
@@ -167,7 +171,8 @@ def ffnet_dict_readout(
     gauss_type='uncorrelated',
     pos_constraint=False,
     reg_list=None):
-    """This sets up dictionary parameters for readout ffnetwork, establishing all the relevant info"""
+    """This sets up dictionary parameters for readout ffnetwork, establishing all the relevant info. Note that the shifter
+    is designated as the second of two ffnet_n inputs listed, so is not separately specified."""
 
     assert ffnet_n is not None, 'Must specify input ffnetwork (ffnet_n).'
     assert num_cells > 0, 'Must specify num_cells.'
@@ -176,7 +181,6 @@ def ffnet_dict_readout(
     ffnet_params['ffnet_type'] = 'readout'
     ffnet_params['layer_types'] = ['readout']
     
-    #ffnet_params['shifter_network'] = shifter_network
     # save rest of params in ffnet dictionary
     ffnet_params['reg_list'] = reg_list   
     layer_params = layer_dict(

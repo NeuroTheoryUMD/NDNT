@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.io as sio
 from copy import deepcopy
-import NDNT.NDNutils as NDNutils
+import NDNutils as NDNutils
 
 def binocular_data_import( datadir, expt_num ):
     """Usage: stim, Robs, DFs, used_inds, Eadd_info = binocular_data_import( datadir, expt_num )

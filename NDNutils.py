@@ -155,6 +155,92 @@ def create_time_embedding(stim, pdims, up_fac=1, tent_spacing=1):
 # END create_time_embedding
 
 
+def design_matrix_tent_basis( s, anchors, zero_left=False, zero_right=False):
+    """Produce a design matrix based on continuous data (s) and anchor points for a tent_basis.
+    Here s is a continuous variable (e.g., a stimulus) that is function of time -- single dimension --
+    and this will generate apply a tent basis set to s with a basis variable for each anchor point. 
+    The end anchor points will be one-sided, but these can be dropped by changing "zero_left" and/or
+    "zero_right" into "True".
+
+    Inputs: 
+        s: continuous one-dimensional variable with NT time points
+        anchors: list or array of anchor points for tent-basis set
+        zero_left, zero_right: boolean whether to drop the edge bases (default for both is False)
+    Outputs:
+        X: design matrix that will be NT x the number of anchors left after zeroing out left and right
+    """
+
+    if len(s.shape) > 1:
+        assert s.shape[1] == 1, 'Can only work on 1-d variables currently'
+        s = np.squeeze(s)
+
+    NT = len(s)
+    NA = len(anchors)
+    X = np.zeros([NT, NA])
+    for nn in range(NA):
+        if nn == 0:
+            #X[np.where(s < anchors[0])[0], 0] = 1
+            X[:, 0] = 1
+        else:
+            dx = anchors[nn]-anchors[nn-1]
+            X[:, nn] = np.minimum(np.maximum(np.divide( deepcopy(s)-anchors[nn-1], dx ), 0), 1)
+        if nn < NA-1:
+            dx = anchors[nn+1]-anchors[nn]
+            X[:, nn] *= np.maximum(np.minimum(np.divide(np.add(-deepcopy(s), anchors[nn+1]), dx), 1), 0)
+    if zero_left:
+        X = X[:,1:]
+    if zero_right:
+        X = X[:,:-1]
+    return X
+
+
+def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spacing=1, first_lag=0 ):
+    """Computes tent-bases over the range of 'xs', with center points at each value of 'xs'.
+    Alternatively (if xs=None), will generate a list with init_space and doubling_time up to
+    the total number of parameters. Must specify xs OR num_params. 
+    Note this assumes discrete (binned) variables to be acted on.
+    
+    Defaults:
+        doubling_time = num_params
+        init_space = 1"""
+
+    # Determine anchor-points
+    if xs is not None:
+        tbx = np.array(xs,dtype='int32')
+        if num_params is not None: 
+            print( 'Warning: will only use xs input -- num_params is ignored.' )
+    else:
+        assert num_params is not None, 'Need to specify either xs or num_params'
+        if doubling_time is None:
+            doubling_time = num_params+1  # never doubles
+        tbx = np.zeros( num_params, dtype='int32' )
+        cur_loc, cur_spacing, sp_count = first_lag, init_spacing, 0
+        for nn in range(num_params):
+            tbx[nn] = cur_loc
+            cur_loc += cur_spacing
+            sp_count += 1
+            if sp_count == doubling_time:
+                sp_count = 0
+                cur_spacing *= 2
+
+    # Generate tent-basis given anchor points
+    NB = len(tbx)
+    NX = (np.max(tbx)+1).astype(int)
+    tent_basis = np.zeros([NX,NB], dtype='float32')
+    for nn in range(NB):
+        if nn > 0:
+            dx = tbx[nn]-tbx[nn-1]
+            tent_basis[range(tbx[nn-1], tbx[nn]+1), nn] = np.array(list(range(dx+1)))/dx
+        elif tbx[0] > 0:  # option to have function go to zero at beginning
+            dx = tbx[0]
+            tent_basis[range(tbx[nn]+1), nn] = np.array(list(range(dx+1)))/dx
+        if nn < NB-1:
+            dx = tbx[nn+1]-tbx[nn]
+            tent_basis[range(tbx[nn], tbx[nn+1]+1), nn] = 1-np.array(list(range(dx+1)))/dx
+
+    return tent_basis
+
+
 def shift_mat_zpad(x, shift, dim=0):
     """Takes a vector or matrix and shifts it along dimension dim by amount 
     shift using zero-padding. Positive shifts move the matrix right or down.

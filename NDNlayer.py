@@ -94,6 +94,10 @@ class NDNlayer(nn.Module):
             init.kaiming_uniform_(self.weights, a=np.sqrt(5))
         elif weights_initializer == 'zeros':
             init.zeros_(self.weights)
+        elif weights_initializer == 'normal':
+            init.normal_(self.weights, mean=0.0, std=1.0)
+        elif weights_initializer == 'xavier':  # also known as Glorot initialization
+            init.xavier_uniform_(self.weights, gain=1.0)  # set gain based on weights?
         else:
             print('weights initializer not defined')
 
@@ -103,6 +107,9 @@ class NDNlayer(nn.Module):
             fan_in, _ = init._calculate_fan_in_and_fan_out(self.weights)
             bound = 1 / np.sqrt(fan_in)
             init.uniform_(self.bias, -bound, bound)          
+        else:
+            print('bias initializer not defined')
+    # END NDNlayer.reset_parameters
 
     def preprocess_weights(self):
         # Apply positive constraints
@@ -131,10 +138,16 @@ class NDNlayer(nn.Module):
         #return self.reg.compute_reg_loss(self.weights)
         return self.reg.compute_reg_loss(self.preprocess_weights())
 
-    def get_weights(self, to_reshape=True):
+    def get_weights(self, to_reshape=True, time_reverse=False):
         ws = self.preprocess_weights().detach().cpu().numpy()
+        num_filts = ws.shape[-1]
+        if time_reverse:
+            ws_tmp = np.reshape(ws, self.filter_dims + [num_filts])
+            num_lags = self.filter_dims[3]
+            if num_lags > 1:
+                ws_tmp = ws_tmp[:, :, :, range(num_lags-1, -1, -1), :] # time reversal here
+            ws = ws_tmp.reshape((-1, num_filts))
         if to_reshape:
-            num_filts = ws.shape[-1]
             return ws.reshape(self.filter_dims + [num_filts]).squeeze()
         else:
             return ws.squeeze()
@@ -534,6 +547,16 @@ class STconvLayer(NDNlayer):
     def __init__(self, layer_params, reg_vals=None):
         """Note that passed in stimulus should not be time-expanded, but input-dimensions should have desired lag"""
         
+        # If tent-basis, figure out how many lag-dimensions using tent_basis transform
+        tent_basis = None
+        if layer_params['temporal_tent_spacing'] is not None:
+            from NDNutils import tent_basis_generate
+            num_lags = layer_params['filter_dims'][3]
+            tent_basis = tent_basis_generate(np.arange(0, num_lags, layer_params['temporal_tent_spacing']))
+            num_lag_params = tent_basis.shape[1]
+            print('STconv: num_lag_params =', num_lag_params)
+            layer_params['filter_dims'][3] = num_lag_params
+
         # All parameters of filter (weights) should be correctly fit in layer_params
         super(STconvLayer, self).__init__(layer_params, reg_vals=reg_vals)
 
@@ -547,6 +570,11 @@ class STconvLayer(NDNlayer):
 
         self.num_lags = self.input_dims[3]
         self.input_dims[3] = 1  # take lag info and use for temporal convolution
+
+        if tent_basis is not None:
+            self.register_buffer('tent_basis', torch.Tensor(tent_basis.T))
+        else:
+            self.tent_basis = None
 
         # Check if 1 or 2-d convolution required
         self.is1D = (self.input_dims[2] == 1)
@@ -568,6 +596,8 @@ class STconvLayer(NDNlayer):
 
         # Initialize weights
         self.initialize_weights()
+        # NOTE FROM DAN: this can inherit the NDNlayer initialization (specificied in layer_dicts) rather than automatically do thi
+        # just replace this initialize_weights with reset_parameters: no need to overload: will use the one in NDNlayer
 
     def initialize_weights(self):
         """Initialize weights and biases"""
@@ -585,9 +615,11 @@ class STconvLayer(NDNlayer):
         w = self.preprocess_weights()
         if self.is1D:
             s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
-            #w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(4,0,3,1,2)  # original
-            # w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # original running 
             w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
+            # time-expand using tent-basis if it exists
+            if self.tent_basis is not None:
+                w = torch.einsum('nctw,tz->nczw', w, self.tent_basis)
+
             y = F.conv2d(
                 F.pad(s, self.padding, "constant", 0),
                 w, 
@@ -598,6 +630,9 @@ class STconvLayer(NDNlayer):
         else:
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
             w = w.reshape(self.filter_dims+[-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
+            # time-expand using tent-basis if it exists
+            if self.tent_basis is not None:
+                w = torch.einsum('nctwh,tz->nczwh', w, self.tent_basis)
             y = F.conv3d(
                 F.pad(s, self.padding, "constant", 0),
                 w, 

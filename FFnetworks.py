@@ -15,6 +15,8 @@ LayerTypes = {
     'external': ExternalLayer
 }
 
+_valid_ffnet_types = ['normal', 'add', 'mult', 'readout']
+
 class FFnetwork(nn.Module):
 
     #def __repr__(self):
@@ -25,16 +27,21 @@ class FFnetwork(nn.Module):
         """ffnet_params is a dictionary constructed by other utility functions
         reg_params is a dictionary of reg type and list of values for each layer,
         i.e., {'d2xt':[None, 0.2], 'l1':[1e-4,None]}"""
+
         super(FFnetwork, self).__init__()
-        self.network_type = 'normal'
+        
+        self.network_type = ffnet_params['ffnet_type']
+        assert self.network_type in _valid_ffnet_types, "ffnet_type " + self.network_type + " is unknown."
 
         # Format and record inputs into ffnet
         self.layer_list = deepcopy(ffnet_params['layer_list'])
         self.layer_types = deepcopy(ffnet_params['layer_types'])
         self.xstim_n = ffnet_params['xstim_n']
         self.ffnets_in = deepcopy(ffnet_params['ffnet_n'])
+        #if self.network_type == 'mult': 
+        #    assert len(self.ffnets_in) == 2, 'mult ffnetwork must receive two input networks.'  
 
-        assert self.determine_input_dims(ffnet_params['input_dims_list']), 'Invalid network inputs.'
+        assert self.determine_input_dims(ffnet_params['input_dims_list'], ffnet_type=ffnet_params['ffnet_type']), 'Invalid network inputs.'
         #self.conv = ffnet_params['conv']    # I don't think this does anything
 
         num_layers = len(self.layer_list)
@@ -56,7 +63,7 @@ class FFnetwork(nn.Module):
                 LayerTypes[self.layer_types[ll]](self.layer_list[ll], reg_vals=reg_params[ll]) )
     # END FFnetwork.__init__
  
-    def determine_input_dims( self, input_dims_list ):
+    def determine_input_dims( self, input_dims_list, ffnet_type='normal' ):
         """
         Sets input_dims given network inputs. Can be overloaded depending on the network type. For this base class, there
         are two types of network input: external stimulus (xstim_n) or a list of internal (ffnet_in) networks:
@@ -79,18 +86,21 @@ class FFnetwork(nn.Module):
         else: 
             num_input_networks = len(self.ffnets_in)
             assert len(input_dims_list) == num_input_networks, 'Internal: misspecification of input_dims for FFnetwork.'
-            # Concatenate input dimensions into first filter dims and make sure valid
-    
+
+            # Go through the input dims of the other ffnetowrks to verify they are valid for the type of network    
             for ii in range(num_input_networks):
                 if ii == 0:
                     num_cat_filters = input_dims_list[0][0]
                 else:
-                    if input_dims_list[ii][1:] == input_dims_list[0][1:]:
-                        num_cat_filters += input_dims_list[ii][0]
-                    else:
+                    if input_dims_list[ii][1:] != input_dims_list[0][1:]:
                         valid_input_dims = False
                         print("FFnet: invalid concatenation %d:"%ii, input_dims_list[ii][1:], input_dims_list[0][1:] )
-
+                    else:
+                        if ffnet_type == 'normal': # then inputs will be concatenated along 'filter' dimension
+                            num_cat_filters += input_dims_list[ii][0]
+                        else:  # these are combined and input to first layer has same size as one input
+                            assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for' + ffnet_type + 'ffnetwork'
+                        
             self.input_dims = [num_cat_filters] + input_dims_list[0][1:]
         
         self.input_dims_list = deepcopy(input_dims_list)
@@ -99,11 +109,16 @@ class FFnetwork(nn.Module):
 
     def forward(self, inputs):   
 
-        # Concatenate network inputs (if relevant)
+        # Combine network inputs (if relevant)
         if isinstance(inputs, list):
             x = inputs[0]
             for mm in range(1, len(inputs)):
-                x = torch.cat( (x, inputs[mm]), 1 )
+                if self.network_type == 'normal': # concatentate inputs
+                    x = torch.cat( (x, inputs[mm]), 1 )
+                elif self.network_type == 'add': # add inputs
+                    x = torch.add( x, inputs[mm] )
+                elif self.network_type == 'mult': # multiply: (input1) x (1+input2)
+                    x = torch.mult( x, torch.add(inputs[mm], 1.0) )
         else:
             x = inputs
 
@@ -202,7 +217,7 @@ class ReadoutNetwork(FFnetwork):
         super(ReadoutNetwork, self).__init__(ffnet_params)
         self.network_type = 'readout'
 
-    def determine_input_dims( self, input_dims_list ):
+    def determine_input_dims( self, input_dims_list, ffnet_type='readout' ):
         """
         Sets input_dims given network inputs. Can be overloaded depending on the network type. For this base class, there
         are two types of network input: external stimulus (xstim_n) or a list of internal (ffnet_in) networks:
