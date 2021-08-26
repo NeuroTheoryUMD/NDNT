@@ -9,8 +9,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 # from tensorboardX import SummaryWriter
 from tqdm import tqdm # progress bar
-from NDNutils import ModelSummary, save_checkpoint, ensure_dir, ModelSummary
-from LBFGS import LBFGS, FullBatchLBFGS
+from neureye.models.utils import ModelSummary, save_checkpoint, ensure_dir, ModelSummary
 
 
 class EarlyStopping:
@@ -40,10 +39,12 @@ class EarlyStopping:
     def __call__(self, val_loss):
 
         score = -val_loss
+        if self.verbose:
+            print("EarlyStopping score = {}".format(score))
 
         if self.best_score is None:
             self.best_score = score
-        elif score < self.best_score + self.delta:
+        elif score <= self.best_score + self.delta:
             self.counter += 1
             self.trace_func(f'\nEarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
@@ -59,7 +60,7 @@ class Trainer:
     def __init__(self, model=None, optimizer=None, scheduler=None,
             device=None,
             optimize_graph=False,
-            dirpath=os.path.join('.', 'experiments'),
+            dirpath=os.path.join('.', 'checkpoints'),
             num_gpus=None,
             version=None,
             max_epochs=100,
@@ -171,26 +172,15 @@ class Trainer:
         # _ = ModelSummary(self.model, train_loader.dataset[0]['stim'].shape, batch_size=train_loader.batch_size, device=self.device, dtypes=None)
 
         # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
-        try:
-            if isinstance(self.optimizer, FullBatchLBFGS):
-                self.fit_loop_lbfgs(self.max_epochs, train_loader, val_loader)
-            else:
-                self.fit_loop(self.max_epochs, train_loader, val_loader)
+        try:            
+            self.fit_loop(self.max_epochs, train_loader, val_loader)
             
         except KeyboardInterrupt: # user aborted training
             
             self.graceful_exit()
+            return
 
         self.graceful_exit()
-        
-        # if isinstance(self.model, nn.DataParallel):
-        #     self.model = self.model.module # get the non-data-parallel model
-
-        # # save model
-        # torch.save(self.model, os.path.join(self.dirpath, 'model.pth'))
-
-        # self.logger.export_scalars_to_json(os.path.join(self.dirpath, "all_scalars.json"))
-        # self.logger.close()
     
     def fit_loop(self, epochs, train_loader, val_loader):
         # main loop for training
@@ -224,82 +214,6 @@ class Trainer:
                 if self.early_stopping.early_stop:
                     print("Early stopping")
                     break
-    
-    def fit_loop_lbfgs(self, max_iter, train_loader, val_loader):
-        '''
-        Fit loop using Full Batch LBFGS
-        '''
-        # step 1: get gradient
-        obj = 0
-        grad = 0
-
-        self.optimizer.zero_grad()
-
-        for data in train_loader:
-            out = self.model.training_step(data)
-            obj += out['loss'] / len(train_loader)
-
-            out['loss'].backward()
-            grad += self.optimizer._gather_flat_grad()
-
-        # step 2: loop over iterations
-        pbar = tqdm(range(max_iter), total=max_iter)
-        for n_iter in pbar:
-            self.n_iter = n_iter
-            self.model.train()
-
-            # define closure for line search
-            def closure():
-
-                self.optimizer.zero_grad()
-
-                loss = 0
-
-                for data in train_loader:
-
-                    # Data to device if it's not already there
-                    for dsub in data:
-                        if data[dsub].device != self.device:
-                            data[dsub] = data[dsub].to(self.device)
-
-                    out = self.model.training_step(data)
-                    loss += out['loss'] / train_loader.batch_size
-
-                return loss
-
-            # perform line search step
-            options = {'closure': closure, 'current_loss': obj}
-            obj, grad, lr, _, _, _, _, _ = self.optimizer.step(options)
-            self.logger.add_scalar('Loss/Train', obj.item(), self.n_iter)
-
-            # update progress bar
-            pbar.set_postfix({'train_loss': obj.item()})
-
-            # validation
-            val_loss = 0.0
-            self.model.eval()
-            with torch.no_grad():
-                for data in val_loader:
-                
-                    # Data to device if it's not already there
-                    for dsub in data:
-                        if data[dsub].device != self.device:
-                            data[dsub] = data[dsub].to(self.device)
-                
-                        out = self.model.validation_step(data)
-
-                        val_loss += out['val_loss']
-            
-            # checkpoint
-            self.checkpoint_model(self.n_iter)
-
-            # callbacks: e.g., early stopping
-            if self.early_stopping:
-                self.early_stopping(out['val_loss'])
-                if self.early_stopping.early_stop:
-                    print("Early stopping")
-                    break
-
 
     def validate_one_epoch(self, val_loader):
         # validation step for one epoch
@@ -346,7 +260,7 @@ class Trainer:
                     data[dsub] = data[dsub].to(self.device)
             
             # handle optimization step
-            if isinstance(self.optimizer, LBFGS):
+            if isinstance(self.optimizer, torch.optim.LBFGS):
                 out = self.train_lbfgs_step(data)
             else:
                 out = self.train_one_step(data)
@@ -367,56 +281,25 @@ class Trainer:
 
     def train_lbfgs_step(self, data):
         # # Version 1: This version is based on the torch.optim.lbfgs implementation
-        # self.optimizer.zero_grad()
-
-        # def closure():
-        #     self.optimizer.zero_grad()
-            
-        #     with torch.set_grad_enabled(True):
-        #         out = self.model.training_step(data)
-            
-        #     loss = out['loss']
-        #     loss.backward()
-        #     return loss
-            
-        # self.optimizer.step(closure)
-            
-        # # calculate the loss again for monitoring
-        # # out = self.model.training_step(data)
-        # # loss = out['loss']
-        #     # output = self(X_)
-        # loss = closure()
-
-        # return {'train_loss': loss}
-
-        # Version 2: This version is based on NDN.LBFGS implementation from https://github.com/hjmshi/PyTorch-LBFGS
-        # compute initial gradient and objective
         self.optimizer.zero_grad()
 
-        out = self.model.training_step(data)
-        out['loss'].backward()
-        grad = self.optimizer._gather_flat_grad()
-    
-        # two-loop recursion to compute search direction
-        p = self.optimizer.two_loop_recursion(-grad)
-            
-        # define closure for line search
-        def closure():              
-        
+        def closure():
             self.optimizer.zero_grad()
-        
-            out = self.model.training_step(data)
+            
+            with torch.set_grad_enabled(True):
+                out = self.model.training_step(data)
+            
+            loss = out['loss']
+            loss.backward()
 
-            return out['loss']
-        
-        # perform line search step
-        options = {'closure': closure, 'current_loss': out['loss']}
-        obj, grad, lr, _, _, _, _, _ = self.optimizer.step(p, grad, options=options)
-        
-        # # curvature update
-        self.optimizer.curvature_update(grad)
-        
-        return {'train_loss': obj}
+            return loss
+            
+        self.optimizer.step(closure)
+            
+        # calculate the loss again for monitoring
+        loss = closure()
+    
+        return {'train_loss': loss}
 
 
     def train_one_step(self, data):

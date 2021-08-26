@@ -253,12 +253,18 @@ class NDN(nn.Module):
                         betas=opt_params['betas'])
 
             elif opt_params['optimizer']=='LBFGS':
-                from LBFGS import LBFGS
-                optimizer = LBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
+                if 'max_iter' in opt_params:
+                    max_iter = opt_params['max_iter']
+                else:
+                    max_iter = 4
+                if 'history_size' in opt_params:
+                    history_size = opt_params['history_size']
+                else:
+                    history_size = 10
 
-            elif opt_params['optimizer']=='FullBatchLBFGS':
-                from LBFGS import FullBatchLBFGS
-                optimizer = FullBatchLBFGS(model.parameters(), lr=opt_params['learning_rate'], history_size=10, line_search='Wolfe', debug=False)
+                optimizer = torch.optim.LBFGS(model.parameters(), history_size=history_size,
+                                max_iter=max_iter,
+                                line_search_fn="strong_wolfe")
 
             else:
                 raise ValueError('optimizer [%s] not supported' %opt_params['optimizer'])
@@ -278,7 +284,7 @@ class NDN(nn.Module):
             optimize_graph = opt_params['optimize_graph']
             # NOTE: will cause big problems if the batch size is variable
         else:
-            optimize_graph = True
+            optimize_graph = False
 
         trainer = Trainer(model, optimizer, early_stopping=earlystopping,
                 dirpath=os.path.join(save_dir, name),
