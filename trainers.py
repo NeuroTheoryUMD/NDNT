@@ -9,8 +9,8 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 # from tensorboardX import SummaryWriter
 from tqdm import tqdm # progress bar
-from neureye.models.utils import ModelSummary, save_checkpoint, ensure_dir, ModelSummary
-
+from NDNutils import ModelSummary, save_checkpoint, ensure_dir
+1
 
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""

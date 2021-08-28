@@ -384,7 +384,7 @@ class NDN(nn.Module):
         assert net_n >= 0, 'No readout network found.'
         return self.networks[net_n].get_readout_locations()
 
-    def list_params(self, ffnet_target=None, layer_target=None):
+    def list_parameters(self, ffnet_target=None, layer_target=None):
         if ffnet_target is None:
             ffnet_target = np.arange(len(self.networks), dtype='int32')
         elif not isinstance(ffnet_target, list):
@@ -392,9 +392,9 @@ class NDN(nn.Module):
         for ii in ffnet_target:
             assert(ii < len(self.networks)), 'Invalid network %d.'%ii
             print("Network %d:"%ii)
-            self.networks[ii].list_params(layer_target=layer_target)
+            self.networks[ii].list_parameters(layer_target=layer_target)
 
-    def set_params(self, ffnet_target=None, layer_target=None, name=None, val=None ):
+    def set_parameters(self, ffnet_target=None, layer_target=None, name=None, val=None ):
         """Set parameters for listed layer or for all layers."""
         if ffnet_target is None:
             ffnet_target = np.arange(len(self.networks), dtype='int32')
@@ -402,12 +402,10 @@ class NDN(nn.Module):
             ffnet_target = [ffnet_target]
         for ii in ffnet_target:
             assert(ii < len(self.networks)), 'Invalid network %d.'%ii
-            self.networks[ii].set_params(layer_target=layer_target, name=name, val=val)
+            self.networks[ii].set_parameters(layer_target=layer_target, name=name, val=val)
 
-    def plot_filters(self, cmaps):
-        import matplotlib.pyplot as plt
-        self.network.plot_filters(cmaps=cmaps)
-        plt.show()
+    def plot_filters(self, cmaps=None, ffnet_target=0, layer_target=0, num_cols=8):
+        self.networks[ffnet_target].plot_filters(layer_target=layer_target, cmaps=cmaps, num_cols=num_cols)
 
     def save_model(self, filename=None, alt_dirname=None):
         """Models will be saved using dill/pickle in the directory above the version

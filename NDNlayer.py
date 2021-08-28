@@ -152,14 +152,14 @@ class NDNlayer(nn.Module):
         else:
             return ws.squeeze()
 
-    def list_params(self):
+    def list_parameters(self):
         for nm, pp in self.named_parameters(recurse=False):
             if pp.requires_grad:
                 print("      %s:"%nm, pp.size())
             else:
                 print("      NOT FIT: %s:"%nm, pp.size())
 
-    def set_params(self, name=None, val=None ):
+    def set_parameters(self, name=None, val=None ):
         """Turn fitting for named params on or off. If name is none, do for whole layer."""
         assert isinstance(val, bool), 'val must be set.'
         for nm, pp in self.named_parameters(recurse=False):
@@ -167,6 +167,26 @@ class NDNlayer(nn.Module):
                 pp.requires_grad = val
             elif nm == name:
                 pp.requires_grad = val
+
+    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2):
+        ws = self.get_weights()
+        # check if 1d: otherwise return error for now
+        num_filters = ws.shape[-1]
+        num_rows = np.ceil(num_filters/num_cols).astype(int)
+        if self.input_dims[2] == 1:
+            import matplotlib.pyplot as plt
+            # then 1-d spatiotemporal plots
+            fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
+            fig.set_size_inches(16, row_height*num_rows)
+            plt.tight_layout()
+            for cc in range(num_filters):
+                ax = plt.subplot(num_rows, num_cols, cc+1)
+                plt.imshow(ws[:,:,cc].T, cmap=cmaps)
+                ax.set_yticklabels([])
+                ax.set_xticklabels([])
+            plt.show()
+        else:
+            print("Not implemented plotting 3-d filters yet.")
     ## END NDNLayer class
 
 class ConvLayer(NDNlayer):
@@ -397,7 +417,7 @@ class ReadoutLayer(NDNlayer):
         else:
             self.sigma.data.uniform_(-self.init_sigma, self.init_sigma)
         
-        self.weights.data.fill_(1 / self.input_dims[0])
+        #self.weights.data.fill_(1 / self.input_dims[0])
 
         if self.bias is not None:
             self.bias.data.fill_(0)
@@ -440,6 +460,21 @@ class ReadoutLayer(NDNlayer):
                 return (norm * self.sigma + self.mu).clamp(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
             else:
                 return (torch.einsum('ancd,bnid->bnic', self.sigma, norm) + self.mu).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
+
+    def passive_readout(self):
+        """This will not fit mu and std, but set them to zero. It will pass identities in,
+        so number of input filters must equal number of readout units"""
+
+        assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
+        # Set parameters for default readout
+        self.sigma.data.fill_(0)
+        self._mu.data.fill_(0)
+        self.weights.data.fill_(0)
+        for nn in range(self.num_filters):
+            self.weights.data[nn,nn] = 1
+
+        self.set_parameters(val=False)
+        
 
     def forward(self, x, sample=None, shift=None):
         """

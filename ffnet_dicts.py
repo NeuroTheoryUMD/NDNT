@@ -117,18 +117,12 @@ def ffnet_dict_NIM(
 
     indims = input_dims  # starts with network input dims
 
-    if ei_layers is None:
-        ei_layers = [None]*num_layers
-    if norm_list is None:
-        norm_list = [0]*num_layers
-
-    if layer_types is None:
-        layer_types = ['normal']*num_layers
-    assert len(layer_types) == num_layers, 'layer_types is wrong length.'
+    ei_layers = list_complete(ei_layers, L=num_layers, null_val=0)
+    norm_list = list_complete(norm_list, L=num_layers, null_val=0)
+    layer_types = list_complete(layer_types, L=num_layers, null_val='normal')
     ffnet_params['layer_types'] = layer_types
 
-    if conv_widths is None:
-        conv_widths = [None]*num_layers
+    conv_widths = list_complete(conv_widths, L=num_layers)
 
     layer_list = []   
     for ll in range(num_layers):
@@ -238,3 +232,18 @@ def ffnet_dict_external(
     ffnet_params['layer_list'] = [layer_params]
 
     return ffnet_params
+
+def list_complete( fauxlist, L=None, null_val=None ):
+    # Makes 'valid' list from a faux_list that might be too short or not a list at all
+
+    if fauxlist is None:
+        assert L is not None, 'Internal: Requires length specification'
+        return [null_val]*L
+    if not isinstance( fauxlist, list):
+        fauxlist = [fauxlist]
+    
+    clist = deepcopy(fauxlist)
+    if L is not None:
+        while len(clist) < L:
+            clist.append(null_val)
+    return clist
