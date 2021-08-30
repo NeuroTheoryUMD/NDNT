@@ -168,10 +168,12 @@ class NDNlayer(nn.Module):
             elif nm == name:
                 pp.requires_grad = val
 
-    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2):
-        ws = self.get_weights()
+    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=True):
+        ws = self.get_weights(time_reverse=time_reverse)
         # check if 1d: otherwise return error for now
         num_filters = ws.shape[-1]
+        if num_filters < 8:
+            num_cols = num_filters
         num_rows = np.ceil(num_filters/num_cols).astype(int)
         if self.input_dims[2] == 1:
             import matplotlib.pyplot as plt
@@ -681,4 +683,64 @@ class STconvLayer(NDNlayer):
         # Nonlinearity
         if self.NL is not None:
             y = self.NL(y)
+        return y
+
+    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
+        # Overload plot_filters to automatically time_reverse
+        super(STconvLayer, self).plot_filters( 
+            cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
+            time_reverse=time_reverse)
+
+
+class FixationLayer(NDNlayer):
+    def initialize(self, *args, **kwargs):
+        raise NotImplementedError("initialize is not implemented for ", self.__class__.__name__)
+
+    #def __repr__(self):
+        #s = super().__repr__()
+        #s += " [{} regularizers: ".format(self.__class__.__name__)
+
+    def __init__(self, layer_params, reg_vals=None):
+        """layer weights become the shift for each fixation, sigma is constant over each dimension"""
+        #self.num_fixations = layer_params['input_dims'][0]
+        assert np.prod(layer_params['input_dims'][1:]) == 1, 'something wrong with fix-layer input_dims'
+        layer_params['filter_dims'] = deepcopy(layer_params['input_dims'])
+        assert layer_params['num_filters'] in [1,2], 'incorrect num_filters in fix-layer'
+        layer_params['bias'] = False
+        layer_params['NLtype'] = 'lin'  # dummy variable: not usred
+
+        super(ReadoutLayer,self).__init__(layer_params)
+        assert layer_params['filter_dims'][3] == 1, 'Cant handle temporal filter dims here, yet.'
+
+        # Determine whether one- or two-dimensional readout
+        self.num_space_dims = layer_params['num_filters']
+
+        # self.flatten = nn.Flatten()
+        self.batch_sample = layer_params['batch_sample']
+        if layer_params.has_key('init_sigma'): 
+            self.init_sigma = layer_params['init_sigma']
+        else:
+            self.init_sigma = 0.5
+ 
+        self.sigmas = Parameter(torch.ones(self.num_space_dims)*self.init_sigma)  # standard deviation for gaussian for each neuron
+  
+    def forward(self, x, sample=None, shift=None):
+        """
+        The input is the sampled fixation-stim
+            y: neuronal activity
+        """
+        with torch.no_grad():
+            self.weights.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
+            self.sigmas.clamp(min=0)  # sigma/variance is always a positive quantity
+
+        N = x.size[0]  # batch size
+        y = x@self.weights  # positions on fixation-by-fixation level
+        # this will be batch-size x num_spatial dims (corresponding to mean loc)
+
+        sample_shape = (N,) + (self.num_space_dims,)        
+        if self.batch_sample:
+            # add sigma-like noise around mean locations
+            gaus_sample = y.new(*sample_shape).normal_()
+            y = (gaus_sample@self.sigma + y).clamp(-1,1)
+
         return y

@@ -12,7 +12,8 @@ LayerTypes = {
     'readout': ReadoutLayer,
     'divnorm': DivNormLayer,
     'stconv': STconvLayer,
-    'external': ExternalLayer
+    'external': ExternalLayer,
+    'fixation': FixationLayer
 }
 
 _valid_ffnet_types = ['normal', 'add', 'mult', 'readout']

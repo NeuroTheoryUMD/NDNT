@@ -6,8 +6,6 @@ from torch import nn
 
 # Imports from my code
 from NDNLosses import *
-#from NDNencoders import Encoder
-#from NDNutils import get_trainer
 from NDNlayer import *
 from FFnetworks import *
 from NDNutils import create_optimizer_params
@@ -374,7 +372,7 @@ class NDN(nn.Module):
     def get_weights(self, ffnet_target=0, layer_target=0, to_reshape=True, time_reverse=False):
         return self.networks[ffnet_target].layers[layer_target].get_weights(to_reshape, time_reverse=time_reverse)
 
-    def get_readout_positions(self):
+    def get_readout_locations(self):
         """This currently retuns list of readout locations and sigmas -- set in readout network"""
         # Find readout network
         net_n = -1
