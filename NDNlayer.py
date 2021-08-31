@@ -726,13 +726,18 @@ class FixationLayer(NDNlayer):
         if 'batch_sample' in layer_params.keys():
             self.batch_sample = layer_params['batch_sample']
         else:
-            self.batch_sample = False
+            self.batch_sample = True
         if 'init_sigma' in layer_params.keys(): 
             self.init_sigma = layer_params['init_sigma']
         else:
             self.init_sigma = 0.5
  
-        self.sigmas = Parameter(torch.ones(self.num_space_dims)*self.init_sigma)  # standard deviation for gaussian for each neuron
+        self.sample = False  # starts without sampling be default
+        # shared sigmas across all fixations
+        self.sigmas = Parameter(torch.ones(self.num_space_dims)*self.init_sigma) 
+        # individual sigmas for each fixation 
+        #self.sigmas = Parameter(torch.ones((self.filter_dims[0],1))*self.init_sigma)  # sigma for each fixation
+
 
     def forward(self, x, sample=None, shift=None):
         """
@@ -744,13 +749,22 @@ class FixationLayer(NDNlayer):
             self.sigmas.clamp(min=0)  # sigma/variance is always a positive quantity
 
         N = x.shape[0]  # batch size
-        y = (x@self.weights) #* self.spatial_mults
+        # If using X-matrix to extract relevant weights
+        # y = (x@self.weights) 
+        # use indexing: x is just a list of weight indices
+        y = self.weights[x,:] #* self.spatial_mults
         # this will be batch-size x num_spatial dims (corresponding to mean loc)
 
         sample_shape = (N,) + (self.num_space_dims,)        
-        if self.batch_sample:
+        if self.sample:
             # add sigma-like noise around mean locations
-            gaus_sample = y.new(*sample_shape).normal_()
-            y = (gaus_sample*self.sigmas + y).clamp(-1,1)
+            if self.batch_sample:
+                gaus_sample = y.new(*sample_shape).normal_()
+            else:
+                gaus_sample = y.new(*sample_shape).zeros_()
+            # This is used for one sigma for each fixation
+            #y = (gaus_sample * self.sigmas[x,:] + y).clamp(-1,1)
+            # if single sigma, simply change as follows
+            y = (gaus_sample * self.sigmas + y).clamp(-1,1)
 
         return y
