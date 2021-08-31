@@ -356,7 +356,10 @@ class ReadoutLayer(NDNlayer):
             # Does this apply to both weights and biases? Should be separate?
 
         # self.flatten = nn.Flatten()
-        self.batch_sample = layer_params['batch_sample']
+        if 'batch_sample' in layer_params.keys():
+            self.batch_sample = layer_params['batch_sample']
+        else:
+            self.batch_sample = True
         self.init_mu_range = layer_params['init_mu_range']
         self.init_sigma = layer_params['init_sigma']
         if self.init_mu_range > 1.0 or self.init_mu_range <= 0.0 or self.init_sigma <= 0.0:
@@ -709,21 +712,28 @@ class FixationLayer(NDNlayer):
         layer_params['bias'] = False
         layer_params['NLtype'] = 'lin'  # dummy variable: not usred
 
-        super(ReadoutLayer,self).__init__(layer_params)
+        super(FixationLayer,self).__init__(layer_params)
         assert layer_params['filter_dims'][3] == 1, 'Cant handle temporal filter dims here, yet.'
 
         # Determine whether one- or two-dimensional readout
         self.num_space_dims = layer_params['num_filters']
-
+        if self.num_space_dims == 1:
+            self.spatial_mults = layer_params['input_dims'][1]/2
+        else:
+            self.spatial_mults = layer_params['input_dims'][1:3]/2
+        
         # self.flatten = nn.Flatten()
-        self.batch_sample = layer_params['batch_sample']
-        if layer_params.has_key('init_sigma'): 
+        if 'batch_sample' in layer_params.keys():
+            self.batch_sample = layer_params['batch_sample']
+        else:
+            self.batch_sample = False
+        if 'init_sigma' in layer_params.keys(): 
             self.init_sigma = layer_params['init_sigma']
         else:
             self.init_sigma = 0.5
  
         self.sigmas = Parameter(torch.ones(self.num_space_dims)*self.init_sigma)  # standard deviation for gaussian for each neuron
-  
+
     def forward(self, x, sample=None, shift=None):
         """
         The input is the sampled fixation-stim
@@ -733,14 +743,14 @@ class FixationLayer(NDNlayer):
             self.weights.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
             self.sigmas.clamp(min=0)  # sigma/variance is always a positive quantity
 
-        N = x.size[0]  # batch size
-        y = x@self.weights  # positions on fixation-by-fixation level
+        N = x.shape[0]  # batch size
+        y = (x@self.weights) #* self.spatial_mults
         # this will be batch-size x num_spatial dims (corresponding to mean loc)
 
         sample_shape = (N,) + (self.num_space_dims,)        
         if self.batch_sample:
             # add sigma-like noise around mean locations
             gaus_sample = y.new(*sample_shape).normal_()
-            y = (gaus_sample@self.sigma + y).clamp(-1,1)
+            y = (gaus_sample*self.sigmas + y).clamp(-1,1)
 
         return y

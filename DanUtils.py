@@ -2,6 +2,7 @@ import numpy as np
 import scipy.io as sio
 from copy import deepcopy
 import NDNutils as NDNutils
+import matplotlib.pyplot as plt
 
 def binocular_data_import( datadir, expt_num ):
     """Usage: stim, Robs, DFs, used_inds, Eadd_info = binocular_data_import( datadir, expt_num )
@@ -212,4 +213,11 @@ def monocular_data_import( datadir, exptn, time_shift=1, num_lags=20):
         #'TRinds':TRinds, 'TEinds': TEinds, 
         #'TRblocks': Ub, 'TEblocks': Xb}
     return stim_all, Robs_all, DFs_all, Eadd_info
+
+
+def subplot_setup(num_rows, num_cols, row_height=2, fighandle=False):
+    fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
+    fig.set_size_inches(16, row_height*num_rows)
+    if fighandle is True:
+        return fig
     

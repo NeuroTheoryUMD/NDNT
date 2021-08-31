@@ -20,9 +20,11 @@ _valid_ffnet_types = ['normal', 'add', 'mult', 'readout']
 
 class FFnetwork(nn.Module):
 
-    #def __repr__(self):
-    #    s = super().__repr__()
-    #    # Add information about module to print out
+    def __repr__(self):
+        s = super().__repr__()
+        s += self.__class__.__name__
+        return s
+        # Add information about module to print out
 
     def __init__(self, ffnet_params):
         """ffnet_params is a dictionary constructed by other utility functions
@@ -210,9 +212,11 @@ class ReadoutNetwork(FFnetwork):
                         'final_tanh': False,
                         }
 """
-    #def __repr__(self):
-    #    s = super().__repr__()
-    #    # Add information about module to print out
+    def __repr__(self):
+        s = super().__repr__()
+        # Add information about module to print out
+        s += self.__class__.__name__
+        return s
 
     def __init__(self, ffnet_params):
         """
@@ -270,9 +274,7 @@ class ReadoutNetwork(FFnetwork):
 
 class FFnet_external(FFnetwork):
     """This is a 'shell' that lets an external network be plugged into the NDN. It establishes all the basics
-    so that information requested to this network from other parts of the NDN will behave correctly.
-
-"""
+    so that information requested to this network from other parts of the NDN will behave correctly."""
     #def __repr__(self):
     #    s = super().__repr__()
     #    # Add information about module to print out
