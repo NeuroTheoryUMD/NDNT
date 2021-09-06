@@ -308,6 +308,10 @@ class NDN(nn.Module):
         if name is None:
             name = self.model_name
 
+        # Precalculate any normalization needed from the data
+        # if self.unit_normalization:# where should unit normalization go?
+        #self.loss_module.set_unit_normalization(dataset) 
+
         # get trainer 
         trainer, train_dl, valid_dl = self.get_trainer(
             dataset,

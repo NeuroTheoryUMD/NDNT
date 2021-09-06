@@ -221,3 +221,9 @@ def subplot_setup(num_rows, num_cols, row_height=2, fighandle=False):
     if fighandle is True:
         return fig
     
+
+def filename_num2str( n, num_digits=2 ):
+    num_places = int(np.ceil(np.log10(n)+0.001))
+    place_shift = int(np.maximum(num_digits-num_places, 0))
+    s = '0'*place_shift + str(n%(10**num_digits))[:]
+    return s
