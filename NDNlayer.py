@@ -731,13 +731,19 @@ class FixationLayer(NDNlayer):
             self.init_sigma = layer_params['init_sigma']
         else:
             self.init_sigma = 0.5
- 
+
+        self.single_sigma = True
+        if 'single_sigma' in layer_params.keys():
+            self.single_sigma = layer_params['single_sigma']
+        
+
         self.sample = False  # starts without sampling be default
         # shared sigmas across all fixations
-        self.sigmas = Parameter(torch.ones(self.num_space_dims)*self.init_sigma) 
-        # individual sigmas for each fixation 
-        #self.sigmas = Parameter(torch.ones((self.filter_dims[0],1))*self.init_sigma)  # sigma for each fixation
-
+        if self.single_sigma:
+            self.sigmas = Parameter(torch.ones(self.num_space_dims)*self.init_sigma) 
+        else:
+            # individual sigmas for each fixation 
+            self.sigmas = Parameter(torch.ones((self.filter_dims[0],1))*self.init_sigma)  
 
     def forward(self, x, sample=None, shift=None):
         """
@@ -762,9 +768,10 @@ class FixationLayer(NDNlayer):
                 gaus_sample = y.new(*sample_shape).normal_()
             else:
                 gaus_sample = y.new(*sample_shape).zeros_()
-            # This is used for one sigma for each fixation
-            #y = (gaus_sample * self.sigmas[x,:] + y).clamp(-1,1)
-            # if single sigma, simply change as follows
-            y = (gaus_sample * self.sigmas + y).clamp(-1,1)
+            
+            if self.single_sigma:
+                y = (gaus_sample * self.sigmas + y).clamp(-1,1)
+            else:
+                y = (gaus_sample * self.sigmas[x,:] + y).clamp(-1,1)
 
         return y
