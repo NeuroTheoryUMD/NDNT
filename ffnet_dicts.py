@@ -100,12 +100,13 @@ def ffnet_dict_NIM(
     norm_list=None,
     reg_list=None,
     xstim_n='stim',
+    ffnet_n = None,
     ffnet_type='normal'):
 
     """This creates will make a list of layer dicts corresponding to a non-convolutional NIM].
     Note that input_dims can be set to none"""
 
-    ffnet_params = ffnet_params_default(xstim_n=xstim_n, ffnet_n=None)
+    ffnet_params = ffnet_params_default(xstim_n=xstim_n, ffnet_n=ffnet_n)
 
     assert ffnet_type in ['normal', 'add', 'mult'], "ffnet_type must be 'normal', 'add', or 'mult' for this type of network."
     ffnet_params['ffnet_type'] = ffnet_type

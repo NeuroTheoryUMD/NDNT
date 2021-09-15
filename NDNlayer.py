@@ -736,7 +736,6 @@ class FixationLayer(NDNlayer):
         if 'single_sigma' in layer_params.keys():
             self.single_sigma = layer_params['single_sigma']
         
-
         self.sample = False  # starts without sampling be default
         # shared sigmas across all fixations
         if self.single_sigma:
