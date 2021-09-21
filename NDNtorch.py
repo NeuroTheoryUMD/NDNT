@@ -204,69 +204,15 @@ class NDN(nn.Module):
         """
             Returns a trainer and object splits the training set into "train" and "valid"
         """
-        from torch.utils.data import DataLoader, random_split
         from trainers import Trainer, EarlyStopping
         # from pathlib import Path
         import os
     
         # save_dir = Path(save_dir)
-        batchsize = opt_params['batch_size']
         model = self
-        n_val = np.floor(len(dataset)/5).astype(int)
-        n_train = (len(dataset)-n_val).astype(int)
-
-        train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
-
-        # build dataloaders:
-
-        # we use a batch sampler to sample the data because it generates indices for the whole batch at one time
-        # instead of iterating over each sample. This is both faster (probably) for our cases, and it allows us
-        # to use the "Fixation" datasets and concatenate along a variable-length batch dimension
-        train_sampler = torch.utils.data.sampler.BatchSampler(
-            torch.utils.data.sampler.SubsetRandomSampler(train_ds.indices),
-            batch_size=batchsize,
-            drop_last=False)
-        
-        val_sampler = torch.utils.data.sampler.BatchSampler(
-            torch.utils.data.sampler.SubsetRandomSampler(val_ds.indices),
-            batch_size=batchsize,
-            drop_last=False)
-
-        train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=opt_params['num_workers'])
-        valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=opt_params['num_workers'])
 
         if optimizer is None:
-            # get optimizer: In theory this probably shouldn't happen here because it needs to know the model
-            # but this was the easiest insertion point I could find for now
-            if opt_params['optimizer']=='AdamW':
-                optimizer = torch.optim.AdamW(model.parameters(),
-                        lr=opt_params['learning_rate'],
-                        betas=opt_params['betas'],
-                        weight_decay=opt_params['weight_decay'],
-                        amsgrad=opt_params['amsgrad'])
-
-            elif opt_params['optimizer']=='Adam':
-                optimizer = torch.optim.Adam(model.parameters(),
-                        lr=opt_params['learning_rate'],
-                        betas=opt_params['betas'])
-
-            elif opt_params['optimizer']=='LBFGS':
-                if 'max_iter' in opt_params:
-                    max_iter = opt_params['max_iter']
-                else:
-                    max_iter = 4
-                if 'history_size' in opt_params:
-                    history_size = opt_params['history_size']
-                else:
-                    history_size = 10
-
-                optimizer = torch.optim.LBFGS(model.parameters(), history_size=history_size,
-                                max_iter=max_iter,
-                                line_search_fn="strong_wolfe")
-
-            else:
-                raise ValueError('optimizer [%s] not supported' %opt_params['optimizer'])
-            
+            optimizer = self.get_optimizer(opt_params)
 
         if opt_params['early_stopping']:
             if isinstance(opt_params['early_stopping'], EarlyStopping):
@@ -290,9 +236,82 @@ class NDN(nn.Module):
                 scheduler=scheduler,
                 version=version) # TODO: how do we want to handle name? Variable name is currently unused
 
-        return trainer, train_dl, valid_dl
+        return trainer
+
+    def get_dataloaders(self, dataset, batch_size=10, num_workers=4, train_inds=None, val_inds=None, data_seed=None):
+        from torch.utils.data import DataLoader, random_split
+
+        if train_inds is None or val_inds is None:
+            n_val = np.floor(len(dataset)/5).astype(int)
+            n_train = (len(dataset)-n_val).astype(int)
+
+            if data_seed is None:
+                train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
+            else:
+                train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator().manual_seed(data_seed))
+            
+            if train_inds is None:
+                train_inds = train_ds.indices
+            if val_inds is None:
+                val_inds = val_ds.indices
+
+        # build dataloaders:
+
+        # we use a batch sampler to sample the data because it generates indices for the whole batch at one time
+        # instead of iterating over each sample. This is both faster (probably) for our cases, and it allows us
+        # to use the "Fixation" datasets and concatenate along a variable-length batch dimension
+        train_sampler = torch.utils.data.sampler.BatchSampler(
+            torch.utils.data.sampler.SubsetRandomSampler(train_inds),
+            batch_size=batch_size,
+            drop_last=False)
+        
+        val_sampler = torch.utils.data.sampler.BatchSampler(
+            torch.utils.data.sampler.SubsetRandomSampler(val_inds),
+            batch_size=batch_size,
+            drop_last=False)
+
+        train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
+        valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
+        return train_dl, valid_dl
+
+    def get_optimizer(self, opt_params):
+
+        # get optimizer: In theory this probably shouldn't happen here because it needs to know the model
+        # but this was the easiest insertion point I could find for now
+        if opt_params['optimizer']=='AdamW':
+            optimizer = torch.optim.AdamW(self.parameters(),
+                    lr=opt_params['learning_rate'],
+                    betas=opt_params['betas'],
+                    weight_decay=opt_params['weight_decay'],
+                    amsgrad=opt_params['amsgrad'])
+
+        elif opt_params['optimizer']=='Adam':
+            optimizer = torch.optim.Adam(self.parameters(),
+                    lr=opt_params['learning_rate'],
+                    betas=opt_params['betas'])
+
+        elif opt_params['optimizer']=='LBFGS':
+            if 'max_iter' in opt_params:
+                max_iter = opt_params['max_iter']
+            else:
+                max_iter = 4
+            if 'history_size' in opt_params:
+                history_size = opt_params['history_size']
+            else:
+                history_size = 10
+
+            optimizer = torch.optim.LBFGS(self.parameters(), history_size=history_size,
+                            max_iter=max_iter,
+                            line_search_fn="strong_wolfe")
+
+        else:
+            raise ValueError('optimizer [%s] not supported' %opt_params['optimizer'])
+        
+        return optimizer
+
+
     
-    def fit( self, dataset, version=None, save_dir=None, name=None, seed=None, optimizer=None, scheduler=None):
+    def fit( self, dataset, version=None, save_dir=None, name=None, seed=None, optimizer=None, scheduler=None, train_inds=None, val_inds=None):
         '''
         This is the main training loop.
         Steps:
@@ -312,8 +331,12 @@ class NDN(nn.Module):
         # if self.unit_normalization:# where should unit normalization go?
         #self.loss_module.set_unit_normalization(dataset) 
 
+        # Create dataloaders
+        batchsize = self.opt_params['batch_size']
+        train_dl, valid_dl = self.get_dataloaders(dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds)
+
         # get trainer 
-        trainer, train_dl, valid_dl = self.get_trainer(
+        trainer = self.get_trainer(
             dataset,
             version=version,
             optimizer=optimizer,
