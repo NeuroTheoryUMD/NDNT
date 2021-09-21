@@ -739,38 +739,44 @@ class FixationLayer(NDNlayer):
         self.sample = False  # starts without sampling be default
         # shared sigmas across all fixations
         if self.single_sigma:
-            self.sigmas = Parameter(torch.ones(self.num_space_dims)*self.init_sigma) 
+            self.sigmas = Parameter(torch.Tensor(self.num_space_dims)) 
         else:
             # individual sigmas for each fixation 
-            self.sigmas = Parameter(torch.ones((self.filter_dims[0],1))*self.init_sigma)  
+            self.sigmas = Parameter(torch.Tensor(self.filter_dims[0],1))  
+        
+        self.sigmas.data.fill_(self.init_sigma)
 
     def forward(self, x, sample=None, shift=None):
         """
         The input is the sampled fixation-stim
             y: neuronal activity
         """
-        with torch.no_grad():
-            self.weights.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
-            self.sigmas.clamp(min=0)  # sigma/variance is always a positive quantity
+        # with torch.no_grad():
+
+        #     self.weights.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
+            # self.sigmas.clamp(min=0)  # sigma/variance is always a positive quantity
+            # self.sigmas.
 
         N = x.shape[0]  # batch size
         # If using X-matrix to extract relevant weights
         # y = (x@self.weights) 
         # use indexing: x is just a list of weight indices
-        y = self.weights[x,:] #* self.spatial_mults
-        # this will be batch-size x num_spatial dims (corresponding to mean loc)
+        y = F.tanh(self.weights[x,:]) #* self.spatial_mults
+        if self.single_sigma:
+            s = self.sigmas**2 
+        else:
+            s = self.sigmas[x]**2
 
-        sample_shape = (N,) + (self.num_space_dims,)        
+        # this will be batch-size x num_spatial dims (corresponding to mean loc)        
         if self.sample:
             # add sigma-like noise around mean locations
             if self.batch_sample:
+                sample_shape = (1,) + (self.num_space_dims,)
+                gaus_sample = y.new(*sample_shape).normal_().repeat(N,1)
+            else:
+                sample_shape = (N,) + (self.num_space_dims,)
                 gaus_sample = y.new(*sample_shape).normal_()
-            else:
-                gaus_sample = y.new(*sample_shape).zeros_()
             
-            if self.single_sigma:
-                y = (gaus_sample * self.sigmas + y).clamp(-1,1)
-            else:
-                y = (gaus_sample * self.sigmas[x,:] + y).clamp(-1,1)
+            y = (gaus_sample * s + y).clamp(-1,1)
 
         return y

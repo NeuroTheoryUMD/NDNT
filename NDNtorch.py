@@ -215,7 +215,7 @@ class NDN(nn.Module):
         n_val = np.floor(len(dataset)/5).astype(int)
         n_train = (len(dataset)-n_val).astype(int)
 
-        train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator().manual_seed(42))
+        train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
 
         # build dataloaders:
 
