@@ -191,7 +191,7 @@ class NDN(nn.Module):
             rloss += network.compute_reg_loss()
         return rloss
 
-    def out( self, x):
+    def out(self, x):
         return self(x)
     
     def get_trainer(self, dataset,
@@ -242,19 +242,25 @@ class NDN(nn.Module):
         from torch.utils.data import DataLoader, random_split
 
         if train_inds is None or val_inds is None:
-            n_val = np.floor(len(dataset)/5).astype(int)
-            n_train = (len(dataset)-n_val).astype(int)
-
-            if data_seed is None:
-                train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
+            # check dataset itself
+            if hasattr(dataset, 'val_inds') and \
+                (dataset.train_inds is not None) and (dataset.val_inds is not None):
+                train_inds = dataset.train_inds
+                val_inds = dataset.val_inds
             else:
-                train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator().manual_seed(data_seed))
-            
-            if train_inds is None:
-                train_inds = train_ds.indices
-            if val_inds is None:
-                val_inds = val_ds.indices
+                n_val = np.floor(len(dataset)/5).astype(int)
+                n_train = (len(dataset)-n_val).astype(int)
 
+                if data_seed is None:
+                    train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
+                else:
+                    train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator().manual_seed(data_seed))
+            
+                if train_inds is None:
+                    train_inds = train_ds.indices
+                if val_inds is None:
+                    val_inds = val_ds.indices
+            
         # build dataloaders:
 
         # we use a batch sampler to sample the data because it generates indices for the whole batch at one time
@@ -273,6 +279,7 @@ class NDN(nn.Module):
         train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
         valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
         return train_dl, valid_dl
+    # END NDN.get_dataloaders
 
     def get_optimizer(self, opt_params):
 
@@ -308,10 +315,11 @@ class NDN(nn.Module):
             raise ValueError('optimizer [%s] not supported' %opt_params['optimizer'])
         
         return optimizer
-
-
+    # END NDN.get_optimizer
     
-    def fit( self, dataset, version=None, save_dir=None, name=None, seed=None, optimizer=None, scheduler=None, train_inds=None, val_inds=None):
+    def fit(
+        self, dataset, version=None, save_dir=None, name=None, optimizer=None, scheduler=None, 
+        train_inds=None, val_inds=None, seed=None):
         '''
         This is the main training loop.
         Steps:
@@ -333,7 +341,8 @@ class NDN(nn.Module):
 
         # Create dataloaders
         batchsize = self.opt_params['batch_size']
-        train_dl, valid_dl = self.get_dataloaders(dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds)
+        train_dl, valid_dl = self.get_dataloaders(
+            dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds)
 
         # get trainer 
         trainer = self.get_trainer(
@@ -349,11 +358,10 @@ class NDN(nn.Module):
             network.prepare_regularization()
 
         t0 = time.time()
-        trainer.fit( self, train_dl, valid_dl, seed=seed)
+        trainer.fit(self, train_dl, valid_dl, seed=seed)
         t1 = time.time()
 
         print('  Fit complete:', t1-t0, 'sec elapsed')
-
     # END NDN.train
         
     def eval_models(self, sample, bits=False, null_adjusted=True):

@@ -761,7 +761,10 @@ class FixationLayer(NDNlayer):
         # If using X-matrix to extract relevant weights
         # y = (x@self.weights) 
         # use indexing: x is just a list of weight indices
-        y = F.tanh(self.weights[x,:]) #* self.spatial_mults
+
+        #y = F.tanh(self.weights[x,:]) #* self.spatial_mults  # deprecated?
+        y = torch.tanh(self.weights[x,:]) #* self.spatial_mults
+
         if self.single_sigma:
             s = self.sigmas**2 
         else:
