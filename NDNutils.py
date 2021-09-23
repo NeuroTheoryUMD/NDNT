@@ -85,7 +85,7 @@ def create_time_embedding(stim, pdims, up_fac=1, tent_spacing=1):
         numpy array: time-embedded stim matrix
         
     """
-
+    from scipy.linalg import toeplitz
     # Note for myself: pdims[0] is nLags and the rest is spatial dimension
 
     sz = list(np.shape(stim))

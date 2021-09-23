@@ -7,6 +7,7 @@
 #    unit_loss: returns loss for each output unit (without reduction)
 #    Also tried adding __repr__ but not sure how this works: a placeholder
 
+from os import POSIX_FADV_NOREUSE
 import torch
 from torch import nn
 
@@ -25,21 +26,23 @@ class PoissonLoss_datafilter(nn.Module):
         self.loss_name = 'poisson'
         self.loss = nn.PoissonNLLLoss(log_input=False, reduction='mean')
         self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
-        self.unit_normalization = False
-        self.unit_norms = None
-
-        #print('loss is on', self.device)
+        self.unit_normalization = True
+        self.register_buffer("unit_norms", None)  # this is explicitly the wrong size
+    # END PoissonLoss_datafilter.__init__
 
     # def __repr__(self):
     #     s = super().__repr__()
     #     s += 'poisson'
     #     return s 
 
-    def set_unit_normalization( self, cell_norms ):
-        """This is a multiplier (weighting) of each neuron in the loss: for Poisson loss function,
-        it will be the average firing rate over the full dataset"""
+    def set_unit_normalization( self, cell_weighting ):
+        """In this case (this loss function), it takes inputs of the average probability of spike per bin
+        and will divide by this, unless zero. This can take other cell_weighting as well, but note that it
+        will divide by the cell weighting"""
         self.unit_normalization = True
-        self.unit_norms = cell_norms
+        self.unit_norms = torch.divide( torch.tensor(1.0), cell_weighting )
+        # Note: this currently doesn't deal with neurons that have no spikes: will lead to problems 
+    # END PoissonLoss_datafilter.set_unit_normalization
 
     def forward(self, pred, target, data_filters = None ):        
         
@@ -60,6 +63,7 @@ class PoissonLoss_datafilter(nn.Module):
             loss = torch.sum(torch.mul(unit_weighting, torch.mul(loss_full, data_filters)))
             
         return loss
+    # END PoissonLoss_datafilter.forward
 
     def unit_loss(self, pred, target, data_filters=None, temporal_normalize=True ):        
         """This should be equivalent of forward, without sum over units"""
@@ -77,10 +81,6 @@ class PoissonLoss_datafilter(nn.Module):
             if self.unit_normalization:
                 unit_weighting *= self.unit_norms
 
-            #unitloss = torch.div(
-            #    torch.mul(loss_full, data_filters), 
-            #    torch.maximum(
-            #        torch.sum(data_filters, axis=0), torch.tensor(1.0, device=data_filters.device)) )
             if temporal_normalize:
                 unitloss = torch.mul(unit_weighting, torch.sum( torch.mul(loss_full, data_filters), axis=0) )
             else:

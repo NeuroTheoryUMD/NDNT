@@ -288,7 +288,7 @@ class DivNormLayer(NDNlayer):
         self.output_dims = self.input_dims
         self.num_outputs = np.prod(self.output_dims)
 
-    def forward( self, x):
+    def forward(self, x):
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
 
@@ -482,7 +482,7 @@ class ReadoutLayer(NDNlayer):
         self.set_parameters(val=False)
         
 
-    def forward(self, x, sample=None, shift=None):
+    def forward(self, x, shift=None):
         """
         Propagates the input forwards through the readout
         Args:
@@ -512,10 +512,10 @@ class ReadoutLayer(NDNlayer):
 
         if self.batch_sample:
             # sample the grid_locations separately per sample per batch
-            grid = self.sample_grid(batch_size=N, sample=sample)  # sample determines sampling from Gaussian
+            grid = self.sample_grid(batch_size=N, sample=self.training)  # sample determines sampling from Gaussian
         else:
             # use one sampled grid_locations for all sample in the batch
-            grid = self.sample_grid(batch_size=1, sample=sample).expand(N, outdims, 1, self.num_space.dims)
+            grid = self.sample_grid(batch_size=1, sample=self.training).expand(N, outdims, 1, self.num_space.dims)
         
         if shift is not None:
             # shifter is run outside the readout forward
@@ -639,6 +639,7 @@ class STconvLayer(NDNlayer):
         self.initialize_weights()
         # NOTE FROM DAN: this can inherit the NDNlayer initialization (specificied in layer_dicts) rather than automatically do thi
         # just replace this initialize_weights with reset_parameters: no need to overload: will use the one in NDNlayer
+    # END STconvLayer.__init__
 
     def initialize_weights(self):
         """Initialize weights and biases"""
@@ -647,7 +648,6 @@ class STconvLayer(NDNlayer):
             self.bias.data.fill_(0)
 
     def forward(self, x):
-
         # Reshape stim matrix LACKING temporal dimension [bcwh] 
         # and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
         # pytorch likes 3D convolutions to be [B,C,T,W,H].
@@ -733,7 +733,7 @@ class FixationLayer(NDNlayer):
         if 'single_sigma' in layer_params.keys():
             self.single_sigma = layer_params['single_sigma']
         
-        self.sample = False  # starts without sampling be default
+        #self.sample = False  # starts without sampling be default
         # shared sigmas across all fixations
         if self.single_sigma:
             self.sigmas = Parameter(torch.Tensor(self.num_space_dims)) 
@@ -742,8 +742,9 @@ class FixationLayer(NDNlayer):
             self.sigmas = Parameter(torch.Tensor(self.filter_dims[0],1))  
         
         self.sigmas.data.fill_(self.init_sigma)
+    # END FixationLayer.__init__
 
-    def forward(self, x, sample=None, shift=None):
+    def forward(self, x, shift=None):
         """
         The input is the sampled fixation-stim
             y: neuronal activity
@@ -766,7 +767,8 @@ class FixationLayer(NDNlayer):
             s = self.sigmas[x]**2
 
         # this will be batch-size x num_spatial dims (corresponding to mean loc)        
-        if self.sample:
+        #if self.sample:
+        if self.training:
             # add sigma-like noise around mean locations
             if self.batch_sample:
                 sample_shape = (1,) + (self.num_space_dims,)

@@ -20,7 +20,7 @@ class NDN(nn.Module):
     def __init__(self,
         ffnet_list = None,
         external_modules = None,
-        loss_type = 'poisson',
+        loss_type = 'poisson',  # note poissonT will not use unit_normalization
         ffnet_out = None,
         optimizer_params = None,
         model_name='NDN_model',
@@ -43,8 +43,11 @@ class NDN(nn.Module):
         # Assign loss function (from list)
         if isinstance(loss_type, str):
             self.loss_type = loss_type
-            if loss_type == 'poisson':
+            if loss_type == 'poisson' or loss_type == 'poissonT':
                 loss_func = PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
+                if loss_type == 'poissonT':
+                    loss_func.unit_normalization = False
+
             elif loss_type == 'gaussian':
                 print('Gaussian loss_func not implemented yet.')
                 loss_func = None
@@ -118,7 +121,7 @@ class NDN(nn.Module):
         return networks
     # END assemble_ffnetworks
 
-    def compute_network_outputs( self, Xs):
+    def compute_network_outputs(self, Xs):
         """Note this could return net_ins and net_outs, but currently just saving net_outs (no reason for net_ins yet"""
         # if type(Xs) is not list:
         #     Xs = [Xs]
@@ -191,8 +194,8 @@ class NDN(nn.Module):
             rloss += network.compute_reg_loss()
         return rloss
 
-    def out(self, x):
-        return self(x)
+    #def out(self, x):
+    #    return self(x)
     
     def get_trainer(self, dataset,
         version=None,
@@ -338,7 +341,8 @@ class NDN(nn.Module):
         # Precalculate any normalization needed from the data
         if self.loss_module.unit_normalization: # where should unit normalization go?
             # compute firing rates given dataset
-            self.loss_module.set_unit_normalization(dataset) 
+            avRs = self.compute_average_responses(dataset) # use whole dataset seems best versus any specific inds
+            self.loss_module.set_unit_normalization(avRs) 
 
         # Make reg modules
         for network in self.networks:
@@ -364,18 +368,35 @@ class NDN(nn.Module):
 
         print('  Fit complete:', t1-t0, 'sec elapsed')
     # END NDN.train
-        
-    def eval_models(self, data, data_indices=None, bits=False, null_adjusted=True):
+    
+    def compute_average_responses( self, dataset, data_inds=None ):
+        if data_inds is None:
+            data_inds = range(len(dataset))
+
+        # Iterate through dataset to compute average rates
+        Rsum, Tsum = 0, 0
+        for tt in data_inds:
+            sample = dataset[tt]
+            Tsum += torch.sum(sample['dfs'], axis=0)
+            Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0)
+
+        return torch.divide( Rsum, Tsum.clamp(1))
+
+    def eval_models(self, data, data_inds=None, bits=False, null_adjusted=True):
         '''
         get null-adjusted log likelihood (if null_adjusted = True)
         bits=True will return in units of bits/spike
 
-        Note that data will be assumed to be a dataset, and data_indices will have to be specified batches
+        Note that data will be assumed to be a dataset, and data_inds will have to be specified batches
         from dataset.__get_item__()
         '''
+        
+        # Switch into evalulation mode
+        self.eval()
+
         if isinstance(data, dict): 
             # Then assume that this is just to evaluate a sample: keep original here
-            assert data_indices is None, "Cannot use data_indices if passing in a dataset sample."
+            assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
             m0 = self.cpu()
             yhat = m0(data)
             y = data['robs']
@@ -411,21 +432,21 @@ class NDN(nn.Module):
         else:
             # This will be the 'modern' eval_models using already-defined self.loss_module
             # In this case, assume data is dataset
-            if data_indices is None:
-                data_indices = np.arange(len(data), dtype='int32').tolist()
+            if data_inds is None:
+                data_inds = np.arange(len(data), dtype='int64')
 
             LLsum, Tsum, Rsum = 0, 0, 0
             d = next(self.parameters()).device  # device the model is on
-            for tt in data_indices:
-                sample = data[tt]
-                for dsub in sample.keys():
-                    if sample[dsub].device != d:
-                        sample[dsub] = sample[dsub].to(d)
-                pred = self.out(sample)
+            for tt in data_inds:
+                data_sample = data[tt]
+                for dsub in data_sample.keys():
+                    if data_sample[dsub].device != d:
+                        data_sample[dsub] = data_sample[dsub].to(d)
+                pred = self(data_sample)
                 LLsum += self.loss_module.unit_loss( 
-                    pred, sample['robs'], data_filters=sample['dfs'], temporal_normalize=False)
-                Tsum += torch.sum(sample['dfs'], axis=0)
-                Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0)
+                    pred, data_sample['robs'], data_filters=data_sample['dfs'], temporal_normalize=False)
+                Tsum += torch.sum(data_sample['dfs'], axis=0)
+                Rsum += torch.sum(torch.mul(data_sample['dfs'], data_sample['robs']), axis=0)
             LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
 
             # Null-adjust
@@ -433,7 +454,6 @@ class NDN(nn.Module):
                 rbar = torch.divide(Rsum, Tsum.clamp(1))
                 LLnulls = torch.log(rbar)-1
                 LLneuron = -LLneuron - LLnulls 
-                
         if bits:
             LLneuron/=np.log(2)
 

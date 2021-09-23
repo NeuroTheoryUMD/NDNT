@@ -110,7 +110,7 @@ class FFnetwork(nn.Module):
         return valid_input_dims
     # END FFnetwork.determine_input_dims
 
-    def forward(self, inputs):   
+    def forward(self, inputs):
 
         # Combine network inputs (if relevant)
         if isinstance(inputs, list):
@@ -226,6 +226,7 @@ class ReadoutNetwork(FFnetwork):
         """
         super(ReadoutNetwork, self).__init__(ffnet_params)
         self.network_type = 'readout'
+    # END ReadoutNetwork.__init__
 
     def determine_input_dims( self, input_dims_list, ffnet_type='readout' ):
         """
@@ -259,17 +260,20 @@ class ReadoutNetwork(FFnetwork):
 
     def forward(self, inputs):
         """network inputs correspond to output of conv layer, and (if it exists), a shifter""" 
+
         if self.shifter:
             y = self.layers[0](inputs[0], shift=inputs[1])
         else:
             y = self.layers[0](inputs[0])
         return y
+    # END ReadoutNetwork.forward
 
     def get_readout_locations(self):
         return self.layers[0].get_readout_locations()
 
     def set_readout_locations(self, locs):
         self.layers[0].set_readout_locations(locs)
+    # END ReadoutNetwork
 
 
 class FFnet_external(FFnetwork):
@@ -294,7 +298,7 @@ class FFnet_external(FFnetwork):
         self.input_dims_reshape = ffnet_params['input_dims_reshape']
     # END FFnet_external.__init__
 
-    def forward(self, inputs):   
+    def forward(self, inputs):
         # Leave all heavy lifting to the external module, which is in layers[0]. But concatenate network inputs, as needed
         x = inputs[0]
         for mm in range(1, len(inputs)):
