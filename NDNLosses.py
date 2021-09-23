@@ -61,7 +61,7 @@ class PoissonLoss_datafilter(nn.Module):
             
         return loss
 
-    def unit_loss(self, pred, target, data_filters = None ):        
+    def unit_loss(self, pred, target, data_filters=None, temporal_normalize=True ):        
         """This should be equivalent of forward, without sum over units"""
 
         if data_filters is None:
@@ -81,6 +81,9 @@ class PoissonLoss_datafilter(nn.Module):
             #    torch.mul(loss_full, data_filters), 
             #    torch.maximum(
             #        torch.sum(data_filters, axis=0), torch.tensor(1.0, device=data_filters.device)) )
-            unitloss = torch.mul(unit_weighting, torch.mul(loss_full, data_filters))
+            if temporal_normalize:
+                unitloss = torch.mul(unit_weighting, torch.sum( torch.mul(loss_full, data_filters), axis=0) )
+            else:
+                unitloss = torch.sum( torch.mul(loss_full, data_filters), axis=0 )
 
         return unitloss

@@ -364,45 +364,79 @@ class NDN(nn.Module):
         print('  Fit complete:', t1-t0, 'sec elapsed')
     # END NDN.train
         
-    def eval_models(self, sample, bits=False, null_adjusted=True):
+    def eval_models(self, data, data_indices=None, bits=False, null_adjusted=True):
         '''
-        get null-adjusted log likelihood
+        get null-adjusted log likelihood (if null_adjusted = True)
         bits=True will return in units of bits/spike
+
+        Note that data will be assumed to be a dataset, and data_indices will have to be specified batches
+        from dataset.__get_item__()
         '''
-        m0 = self.cpu()
-        yhat = m0(sample)
-        y = sample['robs']
-        dfs = sample['dfs']
+        if isinstance(data, dict): 
+            # Then assume that this is just to evaluate a sample: keep original here
+            assert data_indices is None, "Cannot use data_indices if passing in a dataset sample."
+            m0 = self.cpu()
+            yhat = m0(data)
+            y = data['robs']
+            dfs = data['dfs']
 
-        if self.loss_type == 'poisson':
-            #loss = nn.PoissonNLLLoss(log_input=False, reduction='none')
-            loss = self.loss_module.lossNR
+            if self.loss_type == 'poisson':
+                #loss = nn.PoissonNLLLoss(log_input=False, reduction='none')
+                loss = self.loss_module.lossNR
+            else:
+                print("This loss-type is not supported for eval_models.")
+                loss = None
+
+            LLraw = torch.sum( 
+                torch.multiply( 
+                    dfs, 
+                    loss(yhat, y)),
+                    axis=0).detach().cpu().numpy()
+            obscnt = torch.sum(
+                torch.multiply(dfs, y), axis=0).detach().cpu().numpy()
+            
+            Ts = np.maximum(torch.sum(dfs, axis=0).detach().cpu().numpy(), 1)
+
+            LLneuron = LLraw / np.maximum(obscnt,1) # note making positive
+
+            if null_adjusted:
+                predcnt = torch.sum(
+                    torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
+                rbar = np.divide(predcnt, Ts)
+                LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
+                LLneuron = -LLneuron - LLnulls             
+            return LLneuron  # end of the old method
+
         else:
-            print("This loss-type is not supported for eval_models.")
-            loss = None
+            # This will be the 'modern' eval_models using already-defined self.loss_module
+            # In this case, assume data is dataset
+            if data_indices is None:
+                data_indices = np.arange(len(data), dtype='int32')
 
-        LLraw = torch.sum(
-            torch.multiply( 
-                dfs, 
-                loss(yhat, y)),
-            axis=0).detach().cpu().numpy()
-        obscnt = torch.sum(
-            torch.multiply(dfs, y), axis=0).detach().cpu().numpy()
-        
-        Ts = np.maximum(torch.sum(dfs, axis=0).detach().cpu().numpy(), 1)
+            LLsum, Tsum, Rsum = 0, 0, 0
+            d = next(self.parameters()).device  # device the model is on
+            for tt in data_indices:
+                sample = data[tt]
+                for dsub in sample.keys():
+                    if sample[dsub].device != d:
+                        sample[dsub] = sample[dsub].to(d)
+                pred = self.out(sample)
+                LLsum += self.loss_module.unit_loss( 
+                    pred, sample['robs'], data_filters=sample['dfs'], temporal_normalize=False)
+                Tsum += torch.sum(sample['dfs'], axis=0)
+                Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0)
+            LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
 
-        LLneuron = LLraw / np.maximum(obscnt,1) # note making positive
-
-        if null_adjusted:
-            predcnt = torch.sum(
-                torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
-            rbar = np.divide(predcnt, Ts)
-            LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
-            LLneuron = -LLneuron - LLnulls 
-
+            # Null-adjust
+            if null_adjusted:
+                rbar = torch.divide(Rsum, Tsum.clamp(1))
+                LLnulls = torch.log(rbar)-1
+                LLneuron = -LLneuron - LLnulls 
+                
         if bits:
             LLneuron/=np.log(2)
-        return LLneuron
+
+        return LLneuron.detach().cpu().numpy()
 
     def get_weights(self, ffnet_target=0, layer_target=0, to_reshape=True, time_reverse=False):
         return self.networks[ffnet_target].layers[layer_target].get_weights(to_reshape, time_reverse=time_reverse)

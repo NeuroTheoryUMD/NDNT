@@ -717,10 +717,6 @@ class FixationLayer(NDNlayer):
 
         # Determine whether one- or two-dimensional readout
         self.num_space_dims = layer_params['num_filters']
-        if self.num_space_dims == 1:
-            self.spatial_mults = layer_params['input_dims'][1]/2
-        else:
-            self.spatial_mults = layer_params['input_dims'][1:3]/2
         
         # self.flatten = nn.Flatten()
         if 'batch_sample' in layer_params.keys():
@@ -752,10 +748,8 @@ class FixationLayer(NDNlayer):
             y: neuronal activity
         """
         # with torch.no_grad():
-
-        #     self.weights.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
-            # self.sigmas.clamp(min=0)  # sigma/variance is always a positive quantity
-            # self.sigmas.
+        # self.weights.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
+        # self.sigmas.clamp(min=0)  # sigma/variance is always a positive quantity
 
         N = x.shape[0]  # batch size
         # If using X-matrix to extract relevant weights
@@ -763,7 +757,7 @@ class FixationLayer(NDNlayer):
         # use indexing: x is just a list of weight indices
 
         #y = F.tanh(self.weights[x,:]) #* self.spatial_mults  # deprecated?
-        y = torch.tanh(self.weights[x,:]) #* self.spatial_mults
+        y = torch.tanh(self.weights[x,:]) 
 
         if self.single_sigma:
             s = self.sigmas**2 
