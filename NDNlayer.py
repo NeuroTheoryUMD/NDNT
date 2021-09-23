@@ -136,6 +136,7 @@ class NDNlayer(nn.Module):
         
     def compute_reg_loss(self):
         #return self.reg.compute_reg_loss(self.weights)
+        #print('layer rloss', self)
         return self.reg.compute_reg_loss(self.preprocess_weights())
 
     def get_weights(self, to_reshape=True, time_reverse=False):
@@ -728,7 +729,7 @@ class FixationLayer(NDNlayer):
         else:
             self.init_sigma = 0.5
 
-        self.single_sigma = True
+        self.single_sigma = False
         if 'single_sigma' in layer_params.keys():
             self.single_sigma = layer_params['single_sigma']
         

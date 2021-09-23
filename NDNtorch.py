@@ -336,8 +336,13 @@ class NDN(nn.Module):
             name = self.model_name
 
         # Precalculate any normalization needed from the data
-        # if self.unit_normalization:# where should unit normalization go?
-        #self.loss_module.set_unit_normalization(dataset) 
+        if self.loss_module.unit_normalization: # where should unit normalization go?
+            # compute firing rates given dataset
+            self.loss_module.set_unit_normalization(dataset) 
+
+        # Make reg modules
+        for network in self.networks:
+            network.prepare_regularization()
 
         # Create dataloaders
         batchsize = self.opt_params['batch_size']
@@ -352,10 +357,6 @@ class NDN(nn.Module):
             scheduler=scheduler,
             save_dir=save_dir, name = name,
             opt_params = self.opt_params)
-
-        # Make reg modules
-        for network in self.networks:
-            network.prepare_regularization()
 
         t0 = time.time()
         trainer.fit(self, train_dl, valid_dl, seed=seed)
@@ -411,7 +412,7 @@ class NDN(nn.Module):
             # This will be the 'modern' eval_models using already-defined self.loss_module
             # In this case, assume data is dataset
             if data_indices is None:
-                data_indices = np.arange(len(data), dtype='int32')
+                data_indices = np.arange(len(data), dtype='int32').tolist()
 
             LLsum, Tsum, Rsum = 0, 0, 0
             d = next(self.parameters()).device  # device the model is on

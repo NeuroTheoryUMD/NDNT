@@ -231,7 +231,7 @@ class RegModule(nn.Module):
 
     def forward(self, weights):
         """Calculate regularization penalty for various reg types"""
-
+        #print('  internal', self.reg_type)
         if self.reg_type == 'l1':
             reg_pen = torch.sum(torch.abs(weights))
 

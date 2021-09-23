@@ -164,9 +164,9 @@ class Trainer:
             self.model = nn.DataParallel(self.model)
         
         # self.model.to(self.device) # move model to device
-        if next(self.model.parameters()).device != self.device:
-            print("Moving model to %s" %self.device)
-            self.model.to(self.device)
+        #if next(self.model.parameters()).device != self.device:
+        print("Moving model to %s" %self.device)
+        self.model.to(self.device)
 
         # Print Model Summary: has to happen after model is moved to device
         # _ = ModelSummary(self.model, train_loader.dataset[0]['stim'].shape, batch_size=train_loader.batch_size, device=self.device, dtypes=None)

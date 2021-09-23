@@ -155,6 +155,16 @@ def create_time_embedding(stim, pdims, up_fac=1, tent_spacing=1):
 # END create_time_embedding
 
 
+def is_int( val ):
+    """returns Boolean as to whether val is one of many types of integers"""
+    if isinstance(val, int) or \
+        isinstance(val, np.int) or isinstance(val, np.int32) or isinstance(val, np.int64) or \
+        (isinstance(val, np.ndarray) and (len(val.shape) == 0)):
+        return True
+    else:
+        return False
+
+
 def design_matrix_tent_basis( s, anchors, zero_left=False, zero_right=False):
     """Produce a design matrix based on continuous data (s) and anchor points for a tent_basis.
     Here s is a continuous variable (e.g., a stimulus) that is function of time -- single dimension --
