@@ -742,6 +742,8 @@ class FixationLayer(NDNlayer):
             self.sigmas = Parameter(torch.Tensor(self.filter_dims[0],1))  
         
         self.sigmas.data.fill_(self.init_sigma)
+
+        self.sample = False
     # END FixationLayer.__init__
 
     def forward(self, x, shift=None):
@@ -767,16 +769,16 @@ class FixationLayer(NDNlayer):
             s = self.sigmas[x]**2
 
         # this will be batch-size x num_spatial dims (corresponding to mean loc)        
-        #if self.sample:
-        if self.training:
-            # add sigma-like noise around mean locations
-            if self.batch_sample:
-                sample_shape = (1,) + (self.num_space_dims,)
-                gaus_sample = y.new(*sample_shape).normal_().repeat(N,1)
-            else:
-                sample_shape = (N,) + (self.num_space_dims,)
-                gaus_sample = y.new(*sample_shape).normal_()
-            
-            y = (gaus_sample * s + y).clamp(-1,1)
+        if self.sample:  # can turn off sampling, even with training
+            if self.training:
+                # add sigma-like noise around mean locations
+                if self.batch_sample:
+                    sample_shape = (1,) + (self.num_space_dims,)
+                    gaus_sample = y.new(*sample_shape).normal_().repeat(N,1)
+                else:
+                    sample_shape = (N,) + (self.num_space_dims,)
+                    gaus_sample = y.new(*sample_shape).normal_()
+                
+                y = (gaus_sample * s + y).clamp(-1,1)
 
         return y
