@@ -60,7 +60,7 @@ class PoissonLoss_datafilter(nn.Module):
             if self.unit_normalization:
                 unit_weighting *= self.unit_norms
             
-            loss = torch.sum(torch.mul(unit_weighting, torch.mul(loss_full, data_filters)))
+            loss = torch.sum(torch.mul(unit_weighting, torch.mul(loss_full, data_filters))) / len(unit_weighting)
             
         return loss
     # END PoissonLoss_datafilter.forward

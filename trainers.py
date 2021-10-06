@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 # from tensorboardX import SummaryWriter
 from tqdm import tqdm # progress bar
 from NDNutils import ModelSummary, save_checkpoint, ensure_dir
-1
+
 
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""
@@ -188,12 +188,12 @@ class Trainer:
             self.epoch = epoch
             # train one epoch
             out = self.train_one_epoch(train_loader, epoch)
-            self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'].item(), epoch)
+            self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], epoch)
 
             # validate every epoch
             if epoch % 1 == 0:
                 out = self.validate_one_epoch(val_loader)
-                self.val_loss_min = out['val_loss'].item()
+                self.val_loss_min = out['val_loss']
                 self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, epoch)
             
             # scheduler if scheduler steps at epoch level
@@ -237,8 +237,8 @@ class Trainer:
                 else:
                     out = self.model.validation_step(data)
 
-                runningloss += out['val_loss']/nsteps
-                pbar.set_postfix({'val_loss': runningloss.item()})
+                runningloss += out['val_loss'].item()/nsteps
+                pbar.set_postfix({'val_loss': runningloss})
 
         return {'val_loss': runningloss}
             
@@ -271,11 +271,11 @@ class Trainer:
                     data[dsub] = data[dsub].to('cpu')
 
             self.n_iter += 1
-            self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
+            self.logger.add_scalar('Loss/Train', out['train_loss'], self.n_iter)
 
             runningloss += out['train_loss']/nsteps
             # update progress bar
-            pbar.set_postfix({'train_loss': runningloss.item()})
+            pbar.set_postfix({'train_loss': runningloss})
         
         return {'train_loss': runningloss} # should this be an aggregate out?
 
@@ -299,7 +299,7 @@ class Trainer:
         # calculate the loss again for monitoring
         loss = closure()
     
-        return {'train_loss': loss}
+        return {'train_loss': loss.detach().item()}
 
 
     def train_one_step(self, data):
@@ -323,7 +323,7 @@ class Trainer:
                     step_metric = self.name_to_metric(self.step_scheduler_metric)
                     self.scheduler.step(step_metric)
         
-        return {'train_loss': loss}
+        return {'train_loss': loss.detach().item()}
     
     def checkpoint_model(self, epoch=None):
         if isinstance(self.model, nn.DataParallel):
