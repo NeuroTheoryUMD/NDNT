@@ -30,6 +30,7 @@ def create_optimizer_params(
 
     optpar = {
         'batch_size': batch_size,
+        'device': None,
         'weight_decay': weight_decay,
         'early_stopping': early_stopping,
         'early_stopping_patience': early_stopping_patience,
