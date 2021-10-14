@@ -52,7 +52,7 @@ class PoissonLoss_datafilter(nn.Module):
         else:
             loss_full = self.lossNR(pred, target)
             # divide by number of valid time points
-            unit_weighting = torch.reciprocal( torch.sum(data_filters, axis=0) )
+            unit_weighting = torch.reciprocal( torch.sum(data_filters, axis=0).clamp(min=1) )
 
             #unit_weighting = torch.tensor(1.0, device=data_filters.device) / \
             #    torch.maximum(
