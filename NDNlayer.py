@@ -125,7 +125,6 @@ class NDNlayer(nn.Module):
     def forward(self, x):
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
-
         # Simple linear processing and bias
         x = torch.matmul(x, w) + self.bias
 
@@ -632,7 +631,7 @@ class STconvLayer(NDNlayer):
                 self.num_lags-1, 0)
 
         # Combine filter and temporal dimensions for conv -- collapses over both
-        self.folded_dims = self.input_dims[0]
+        #self.folded_dims = self.input_dims[0]
         self.num_outputs = np.prod(self.output_dims)
 
         # Initialize weights
@@ -671,22 +670,30 @@ class STconvLayer(NDNlayer):
         else:
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
             w = w.reshape(self.filter_dims+[-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
+            print('filter_size', self.filter_dims)
             # time-expand using tent-basis if it exists
             if self.tent_basis is not None:
                 w = torch.einsum('nctwh,tz->nczwh', w, self.tent_basis)
+            print(self.padding)
+            test = F.pad(s, self.padding, "constant", 0)
+            print(test.device)
+            print(s.shape, w.shape, test.shape)
+            print(self.stride, self.dilation)
             y = F.conv3d(
                 F.pad(s, self.padding, "constant", 0),
                 w, 
                 bias=self.bias,
                 stride=self.stride, dilation=self.dilation)
+            print('y', y)
             y = y.permute(2,1,3,4,0)    
         
         #y = torch.reshape(y, (-1, self.num_outputs))
         y = y.reshape((-1, self.num_outputs))
-        
+
         # Nonlinearity
         if self.NL is not None:
             y = self.NL(y)
+        print(y.shape, y.device)
         return y
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):

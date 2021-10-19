@@ -311,9 +311,9 @@ class Trainer:
             out = self.model.training_step(data)
 
         loss = out['loss']
-        with torch.set_grad_enabled(True):
-            loss.backward()
-            self.optimizer.step()
+        # with torch.set_grad_enabled(True):
+        loss.backward()
+        self.optimizer.step()
             
         if self.scheduler:
             if self.step_scheduler_after == "batch":
