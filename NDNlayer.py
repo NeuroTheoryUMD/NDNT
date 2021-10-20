@@ -200,6 +200,14 @@ class ConvLayer(NDNlayer):
     def __init__(self, layer_params, reg_vals=None):
         # All parameters of filter (weights) should be correctly fit in layer_params
         super(ConvLayer, self).__init__(layer_params, reg_vals=reg_vals)
+        
+        self.is1D = (self.input_dims[2] == 1)
+        # Checks to ensure cuda-bug with large convolutional filters is not activated #1
+        assert self.filter_dims[1] < self.input_dims[1], "Filter widths must be smaller than input dims."
+        # Check if 1 or 2-d convolution required
+        if self.input_dims[2] > 1:
+            assert self.filter_dims[2] < self.input_dims[2], "Filter widths must be smaller than input dims."
+
         if layer_params['stride'] is None:
             self.stride = 1   
         else: 
@@ -208,8 +216,7 @@ class ConvLayer(NDNlayer):
             self.dilation = 1
         else:
             self.dilation = layer_params['dilation']
-        # Check if 1 or 2-d convolution required
-        self.is1D = (self.input_dims[2] == 1)
+
         if self.stride > 1:
             print('Warning: Manual padding not yet implemented when stride > 1')
             self.padding = 0
@@ -226,12 +233,8 @@ class ConvLayer(NDNlayer):
         # Combine filter and temporal dimensions for conv -- collapses over both
         self.folded_dims = self.input_dims[0]*self.input_dims[3]
         self.num_outputs = np.prod(self.output_dims)
-        # QUESTION: note that this and other constants are used as function-arguments in the 
-        # forward, but the numbers are not combined directly. Is that mean they are ok to be
-        # numpy, versus other things? (check...) 
 
     def forward(self, x):
-
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
         w = self.preprocess_weights().reshape(self.filter_dims+[-1]).permute(4,0,3,1,2)
@@ -600,6 +603,9 @@ class STconvLayer(NDNlayer):
         # All parameters of filter (weights) should be correctly fit in layer_params
         super(STconvLayer, self).__init__(layer_params, reg_vals=reg_vals)
 
+        # Checks to ensure cuda-bug with large convolutional filters is not activated #1
+        assert self.filter_dims[1] < self.input_dims[1], "Filter widths must be smaller than input dims."
+
         if layer_params['stride'] is not None:
             assert layer_params['stride'] == 1, 'Cannot handle greater strides than 1.'
         if layer_params['dilation'] is None:
@@ -626,9 +632,13 @@ class STconvLayer(NDNlayer):
             self.padding = (self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
                 self.num_lags-1, 0)
         else:
+            # Checks to ensure cuda-bug with large convolutional filters is not activated #2
+            assert self.filter_dims[2] < self.input_dims[2], "Filter widths must be smaller than input dims."
+
             self.padding = (self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
                 self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2,
                 self.num_lags-1, 0)
+
 
         # Combine filter and temporal dimensions for conv -- collapses over both
         #self.folded_dims = self.input_dims[0]
@@ -670,21 +680,16 @@ class STconvLayer(NDNlayer):
         else:
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
             w = w.reshape(self.filter_dims+[-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
-            print('filter_size', self.filter_dims)
+            
             # time-expand using tent-basis if it exists
             if self.tent_basis is not None:
                 w = torch.einsum('nctwh,tz->nczwh', w, self.tent_basis)
-            print(self.padding)
-            test = F.pad(s, self.padding, "constant", 0)
-            print(test.device)
-            print(s.shape, w.shape, test.shape)
-            print(self.stride, self.dilation)
+
             y = F.conv3d(
                 F.pad(s, self.padding, "constant", 0),
                 w, 
                 bias=self.bias,
                 stride=self.stride, dilation=self.dilation)
-            print('y', y)
             y = y.permute(2,1,3,4,0)    
         
         #y = torch.reshape(y, (-1, self.num_outputs))
@@ -693,7 +698,6 @@ class STconvLayer(NDNlayer):
         # Nonlinearity
         if self.NL is not None:
             y = self.NL(y)
-        print(y.shape, y.device)
         return y
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
