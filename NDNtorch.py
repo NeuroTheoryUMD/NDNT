@@ -340,10 +340,26 @@ class NDN(LightningModule):
         # get optimizer: In theory this probably shouldn't happen here because it needs to know the model
         # but this was the easiest insertion point I could find for now
         if opt_params['optimizer']=='AdamW':
-            optimizer = torch.optim.AdamW(self.parameters(),
+
+            # weight decay only affects certain parameters
+            decay = []
+            
+            decay_names = []
+            no_decay_names = []
+            no_decay = []
+            for name, m in self.named_parameters():
+                print('checking {}'.format(name))
+                if 'weight' in name:
+                    decay.append(m)
+                    decay_names.append(name)
+                else:
+                    no_decay.append(m)
+                    no_decay_names.append(name)
+
+            # opt_params['weight_decay']
+            optimizer = torch.optim.AdamW([{'params': no_decay, 'weight_decay': 0}, {'params': decay, 'weight_decay': opt_params['weight_decay']}],
                     lr=opt_params['learning_rate'],
                     betas=opt_params['betas'],
-                    weight_decay=opt_params['weight_decay'],
                     amsgrad=opt_params['amsgrad'])
 
         elif opt_params['optimizer']=='Adam':

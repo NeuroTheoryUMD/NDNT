@@ -293,6 +293,9 @@ class DivNormLayer(NDNlayer):
         self.output_dims = self.input_dims
         self.num_dims = sum(np.asarray(self.input_dims)>1)
         self.num_outputs = int(np.prod(self.output_dims))
+
+        self.weights.data.fill_(1/self.num_outputs)
+        self.bias.data.fill_(0.5)
         
     def forward(self, x):
         # Pull weights and process given pos_constrain and normalization conditions
