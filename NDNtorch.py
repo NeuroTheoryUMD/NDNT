@@ -1,8 +1,12 @@
 ### NDNtorch.py
 # this defines NDNclass
 import numpy as np
+from pytorch_lightning import callbacks
 import torch
 from torch import nn
+
+from pytorch_lightning import LightningModule, Trainer
+from pytorch_lightning.callbacks import EarlyStopping
 
 # Imports from my code
 from NDNLosses import *
@@ -15,7 +19,7 @@ FFnets = {
     'readout': ReadoutNetwork
 }
 
-class NDN(nn.Module):
+class NDN(LightningModule):
 
     def __init__(self,
         ffnet_list = None,
@@ -81,6 +85,7 @@ class NDN(nn.Module):
         self.val_loss = loss_func
    
         self.opt_params = optimizer_params
+        self.use_lbfgs = False
     # END NDN.__init__
 
     def assemble_ffnetworks(self, ffnet_list, external_nets=None):
@@ -159,19 +164,61 @@ class NDN(nn.Module):
         return net_outs[self.ffnet_out[0]]
     # END Encoder.forward
 
-    def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
-        # x = batch['stim'] # TODO: this will have to handle the multiple Xstims in the future
-        y = batch['robs']
-        dfs = batch['dfs']
+    def configure_optimizers(self, opt_params=None):
+        if opt_params is None:
+            opt_params = self.opt_params
+        return self.get_optimizer(opt_params)
 
-        #if self.readout.shifter is not None and batch['eyepos'] is not None and self.readout.shifter:
-        #    y_hat = self(x, shifter=batch['eyepos'])
-        #else:
-        y_hat = self(batch)
+    def training_step(self, batch, batch_idx=None, optimizer_idx=None):
+        
+        if self.use_lbfgs:
+            """Manual optimization"""
+            optimizer = self.optimizers()
 
-        loss = self.loss(y_hat, y, dfs)
+            def closure():
+                y = batch['robs']
+                dfs = batch['dfs']
 
-        regularizers = self.compute_reg_loss()
+                y_hat = self(batch)
+
+                optimizer.zero_grad()
+
+                # compute loss
+                loss = self.loss(y_hat, y, dfs)
+
+                regularizers = self.compute_reg_loss()
+
+                train_loss = loss + regularizers
+                
+                self.manual_backward(train_loss)
+                return train_loss
+
+            optimizer.step(closure=closure)
+
+            with torch.no_grad():
+                y = batch['robs']
+                dfs = batch['dfs']
+
+                y_hat = self(batch)
+
+                loss = self.loss(y_hat, y, dfs)
+
+                regularizers = self.compute_reg_loss()
+
+        else: 
+            y = batch['robs']
+            dfs = batch['dfs']
+
+            y_hat = self(batch)
+
+            loss = self.loss(y_hat, y, dfs)
+
+            regularizers = self.compute_reg_loss()
+
+
+        self.log('train_loss', loss)
+        self.log('reg_val', regularizers)
+        # self.logger.experiment.add_scalar('Loss/Train (Epoch)', loss.item(), batch_idx)
 
         return {'loss': loss + regularizers, 'train_loss': loss, 'reg_loss': regularizers}
     # END Encoder.training_step
@@ -184,9 +231,24 @@ class NDN(nn.Module):
         y_hat = self(batch)
         loss = self.val_loss(y_hat, y, dfs)
         
-        reg_loss = self.compute_reg_loss()
-        
-        return {'loss': loss, 'val_loss': loss, 'reg_loss': reg_loss}
+        # reg_loss = self.compute_reg_loss()
+        self.log('val_loss', loss)
+
+        return {'loss': loss, 'val_loss': loss}
+    
+    def validation_epoch_end(self, validation_step_outputs):
+        # logging
+        # if(self.current_epoch==1):
+        #     self.logger.experiment.add_text('core', str(dict(self.core.hparams)))
+        #     self.logger.experiment.add_text('readout', str(dict(self.readout.hparams)))
+
+        avg_val_loss = torch.tensor([x['loss'] for x in validation_step_outputs]).mean()
+
+        self.log('val_loss', avg_val_loss, on_step=False, on_epoch=True, prog_bar=True)
+        return
+
+    # def on_epoch_end(self):
+    #     pass
     
     def compute_reg_loss(self):
         rloss = 0
@@ -197,8 +259,7 @@ class NDN(nn.Module):
     #def out(self, x):
     #    return self(x)
     
-    def get_trainer(self, dataset,
-        version=None,
+    def get_trainer(self, version=None,
         save_dir='./checkpoints',
         name='jnkname',
         optimizer = None,
@@ -207,44 +268,27 @@ class NDN(nn.Module):
         """
             Returns a trainer and object splits the training set into "train" and "valid"
         """
-        from trainers import Trainer, EarlyStopping
-        # from pathlib import Path
         import os
-    
-        # save_dir = Path(save_dir)
-        model = self
 
         if optimizer is None:
-            optimizer = self.get_optimizer(opt_params)
+            optimizer = self.configure_optimizers(opt_params)
+
+        if opt_params is None:
+            opt_params = self.opt_params
 
         if opt_params['early_stopping']:
             if isinstance(opt_params['early_stopping'], EarlyStopping):
                 earlystopping = opt_params['early_stopping']
             elif isinstance(opt_params['early_stopping'], dict):
-                earlystopping = EarlyStopping(patience=opt_params['early_stopping']['patience'],delta=opt_params['early_stopping']['delta'])
+                earlystopping = EarlyStopping(monitor='val_loss', patience=opt_params['early_stopping']['patience'],min_delta=opt_params['early_stopping']['delta'], check_finite=True)
             else:
-                earlystopping = EarlyStopping(patience=opt_params['early_stopping_patience'],delta=0.0)
+                earlystopping = EarlyStopping(monitor='val_loss', patience=opt_params['early_stopping_patience'],min_delta=0.0, check_finite=True)
+            callbacks = [earlystopping]
         else:
             earlystopping = None
+            callbacks = []
 
-        # Check for device assignment in opt_params
-        if opt_params['device'] is not None:
-            device = torch.device(opt_params['device'])
-        else:
-            device = None
-
-        if 'optimize_graph' in opt_params.keys(): # specifies whether to attempt to optimize the graph
-            optimize_graph = opt_params['optimize_graph']
-            # NOTE: will cause big problems if the batch size is variable
-        else:
-            optimize_graph = False
-
-        trainer = Trainer(model, optimizer, early_stopping=earlystopping,
-                dirpath=os.path.join(save_dir, name),
-                optimize_graph=optimize_graph,
-                device=device,
-                scheduler=scheduler,
-                version=version) # TODO: how do we want to handle name? Variable name is currently unused
+        trainer = Trainer(gpus=1, default_root_dir=os.path.join(save_dir, name), callbacks=callbacks, progress_bar_refresh_rate=20)
 
         return trainer
 
@@ -308,6 +352,9 @@ class NDN(nn.Module):
                     betas=opt_params['betas'])
 
         elif opt_params['optimizer']=='LBFGS':
+            self.automatic_optimization=False
+            self.use_lbfgs = True
+            
             if 'max_iter' in opt_params:
                 max_iter = opt_params['max_iter']
             else:
@@ -362,7 +409,6 @@ class NDN(nn.Module):
 
         # get trainer 
         trainer = self.get_trainer(
-            dataset,
             version=version,
             optimizer=optimizer,
             scheduler=scheduler,
@@ -370,7 +416,7 @@ class NDN(nn.Module):
             opt_params = self.opt_params)
 
         t0 = time.time()
-        trainer.fit(self, train_dl, valid_dl, seed=seed)
+        trainer.fit(self, train_dl, valid_dl)
         t1 = time.time()
 
         print('  Fit complete:', t1-t0, 'sec elapsed')

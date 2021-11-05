@@ -2,6 +2,7 @@
 import numpy as np
 import torch
 from torch import nn
+import torch.fx as fx
 
 from torch.nn import functional as F
 
@@ -232,7 +233,7 @@ class ConvLayer(NDNlayer):
 
         # Combine filter and temporal dimensions for conv -- collapses over both
         self.folded_dims = self.input_dims[0]*self.input_dims[3]
-        self.num_outputs = np.prod(self.output_dims)
+        self.num_outputs = int(np.prod(self.output_dims))
 
     def forward(self, x):
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
@@ -273,6 +274,7 @@ class ConvLayer(NDNlayer):
 
 
 class DivNormLayer(NDNlayer):
+    
     """Jake's div normalization implementation: not explicitly convolutional""" 
 
     # def __repr__(self):
@@ -280,6 +282,7 @@ class DivNormLayer(NDNlayer):
     #     s += 'DivNormLayer'
 
     def __init__(self, layer_params, reg_vals=None):
+        
         # number of filters (and size of filters) is set by channel dims on the input
         num_filters = layer_params['input_dims'][0]
         layer_params['num_filters']  = num_filters
@@ -288,8 +291,9 @@ class DivNormLayer(NDNlayer):
         super(DivNormLayer, self).__init__(layer_params, reg_vals=reg_vals)
 
         self.output_dims = self.input_dims
-        self.num_outputs = np.prod(self.output_dims)
-
+        self.num_dims = sum(np.asarray(self.input_dims)>1)
+        self.num_outputs = int(np.prod(self.output_dims))
+        
     def forward(self, x):
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
@@ -303,13 +307,13 @@ class DivNormLayer(NDNlayer):
         # Linear processing to create divisive drive
         xdiv = torch.einsum('nc...,ck->nk...', x, w)
 
-        if len(x.shape)==2:
+        if self.num_dims==0:
             xdiv = xdiv + self.bias[None,:]
-        elif len(x.shape)==3:
+        elif self.num_dims==1:
             xdiv = xdiv + self.bias[None,:,None] # is 1D convolutional
-        elif len(x.shape)==4:
+        elif self.num_dims==2:
             xdiv = xdiv + self.bias[None,:,None,None] # is 2D convolutional
-        elif len(x.shape)==5:
+        elif self.num_dims==3:
             xdiv = xdiv + self.bias[None,:,None,None,None] # is 2D convolutional
         else:
             raise NotImplementedError('DivNormLayer only supports 2D, 3D, and 4D tensors')
@@ -642,7 +646,7 @@ class STconvLayer(NDNlayer):
 
         # Combine filter and temporal dimensions for conv -- collapses over both
         #self.folded_dims = self.input_dims[0]
-        self.num_outputs = np.prod(self.output_dims)
+        self.num_outputs = int(np.prod(self.output_dims))
 
         # Initialize weights
         self.initialize_weights()
@@ -652,7 +656,7 @@ class STconvLayer(NDNlayer):
 
     def initialize_weights(self):
         """Initialize weights and biases"""
-        nn.init.xavier_normal_(self.weights.data)
+        nn.init.kaiming_normal_(self.weights.data)
         if self.bias is not None:
             self.bias.data.fill_(0)
 
