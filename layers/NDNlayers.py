@@ -1,4 +1,3 @@
-
 import numpy as np
 import torch
 from torch import nn
@@ -14,6 +13,11 @@ from torch.nn import init
 from regularization import Regularization
 from copy import deepcopy
 from activations import AdaptiveELU
+
+import NDNT.Utils.PlotFuncs as plotfuncs
+import importlib as imp
+imp.reload(plotfuncs)
+from NDNT.Utils.PlotFuncs import plot_filters_ST1D
 
 NLtypes = {
     'lin': None,
@@ -169,24 +173,11 @@ class NDNlayer(nn.Module):
                 pp.requires_grad = val
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=True):
+        #from Utils.PlotFuncs import plot_filters_ST1D
         ws = self.get_weights(time_reverse=time_reverse)
         # check if 1d: otherwise return error for now
-        num_filters = ws.shape[-1]
-        if num_filters < 8:
-            num_cols = num_filters
-        num_rows = np.ceil(num_filters/num_cols).astype(int)
         if self.input_dims[2] == 1:
-            import matplotlib.pyplot as plt
-            # then 1-d spatiotemporal plots
-            fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
-            fig.set_size_inches(16, row_height*num_rows)
-            plt.tight_layout()
-            for cc in range(num_filters):
-                ax = plt.subplot(num_rows, num_cols, cc+1)
-                plt.imshow(ws[:,:,cc].T, cmap=cmaps)
-                ax.set_yticklabels([])
-                ax.set_xticklabels([])
-            plt.show()
+            plot_filters_ST1D(  ws, cmaps=cmaps, num_cols=num_cols, row_height=row_height, time_reverse=time_reverse)
         else:
             print("Not implemented plotting 3-d filters yet.")
     ## END NDNLayer class
@@ -593,7 +584,7 @@ class STconvLayer(NDNlayer):
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         tent_basis = None
         if layer_params['temporal_tent_spacing'] is not None:
-            from NDNutils import tent_basis_generate
+            from Utils import tent_basis_generate
             num_lags = layer_params['filter_dims'][3]
             tent_basis = tent_basis_generate(np.arange(0, num_lags, layer_params['temporal_tent_spacing']))
             num_lag_params = tent_basis.shape[1]
