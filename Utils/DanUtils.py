@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.io as sio
 from copy import deepcopy
-import NDNutils as NDNutils
+import Utils.NDNutils as NDNutils
 import matplotlib.pyplot as plt
 
 def binocular_data_import( datadir, expt_num ):

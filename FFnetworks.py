@@ -4,7 +4,14 @@ from torch import nn
 
 from copy import deepcopy
 #from .regularization import reg_setup_ffnet
-from NDNlayer import *
+
+import layers.NDNlayers 
+# For purposes of debugging, internal modules are reloaded
+import importlib as imp
+imp.reload(layers.NDNlayers)
+imp.reload(layers)  # somehow this step did the trick
+from layers.NDNlayers import *
+
 
 LayerTypes = {
     'normal': NDNlayer,

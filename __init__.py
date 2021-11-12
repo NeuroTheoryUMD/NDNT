@@ -4,6 +4,10 @@ fpath = os.path.dirname(os.path.realpath(__file__))
 print(fpath)
 sys.path.insert(0, fpath) # why is this necessary?
 
+#from .NDNlayer import *
+#from .FFnetworks import *
+#from .NDNLosses import PoissonLoss_datafilter
+
 # from . import regularization
 # from . import LBFGS
 # from . import NDNutils

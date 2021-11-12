@@ -5,14 +5,19 @@ import torch
 from torch import nn
 
 # Imports from my code
-from NDNLosses import *
-from NDNlayer import *
-from FFnetworks import *
-from NDNutils import create_optimizer_params
+import FFnetworks as NDNnetworks
+# For purposes of debugging
+import importlib
+importlib.reload(NDNnetworks)
+
+from .NDNLosses import *
+
+#from .FFnetworks import *
+from .Utils import create_optimizer_params
 
 FFnets = {
-    'normal': FFnetwork,
-    'readout': ReadoutNetwork
+    'normal': NDNnetworks.FFnetwork,
+    'readout': NDNnetworks.ReadoutNetwork
 }
 
 class NDN(nn.Module):
@@ -505,6 +510,7 @@ class NDN(nn.Module):
             self.networks[ii].set_parameters(layer_target=layer_target, name=name, val=val)
 
     def plot_filters(self, cmaps=None, ffnet_target=0, layer_target=0, num_cols=8):
+        print('NDN level 1234')
         self.networks[ffnet_target].plot_filters(layer_target=layer_target, cmaps=cmaps, num_cols=num_cols)
 
     def save_model(self, filename=None, alt_dirname=None):
@@ -595,7 +601,7 @@ class NDN(nn.Module):
                 model: loaded model
         '''
         
-        from NDNutils import get_fit_versions
+        from Utils.NDNutils import get_fit_versions
 
         assert checkpoint_path is not None, "Need to provide a checkpoint_path"
         assert model_name is not None, "Need to provide a model_name"
