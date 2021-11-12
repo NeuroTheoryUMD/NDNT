@@ -64,7 +64,10 @@ class Trainer:
             num_gpus=None,
             version=None,
             max_epochs=100,
-            early_stopping=None):
+            early_stopping=None,
+            log_activations=True,
+            accumulate_grad_batches=1,
+            ):
         '''
         Args:
             model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
@@ -88,6 +91,8 @@ class Trainer:
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.optimize_graph = optimize_graph
+        self.log_activations = log_activations
+        self.accumulate_grad_batches = accumulate_grad_batches
         
         ensure_dir(dirpath)
 
@@ -137,10 +142,34 @@ class Trainer:
         
         self.model = model # can we just assign this here? --> makes it look more like the way lightning trainer is called (with model passed into fit)
 
+        self.prepare_fit(seed=seed)
+        # Print Model Summary: has to happen after model is moved to device
+        # _ = ModelSummary(self.model, train_loader.dataset[0]['stim'].shape, batch_size=train_loader.batch_size, device=self.device, dtypes=None)
+
+        # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
+        try:            
+            self.fit_loop(self.max_epochs, train_loader, val_loader)
+            
+        except KeyboardInterrupt: # user aborted training
+            
+            self.graceful_exit()
+            return
+
+        self.graceful_exit()
+
+    def prepare_fit(self, seed=None):
+        '''
+        This is called before fit_loop, and is used to set up the model and optimizer.
+        '''
         GPU_FLAG = torch.cuda.is_available()
         GPU_USED = self.device.type == 'cuda'
         print("\nGPU Available: %r, GPU Used: %r" %(GPU_FLAG, GPU_USED))
-
+        if GPU_FLAG and GPU_USED:
+            self.use_gpu = True
+            torch.cuda.empty_cache()
+        else:
+            self.use_gpu = False
+        
         # main training loop
         if self.optimize_graph:
             torch.backends.cudnn.benchmark = True # uses the inbuilt cudnn auto-tuner to find the fastest convolution algorithms.
@@ -163,32 +192,66 @@ class Trainer:
             # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
             self.model = nn.DataParallel(self.model)
         
-        # self.model.to(self.device) # move model to device
-        #if next(self.model.parameters()).device != self.device:
-        print("Moving model to %s" %self.device)
-        self.model.to(self.device)
+        self.model.to(self.device) # move model to device
 
-        # Print Model Summary: has to happen after model is moved to device
-        # _ = ModelSummary(self.model, train_loader.dataset[0]['stim'].shape, batch_size=train_loader.batch_size, device=self.device, dtypes=None)
+        self.optimizer.zero_grad() # set gradients to zero
 
-        # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
-        try:            
-            self.fit_loop(self.max_epochs, train_loader, val_loader)
-            
-        except KeyboardInterrupt: # user aborted training
-            
-            self.graceful_exit()
-            return
-
-        self.graceful_exit()
     
     def fit_loop(self, epochs, train_loader, val_loader):
+        
+        self.nbatch = len(train_loader)
+        self.accumulate_grad_batches = min([self.nbatch, self.accumulate_grad_batches])
+
+        if self.log_activations:
+            activations = {}
+            self.hooks = []
+            self.logged_parameters = []
+
+            def hook(name):
+                def hook_fn(m, i, o):
+                    activations[name] = o
+
+                return hook_fn
+
+            # Hook the activations
+            for name, layer in self.model.named_modules():
+                if 'NL' in name or 'reg' in name or 'loss' in name:
+                    continue
+
+                self.logged_parameters.append(name)
+                self.hooks.append(layer.register_forward_hook(hook(name)))
+
         # main loop for training
         for epoch in range(epochs):
             self.epoch = epoch
             # train one epoch
             out = self.train_one_epoch(train_loader, epoch)
             self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], epoch)
+
+            if self.log_activations:
+                for name in self.logged_parameters:
+                    try:
+                        self.logger.add_histogram(
+                                    f"Activations/{name.replace('.', ' ')}/hist",
+                                    activations[name].view(-1),
+                                    epoch,
+                                )
+
+                        self.logger.add_scalar(
+                                    f"Activations/{name.replace('.', ' ')}/mean",
+                                    activations[name].mean(),
+                                    epoch,
+                                )
+
+                        self.logger.add_scalar(
+                                    f"Activations/{name.replace('.', ' ')}/std",
+                                    activations[name]
+                                    .std(dim=0)
+                                    .mean(),
+                                    epoch,
+                                )
+                    except:
+                        pass
 
             # validate every epoch
             if epoch % 1 == 0:
@@ -248,41 +311,39 @@ class Trainer:
         self.model.train() # set model to training mode
 
         runningloss = 0
-        nsteps = len(train_loader)
-        pbar = tqdm(train_loader, total=nsteps, bar_format=None) # progress bar for looping over data
+
+        pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
         pbar.set_description("Epoch %i" %epoch)
-        for data in pbar:
-            # Data to device if it's not already there
-            moved_to_device = False
-            for dsub in data:
-                if data[dsub].device != self.device:
-                    moved_to_device = True
-                    data[dsub] = data[dsub].to(self.device)
+
+        for batch_idx, data in enumerate(pbar):
             
             # handle optimization step
             if isinstance(self.optimizer, torch.optim.LBFGS):
-                out = self.train_lbfgs_step(data)
+                out = self.train_lbfgs_step(data, batch_idx=batch_idx)
             else:
-                out = self.train_one_step(data)
-            
-            # Move Data off device
-            if moved_to_device:
-                for dsub in data:
-                    data[dsub] = data[dsub].to('cpu')
+                out = self.train_one_step(data, batch_idx=batch_idx)
 
+            if self.use_gpu:
+                torch.cuda.empty_cache()
+            
             self.n_iter += 1
             self.logger.add_scalar('Loss/Train', out['train_loss'], self.n_iter)
 
-            runningloss += out['train_loss']/nsteps
+            runningloss += out['train_loss']
             # update progress bar
-            pbar.set_postfix({'train_loss': runningloss})
-        
-        return {'train_loss': runningloss} # should this be an aggregate out?
+            pbar.set_postfix({'train_loss': runningloss/(batch_idx + 1)})
 
-    def train_lbfgs_step(self, data):
+        return {'train_loss': runningloss/self.nbatch} # should this be an aggregate out?
+
+    def train_lbfgs_step(self, data, batch_idx=None):
         # # Version 1: This version is based on the torch.optim.lbfgs implementation
-        self.optimizer.zero_grad()
-
+        
+        # Data to device if it's not already there
+        if self.use_gpu:
+            for dsub in data:
+                if data[dsub].device != self.device:
+                    data[dsub] = data[dsub].to(self.device)
+                    
         def closure():
             self.optimizer.zero_grad()
             
@@ -294,17 +355,25 @@ class Trainer:
 
             return loss
             
-        self.optimizer.step(closure)
-            
-        # calculate the loss again for monitoring
+        # calculate the loss for monitoring
         loss = closure()
-    
+        
+        if ((batch_idx + 1) % self.accumulate_grad_batches == 0) or (batch_idx + 1 == self.nbatch):
+            self.optimizer.step(closure)
+            self.optimizer.zero_grad()
+            
+        
         return {'train_loss': loss.detach().item()}
 
 
-    def train_one_step(self, data):
+    def train_one_step(self, data, batch_idx=None):
+        
+        # Data to device if it's not already there
+        if self.use_gpu:
+            for dsub in data:
+                if data[dsub].device != self.device:
+                    data[dsub] = data[dsub].to(self.device)
 
-        self.optimizer.zero_grad() # zero the gradients
         if isinstance(self.model, nn.DataParallel):
             out = self.model.module.training_step(data)
         else:
@@ -313,15 +382,19 @@ class Trainer:
         loss = out['loss']
         # with torch.set_grad_enabled(True):
         loss.backward()
-        self.optimizer.step()
+        
+        # optimization step
+        if ((batch_idx + 1) % self.accumulate_grad_batches == 0) or (batch_idx + 1 == self.nbatch):
+            self.optimizer.step()
+            self.optimizer.zero_grad() # zero the gradients for the next batch
             
-        if self.scheduler:
-            if self.step_scheduler_after == "batch":
-                if self.step_scheduler_metric is None:
-                    self.scheduler.step()
-                else:
-                    step_metric = self.name_to_metric(self.step_scheduler_metric)
-                    self.scheduler.step(step_metric)
+            if self.scheduler:
+                if self.step_scheduler_after == "batch":
+                    if self.step_scheduler_metric is None:
+                        self.scheduler.step()
+                    else:
+                        step_metric = self.name_to_metric(self.step_scheduler_metric)
+                        self.scheduler.step(step_metric)
         
         return {'train_loss': loss.detach().item()}
     
@@ -350,6 +423,10 @@ class Trainer:
 
         if isinstance(self.model, nn.DataParallel):
             self.model = self.model.module # get the non-data-parallel model
+
+        if self.device.type == 'cuda':
+            self.model.cpu()
+            torch.cuda.empty_cache()
 
         self.model.eval()
 
