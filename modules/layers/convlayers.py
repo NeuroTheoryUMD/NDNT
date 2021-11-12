@@ -1,7 +1,7 @@
 import torch
 from torch.nn import functional as F
 
-from ndnlayer import NDNLayer
+from .ndnlayer import NDNLayer
 import numpy as np
 
 class ConvLayer(NDNLayer):

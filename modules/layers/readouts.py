@@ -5,7 +5,7 @@ from torch.nn import functional as F
 import numpy as np
 
 from copy import deepcopy
-from ndnlayer import NDNLayer
+from .ndnlayer import NDNLayer
 
 class ReadoutLayer(NDNLayer):
 

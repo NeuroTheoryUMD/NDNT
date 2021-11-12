@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from torch.nn.parameter import Parameter
 from torch.nn import init
 
-from neureye.models.regularizers import Regularization
+from NDNT.modules.regularization import Regularization
 from .. activations import NLtypes
 
 from copy import deepcopy
@@ -86,6 +86,7 @@ class NDNLayer(nn.Module):
         
         output_dims = [num_filters, 1, 1, 1]
         self.output_dims = output_dims
+        self.num_outputs = np.prod(self.output_dims)
         
         self.norm_type = norm_type
         self.pos_constraint = pos_constraint

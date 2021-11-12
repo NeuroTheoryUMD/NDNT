@@ -1,7 +1,6 @@
 import torch
-from ndnlayer import NDNLayer
-from math import prod
-
+from .ndnlayer import NDNLayer
+import numpy as np
 class DivNormLayer(NDNLayer):
     """
     Divisive normalization implementation: not explicitly convolutional
@@ -38,7 +37,7 @@ class DivNormLayer(NDNLayer):
             pos_constraint=pos_constraint, **kwargs)
 
         self.output_dims = self.input_dims
-        self.num_outputs = prod(self.output_dims)
+        self.num_outputs = np.prod(self.output_dims)
 
         self.weight.data.fill_(1/self.num_outputs)
         self.bias.data.fill_(0.5)

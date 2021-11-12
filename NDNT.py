@@ -6,7 +6,7 @@ import numpy as np # TODO: we can get rid of this and just use torch for math
 import NDNT.metrics.poisson_loss as losses
 from NDNT.utils import create_optimizer_params
 
-import networks as NDNnetworks
+import NDNT.networks as NDNnetworks
 
 FFnets = {
     'normal': NDNnetworks.FFnetwork,
@@ -80,11 +80,11 @@ class NDN(nn.Module):
             self.loss_type = 'custom'
             loss_func = loss_type
             # Loss function defaults to Poisson loss with data filters (requires dfs field in dataset batch)
-            self.loss = loss_func
-            self.val_loss = self.loss
 
         # Has both reduced and non-reduced for other eval functions
         self.loss_module = loss_func
+        self.loss = loss_func
+        self.val_loss = self.loss
 
     def assemble_ffnetworks(self, ffnet_list, external_nets=None):
         """
@@ -220,7 +220,13 @@ class NDN(nn.Module):
 
         # Check for device assignment in opt_params
         if opt_params['device'] is not None:
-            device = torch.device(opt_params['device'])
+            if isinstance(opt_params['device'], str):
+                device = torch.device(opt_params['device'])
+            elif isinstance(opt_params['device'], torch.device):
+                device = opt_params['device']
+            else:
+                raise ValueError("opt_params['device'] must be a string or torch.device")
+            
         else:
             device = None
 
@@ -346,6 +352,7 @@ class NDN(nn.Module):
         scheduler=None, 
         train_inds=None,
         val_inds=None,
+        opt_params=None,
         seed=None):
         '''
         This is the main training loop.
@@ -377,6 +384,9 @@ class NDN(nn.Module):
         train_dl, valid_dl = self.get_dataloaders(
             dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds)
 
+        if opt_params is None:
+            opt_params = self.opt_params
+            
         # get trainer 
         trainer = self.get_trainer(
             dataset,
@@ -384,7 +394,7 @@ class NDN(nn.Module):
             optimizer=optimizer,
             scheduler=scheduler,
             save_dir=save_dir, name = name,
-            opt_params = self.opt_params)
+            opt_params = opt_params)
 
         t0 = time.time()
         trainer.fit(self, train_dl, valid_dl, seed=seed)

@@ -383,6 +383,10 @@ class Trainer:
 
         self.model.eval()
 
+        if self.log_activations:
+            for hook in self.hooks:
+                hook.remove()
+
         # save model
         torch.save(self.model, os.path.join(self.dirpath, 'model.pt'))
 

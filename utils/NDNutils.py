@@ -11,7 +11,7 @@ from collections import OrderedDict
 #################### CREATE OTHER PARAMETER-DICTS ####################
 def create_optimizer_params(
         batch_size=1000,
-        weight_decay=None,
+        weight_decay=0.01,
         early_stopping=True,
         early_stopping_patience=4,
         max_iter=10000,
