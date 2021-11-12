@@ -1,19 +1,12 @@
-### NDNtorch.py
-# this defines NDNclass
-import numpy as np
 import torch
 from torch import nn
 
-# Imports from my code
-import FFnetworks as NDNnetworks
-# For purposes of debugging
-import importlib
-importlib.reload(NDNnetworks)
+import numpy as np # TODO: we can get rid of this and just use torch for math
 
-from .NDNLosses import *
+import NDNT.metrics.poisson_loss as losses
+from NDNT.utils import create_optimizer_params
 
-#from .FFnetworks import *
-from .Utils import create_optimizer_params
+import networks as NDNnetworks
 
 FFnets = {
     'normal': NDNnetworks.FFnetwork,
@@ -31,9 +24,12 @@ class NDN(nn.Module):
         model_name='NDN_model',
         data_dir='./checkpoints'):
 
-        assert ffnet_list is not None, 'Missing networks' 
+        super(NDN, self).__init__()
 
-        super().__init__()
+        if ffnet_list is not None:
+            self.networks = self.assemble_ffnetworks(ffnet_list)
+        else:
+            self.networks = None
 
         if (ffnet_out is None) or (ffnet_out == -1):
             ffnet_out = len(ffnet_list)-1
@@ -41,30 +37,7 @@ class NDN(nn.Module):
         self.model_name = model_name
         self.data_dir = data_dir
 
-        # Assign optimizer params
-        if optimizer_params is None:
-            optimizer_params = create_optimizer_params()
-
-        # Assign loss function (from list)
-        if isinstance(loss_type, str):
-            self.loss_type = loss_type
-            if loss_type == 'poisson' or loss_type == 'poissonT':
-                loss_func = PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
-                if loss_type == 'poissonT':
-                    loss_func.unit_normalization = False
-
-            elif loss_type == 'gaussian':
-                print('Gaussian loss_func not implemented yet.')
-                loss_func = None
-            else:
-                print('Invalid loss function.')
-                loss_func = None
-        else: # assume passed in loss function directly
-            self.loss_type = 'custom'
-            loss_func = loss_type
-
-        # Has both reduced and non-reduced for other eval functions
-        self.loss_module = loss_func
+        self.configure_loss(loss_type)
 
         # Assemble FFnetworks from if passed in network-list -- else can embed model
         assert type(ffnet_list) is list, 'FFnetwork list in NDN constructor must be a list.'
@@ -82,27 +55,55 @@ class NDN(nn.Module):
         self.networks = networks
         self.ffnet_out = ffnet_out
         
-        self.loss = loss_func
-        self.val_loss = loss_func
-   
+        # Assign optimizer params
+        if optimizer_params is None:
+            optimizer_params = create_optimizer_params()
         self.opt_params = optimizer_params
     # END NDN.__init__
 
+    def configure_loss(self, loss_type):
+        # Assign loss function (from list)
+        if isinstance(loss_type, str):
+            self.loss_type = loss_type
+            if loss_type == 'poisson' or loss_type == 'poissonT':
+                loss_func = losses.PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
+                if loss_type == 'poissonT':
+                    loss_func.unit_normalization = False
+
+            elif loss_type == 'gaussian':
+                print('Gaussian loss_func not implemented yet.')
+                loss_func = None
+            else:
+                print('Invalid loss function.')
+                loss_func = None
+        else: # assume passed in loss function directly
+            self.loss_type = 'custom'
+            loss_func = loss_type
+            # Loss function defaults to Poisson loss with data filters (requires dfs field in dataset batch)
+            self.loss = loss_func
+            self.val_loss = self.loss
+
+        # Has both reduced and non-reduced for other eval functions
+        self.loss_module = loss_func
+
     def assemble_ffnetworks(self, ffnet_list, external_nets=None):
-        """This function takes a list of ffnetworks and puts them together 
+        """
+        This function takes a list of ffnetworks and puts them together 
         in order. This has to do two steps for each ffnetwork: 
+
         1. Plug in the inputs to each ffnetwork as specified
         2. Builds the ff-network with the input
-        This returns the a 'network', which is (currently) a [lightning] module with a 
+        
+        This returns the a 'network', which is (currently) a module with a 
         'forward' and 'reg_loss' function specified.
 
         When multiple ffnet inputs are concatenated, it will always happen in the first
         (filter) dimension, so all other dimensions must match
         """
-        assert type(ffnet_list) is list, "Yo ffnet_list is screwy."
+        assert type(ffnet_list) is list, "ffnet_list must be a list."
         
         num_networks = len(ffnet_list)
-        # Make list of lightning modules
+        # Make list of pytorch modules
         networks = nn.ModuleList()
 
         for mm in range(num_networks):
@@ -119,23 +120,22 @@ class NDN(nn.Module):
             # Create corresponding FFnetwork
             net_type = ffnet_list[mm]['ffnet_type']
             if net_type == 'external':  # separate case because needs to pass in external modules directly
-                networks.append( FFnet_external(ffnet_list[mm], external_nets))
+                networks.append( NDNnetworks.FFnet_external(ffnet_list[mm], external_nets))
             else:
-                networks.append( FFnets[net_type](ffnet_list[mm]) )
+                networks.append( FFnets[net_type](**ffnet_list[mm]) )
 
         return networks
     # END assemble_ffnetworks
 
     def compute_network_outputs(self, Xs):
         """Note this could return net_ins and net_outs, but currently just saving net_outs (no reason for net_ins yet"""
-        # if type(Xs) is not list:
-        #     Xs = [Xs]
+        
+        assert 'networks' in dir(self), "compute_network_outputs: No networks defined in this NDN"
 
         net_ins, net_outs = [], []
         for ii in range(len(self.networks)):
             if self.networks[ii].ffnets_in is None:
                 # then getting external input
-                #net_ins.append( [Xs[self.networks[ii].xstim_n]] )
                 net_outs.append( self.networks[ii]( [Xs[self.networks[ii].xstim_n]] ) )
             else:
                 in_nets = self.networks[ii].ffnets_in
@@ -144,12 +144,6 @@ class NDN(nn.Module):
                 for mm in range(len(in_nets)):
                     inputs.append( net_outs[in_nets[mm]] )
 
-                # This would automatically  concatenate, which will be FFnetwork-specfic instead (and handled in FFnetwork)
-                #input_cat = net_outs[in_nets[0]]
-                #for mm in range(1, len(in_nets)):
-                #    input_cat = torch.cat( (input_cat, net_outs[in_nets[mm]]), 1 )
-
-                #net_ins.append( inputs )
                 net_outs.append( self.networks[ii](inputs) ) 
         return net_ins, net_outs
     # END compute_network_outputs
@@ -165,13 +159,10 @@ class NDN(nn.Module):
     # END Encoder.forward
 
     def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
-        # x = batch['stim'] # TODO: this will have to handle the multiple Xstims in the future
+        
         y = batch['robs']
         dfs = batch['dfs']
 
-        #if self.readout.shifter is not None and batch['eyepos'] is not None and self.readout.shifter:
-        #    y_hat = self(x, shifter=batch['eyepos'])
-        #else:
         y_hat = self(batch)
 
         loss = self.loss(y_hat, y, dfs)
@@ -182,7 +173,7 @@ class NDN(nn.Module):
     # END Encoder.training_step
 
     def validation_step(self, batch, batch_idx=None):
-        # x = batch['stim']
+        
         y = batch['robs']
         dfs = batch['dfs']
 
@@ -198,9 +189,6 @@ class NDN(nn.Module):
         for network in self.networks:
             rloss += network.compute_reg_loss()
         return rloss
-
-    #def out(self, x):
-    #    return self(x)
     
     def get_trainer(self, dataset,
         version=None,
@@ -212,11 +200,9 @@ class NDN(nn.Module):
         """
             Returns a trainer and object splits the training set into "train" and "valid"
         """
-        from trainers import Trainer, EarlyStopping
-        # from pathlib import Path
+        from NDNT.training import Trainer, EarlyStopping
         import os
     
-        # save_dir = Path(save_dir)
         model = self
 
         if optimizer is None:
@@ -263,8 +249,8 @@ class NDN(nn.Module):
                 train_inds = dataset.train_inds
                 val_inds = dataset.val_inds
             else:
-                n_val = np.floor(len(dataset)/5).astype(int)
-                n_train = (len(dataset)-n_val).astype(int)
+                n_val = len(dataset)//5
+                n_train = len(dataset)-n_val
 
                 if data_seed is None:
                     train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
@@ -296,15 +282,33 @@ class NDN(nn.Module):
         return train_dl, valid_dl
     # END NDN.get_dataloaders
 
-    def get_optimizer(self, opt_params):
+    def get_optimizer(self, opt_params=None):
 
-        # get optimizer: In theory this probably shouldn't happen here because it needs to know the model
-        # but this was the easiest insertion point I could find for now
+        # Assign optimizer params
+        if opt_params is None:
+            opt_params = create_optimizer_params()
+        
+        # Assign optimizer
         if opt_params['optimizer']=='AdamW':
-            optimizer = torch.optim.AdamW(self.parameters(),
+
+            # weight decay only affects certain parameters
+            decay = []
+            
+            decay_names = []
+            no_decay_names = []
+            no_decay = []
+            for name, m in self.named_parameters():
+                print('checking {}'.format(name))
+                if 'weight' in name:
+                    decay.append(m)
+                    decay_names.append(name)
+                else:
+                    no_decay.append(m)
+                    no_decay_names.append(name)
+
+            optimizer = torch.optim.AdamW([{'params': no_decay, 'weight_decay': 0}, {'params': decay, 'weight_decay': opt_params['weight_decay']}],
                     lr=opt_params['learning_rate'],
                     betas=opt_params['betas'],
-                    weight_decay=opt_params['weight_decay'],
                     amsgrad=opt_params['amsgrad'])
 
         elif opt_params['optimizer']=='Adam':
@@ -333,8 +337,16 @@ class NDN(nn.Module):
     # END NDN.get_optimizer
     
     def fit(
-        self, dataset, version=None, save_dir=None, name=None, optimizer=None, scheduler=None, 
-        train_inds=None, val_inds=None, seed=None):
+        self,
+        dataset,
+        version:int=None,
+        save_dir:str=None,
+        name:str=None,
+        optimizer=None,
+        scheduler=None, 
+        train_inds=None,
+        val_inds=None,
+        seed=None):
         '''
         This is the main training loop.
         Steps:
@@ -601,7 +613,7 @@ class NDN(nn.Module):
                 model: loaded model
         '''
         
-        from Utils.NDNutils import get_fit_versions
+        from NDNT.utils.NDNutils import get_fit_versions
 
         assert checkpoint_path is not None, "Need to provide a checkpoint_path"
         assert model_name is not None, "Need to provide a model_name"
@@ -617,37 +629,3 @@ class NDN(nn.Module):
         model = torch.load(out['model_file'][ver_ix])
         
         return model
-
-        # import os
-        # import dill
-        # if alt_dirname is None:
-        #     fn = './checkpoints/'
-        # else:
-        #     fn = alt_dirname
-        #     if alt_dirname != '/':
-        #         fn += '/'
-        # if filename is None:
-        #     assert model_name is not None, 'Need model_name or filename.'
-        #     fn += model_name + '.pkl'
-        # else :
-        #     fn += filename
-
-        # if not os.path.isfile(fn):
-        #     raise ValueError(str('%s is not a valid filename' %fn))
-
-        # print( 'Loading model:', fn)
-        # with open(fn, 'rb') as f:
-        #     model = dill.load(f)
-        # model.encoder = None
-        # if version is not None:
-        #     from pathlib import Path
-        #     assert filename is None, 'Must recover version from checkpoint dir.'
-        #     # Then load checkpointed encoder on top of model
-        #     chkpntdir = fn[:-4] + '/version_' + str(version) + '/'
-        #     chkpath = Path(chkpntdir) / 'checkpoints'
-        #     ckpt_files = list(chkpath.glob('*.ckpt'))
-        #     model.encoder = Encoder.load_from_checkpoint(str(ckpt_files[0]))
-        #     nn.utils.remove_weight_norm(model.encoder.core.features.layer0.conv)
-        #     print( '-> Updated with', str(ckpt_files[0]))
-
-        # return model
