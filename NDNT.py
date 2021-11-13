@@ -196,6 +196,9 @@ class NDN(nn.Module):
         name='jnkname',
         optimizer = None,
         scheduler = None,
+        device = None,
+        accumulated_grad_batches=1,
+        log_activations=True,
         opt_params = None):
         """
             Returns a trainer and object splits the training set into "train" and "valid"
@@ -204,9 +207,12 @@ class NDN(nn.Module):
         import os
     
         model = self
+        
+        if opt_params is None:
+                opt_params = create_optimizer_params()
 
         if optimizer is None:
-            optimizer = self.get_optimizer(opt_params)
+            optimizer = self.get_optimizer(**opt_params)
 
         if opt_params['early_stopping']:
             if isinstance(opt_params['early_stopping'], EarlyStopping):
@@ -219,16 +225,15 @@ class NDN(nn.Module):
             earlystopping = None
 
         # Check for device assignment in opt_params
-        if opt_params['device'] is not None:
-            if isinstance(opt_params['device'], str):
-                device = torch.device(opt_params['device'])
-            elif isinstance(opt_params['device'], torch.device):
-                device = opt_params['device']
-            else:
-                raise ValueError("opt_params['device'] must be a string or torch.device")
-            
-        else:
-            device = None
+        if device is None:
+            if opt_params['device'] is not None:
+                if isinstance(opt_params['device'], str):
+                    device = torch.device(opt_params['device'])
+                elif isinstance(opt_params['device'], torch.device):
+                    device = opt_params['device']
+                else:
+                    raise ValueError("opt_params['device'] must be a string or torch.device")
+        assert isinstance(device, torch.device), "NDN.get_trainer: device must be a torch.device by this point"
 
         if 'optimize_graph' in opt_params.keys(): # specifies whether to attempt to optimize the graph
             optimize_graph = opt_params['optimize_graph']
@@ -241,11 +246,20 @@ class NDN(nn.Module):
                 optimize_graph=optimize_graph,
                 device=device,
                 scheduler=scheduler,
+                accumulate_grad_batches=accumulated_grad_batches,
+                log_activations=log_activations,
                 version=version) # TODO: how do we want to handle name? Variable name is currently unused
 
         return trainer
 
-    def get_dataloaders(self, dataset, batch_size=10, num_workers=4, train_inds=None, val_inds=None, data_seed=None):
+    def get_dataloaders(self,
+            dataset,
+            batch_size=10,
+            num_workers=4,
+            train_inds=None,
+            val_inds=None,
+            data_seed=None):
+
         from torch.utils.data import DataLoader, random_split
 
         if train_inds is None or val_inds is None:
@@ -288,14 +302,18 @@ class NDN(nn.Module):
         return train_dl, valid_dl
     # END NDN.get_dataloaders
 
-    def get_optimizer(self, opt_params=None):
-
-        # Assign optimizer params
-        if opt_params is None:
-            opt_params = create_optimizer_params()
+    def get_optimizer(self,
+            optimizer='AdamW',
+            learning_rate=0.001,
+            weight_decay=0.01,
+            amsgrad=False,
+            betas=(0.9, 0.999),
+            max_iter=10,
+            history_size=4,
+            **kwargs):
         
         # Assign optimizer
-        if opt_params['optimizer']=='AdamW':
+        if optimizer=='AdamW':
 
             # weight decay only affects certain parameters
             decay = []
@@ -312,38 +330,29 @@ class NDN(nn.Module):
                     no_decay.append(m)
                     no_decay_names.append(name)
 
-            optimizer = torch.optim.AdamW([{'params': no_decay, 'weight_decay': 0}, {'params': decay, 'weight_decay': opt_params['weight_decay']}],
-                    lr=opt_params['learning_rate'],
-                    betas=opt_params['betas'],
-                    amsgrad=opt_params['amsgrad'])
+            optimizer = torch.optim.AdamW([{'params': no_decay, 'weight_decay': 0}, {'params': decay, 'weight_decay': weight_decay}],
+                    lr=learning_rate,
+                    betas=betas,
+                    amsgrad=amsgrad)
 
-        elif opt_params['optimizer']=='Adam':
+        elif optimizer=='Adam':
             optimizer = torch.optim.Adam(self.parameters(),
-                    lr=opt_params['learning_rate'],
-                    betas=opt_params['betas'])
+                    lr=learning_rate,
+                    betas=betas)
 
-        elif opt_params['optimizer']=='LBFGS':
-            if 'max_iter' in opt_params:
-                max_iter = opt_params['max_iter']
-            else:
-                max_iter = 4
-            if 'history_size' in opt_params:
-                history_size = opt_params['history_size']
-            else:
-                history_size = 10
+        elif optimizer=='LBFGS':
 
             optimizer = torch.optim.LBFGS(self.parameters(), history_size=history_size,
                             max_iter=max_iter,
                             line_search_fn="strong_wolfe")
 
         else:
-            raise ValueError('optimizer [%s] not supported' %opt_params['optimizer'])
+            raise ValueError('optimizer [%s] not supported' %optimizer)
         
         return optimizer
     # END NDN.get_optimizer
     
-    def fit(
-        self,
+    def fit(self,
         dataset,
         version:int=None,
         save_dir:str=None,
@@ -353,6 +362,9 @@ class NDN(nn.Module):
         train_inds=None,
         val_inds=None,
         opt_params=None,
+        device=None,
+        accumulated_grad_batches=1,
+        log_activations=True,
         seed=None):
         '''
         This is the main training loop.
@@ -393,8 +405,12 @@ class NDN(nn.Module):
             version=version,
             optimizer=optimizer,
             scheduler=scheduler,
-            save_dir=save_dir, name = name,
-            opt_params = opt_params)
+            save_dir=save_dir,
+            name=name,
+            device=device,
+            accumulated_grad_batches=accumulated_grad_batches,
+            log_activations=log_activations,
+            opt_params=opt_params)
 
         t0 = time.time()
         trainer.fit(self, train_dl, valid_dl, seed=seed)
