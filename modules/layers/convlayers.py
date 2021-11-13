@@ -49,7 +49,7 @@ class ConvLayer(NDNLayer):
                 else:
                     raise ValueError('conv_width must be int or list of length 1, 2, or 3.')
 
-        super(ConvLayer, self).__init__(input_dims,
+        super().__init__(input_dims,
             num_filters,
             filter_dims=filter_dims,
             **kwargs,
@@ -180,7 +180,7 @@ class STconvLayer(ConvLayer):
         assert dilation == 1, 'Cannot handle greater dilations than 1.'
 
         # All parameters of filter (weights) should be correctly fit in layer_params
-        super(STconvLayer, self).__init__(input_dims,
+        super().__init__(input_dims,
             num_filters, conv_dims, stride=stride, dilation=dilation, **kwargs)
 
         self.num_lags = self.input_dims[3]
@@ -271,6 +271,6 @@ class STconvLayer(ConvLayer):
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
         # Overload plot_filters to automatically time_reverse
-        super(STconvLayer, self).plot_filters( 
+        super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
             time_reverse=time_reverse)

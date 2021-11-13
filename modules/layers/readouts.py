@@ -28,10 +28,10 @@ class ReadoutLayer(NDNLayer):
             filter_dims = deepcopy(input_dims)
         
         filter_dims[1:3] = [1,1]
-        print("filter dims:", filter_dims)
+        
         assert filter_dims[3] == 1, 'Cant handle temporal filter dims here, yet.'
-        print('kwarg keys:', kwargs.keys())
-        super(ReadoutLayer,self).__init__(input_dims,
+        
+        super().__init__(input_dims,
             num_filters,
             filter_dims=filter_dims,
             **kwargs)
@@ -257,7 +257,7 @@ class FixationLayer(NDNLayer):
         assert num_filters in [1,2], 'incorrect num_filters in fix-layer'
         bias = False
 
-        super(FixationLayer,self).__init__(input_dims=input_dims,
+        super().__init__(input_dims=input_dims,
             num_filters=num_filters,
             filter_dims=filter_dims,
             NLtype=NLtype,

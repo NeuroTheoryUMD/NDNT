@@ -33,10 +33,10 @@ class FFnetwork(nn.Module):
             **kwargs,
             ):
 
-        if len(kwargs) > 0:
-            print("FFnet: unknown kwargs:", kwargs)
+        # if len(kwargs) > 0:
+        #     print("FFnet: unknown kwargs:", kwargs)
 
-        super(FFnetwork, self).__init__()
+        super().__init__()
         
         self.network_type = ffnet_type
         print("FFnet: network type:", self.network_type)

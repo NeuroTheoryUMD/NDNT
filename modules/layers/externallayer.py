@@ -15,7 +15,7 @@ class ExternalLayer(nn.Module):
 
         """
         Make module constructor and set some 'shell' values that might be queried later"""
-        super(ExternalLayer, self).__init__()
+        super().__init__()
         self.input_dims = input_dims
         self.num_filters = num_filters
         self.filter_dims = [0,0,0,0]  # setting in case its used somewhere later -- probably not....

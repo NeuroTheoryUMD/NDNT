@@ -24,8 +24,8 @@ class NDN(nn.Module):
         model_name='NDN_model',
         data_dir='./checkpoints'):
 
-        super(NDN, self).__init__()
-
+        super().__init__()
+        
         if ffnet_list is not None:
             self.networks = self.assemble_ffnetworks(ffnet_list)
         else:

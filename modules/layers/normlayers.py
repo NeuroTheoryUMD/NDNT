@@ -31,7 +31,7 @@ class DivNormLayer(NDNLayer):
         
         filter_dims = [num_filters, 1, 1, 1]
 
-        super(DivNormLayer, self).__init__(input_dims,
+        super().__init__(input_dims,
             num_filters,
             filter_dims=filter_dims,
             pos_constraint=pos_constraint, **kwargs)
