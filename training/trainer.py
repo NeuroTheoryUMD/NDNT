@@ -179,7 +179,7 @@ class Trainer:
 
         # main loop for training
         for epoch in range(epochs):
-            self.epoch = epoch
+            self.epoch += 1
             # train one epoch
             out = self.train_one_epoch(train_loader, epoch)
             self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], epoch)
@@ -244,7 +244,7 @@ class Trainer:
         pbar = tqdm(val_loader, total=nsteps, bar_format=None)
         pbar.set_description("Validating ver=%d" %self.version)
         with torch.no_grad():
-            for data in pbar:
+            for batch_idx, data in enumerate(pbar):
                 
                 # Data to device if it's not already there
                 for dsub in data:
@@ -256,10 +256,10 @@ class Trainer:
                 else:
                     out = self.model.validation_step(data)
 
-                runningloss += out['val_loss'].item()/nsteps
-                pbar.set_postfix({'val_loss': runningloss})
+                runningloss += out['val_loss'].item()
+                pbar.set_postfix({'val_loss': runningloss/(batch_idx+1)})
 
-        return {'val_loss': runningloss}
+        return {'val_loss': runningloss/nsteps}
             
     def train_one_epoch(self, train_loader, epoch=0):
         # train for one epoch

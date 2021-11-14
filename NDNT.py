@@ -428,9 +428,6 @@ class NDN(nn.Module):
             opt_params=opt_params,
             full_batch=full_batch)
 
-        print(type(optimizer))
-        print(type(trainer))
-
         t0 = time.time()
         trainer.fit(self, train_dl, valid_dl, seed=seed)
         t1 = time.time()

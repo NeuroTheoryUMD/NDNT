@@ -10,6 +10,7 @@ from collections import OrderedDict
 
 #################### CREATE OTHER PARAMETER-DICTS ####################
 def create_optimizer_params(
+        optimizer='AdamW',
         batch_size=1000,
         weight_decay=0.01,
         early_stopping=True,
@@ -45,7 +46,7 @@ def create_optimizer_params(
         'num_gpus': num_gpus,
         'history': history,
         'line_search': line_search,
-        'optimizer': 'AdamW'}
+        'optimizer': optimizer}
 
     return optpar
 # END create_optimizer_params
