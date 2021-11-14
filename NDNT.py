@@ -190,7 +190,7 @@ class NDN(nn.Module):
             rloss += network.compute_reg_loss()
         return rloss
     
-    def get_trainer(self, dataset,
+    def get_trainer(self,
         version=None,
         save_dir='./checkpoints',
         name='jnkname',
@@ -199,14 +199,17 @@ class NDN(nn.Module):
         device = None,
         accumulated_grad_batches=1,
         log_activations=True,
-        opt_params = None):
+        opt_params = None, 
+        full_batch=False):
         """
             Returns a trainer and object splits the training set into "train" and "valid"
         """
-        from NDNT.training import Trainer, EarlyStopping
+        from NDNT.training import Trainer, EarlyStopping, LBFGSTrainer
         import os
     
         model = self
+
+        trainers = {'step': Trainer, 'lbfgs': LBFGSTrainer}
         
         if opt_params is None:
                 opt_params = create_optimizer_params()
@@ -241,14 +244,22 @@ class NDN(nn.Module):
         else:
             optimize_graph = False
 
-        trainer = Trainer(model, optimizer, early_stopping=earlystopping,
+        if isinstance(optimizer, torch.optim.LBFGS):
+            trainer_type = 'lbfgs'
+        else:
+            trainer_type = 'step'
+        
+        trainer = trainers[trainer_type](model=model,
+                optimizer=optimizer,
+                early_stopping=earlystopping,
                 dirpath=os.path.join(save_dir, name),
                 optimize_graph=optimize_graph,
                 device=device,
                 scheduler=scheduler,
                 accumulate_grad_batches=accumulated_grad_batches,
                 log_activations=log_activations,
-                version=version) # TODO: how do we want to handle name? Variable name is currently unused
+                version=version,
+                full_batch=full_batch)
 
         return trainer
 
@@ -344,7 +355,7 @@ class NDN(nn.Module):
 
             optimizer = torch.optim.LBFGS(self.parameters(), history_size=history_size,
                             max_iter=max_iter,
-                            line_search_fn="strong_wolfe")
+                            tolerance_change=1e-3)
 
         else:
             raise ValueError('optimizer [%s] not supported' %optimizer)
@@ -352,6 +363,11 @@ class NDN(nn.Module):
         return optimizer
     # END NDN.get_optimizer
     
+    def prepare_regularization(self):
+
+        for network in self.networks:
+            network.prepare_regularization()
+
     def fit(self,
         dataset,
         version:int=None,
@@ -364,6 +380,7 @@ class NDN(nn.Module):
         opt_params=None,
         device=None,
         accumulated_grad_batches=1,
+        full_batch=False,
         log_activations=True,
         seed=None):
         '''
@@ -388,8 +405,7 @@ class NDN(nn.Module):
             self.loss_module.set_unit_normalization(avRs) 
 
         # Make reg modules
-        for network in self.networks:
-            network.prepare_regularization()
+        self.prepare_regularization()
 
         # Create dataloaders
         batchsize = self.opt_params['batch_size']
@@ -401,7 +417,6 @@ class NDN(nn.Module):
             
         # get trainer 
         trainer = self.get_trainer(
-            dataset,
             version=version,
             optimizer=optimizer,
             scheduler=scheduler,
@@ -410,7 +425,11 @@ class NDN(nn.Module):
             device=device,
             accumulated_grad_batches=accumulated_grad_batches,
             log_activations=log_activations,
-            opt_params=opt_params)
+            opt_params=opt_params,
+            full_batch=full_batch)
+
+        print(type(optimizer))
+        print(type(trainer))
 
         t0 = time.time()
         trainer.fit(self, train_dl, valid_dl, seed=seed)

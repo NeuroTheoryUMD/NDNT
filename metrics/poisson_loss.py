@@ -48,7 +48,7 @@ class PoissonLoss_datafilter(nn.Module):
         
         if data_filters is None:
             # Currently this does not apply unit_norms
-            loss = self.Poisson_loss(pred, target)
+            loss = self.loss(pred, target)
         else:
             loss_full = self.lossNR(pred, target)
             # divide by number of valid time points

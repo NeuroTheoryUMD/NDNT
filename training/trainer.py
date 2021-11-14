@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm # progress bar
 from NDNT.utils import save_checkpoint, ensure_dir
-
+from .lbfgsnew import LBFGSNew
 class Trainer:
     '''
     This is the most basic trainer. There are fancier things we could add (hooks, callbacks, etc.), but I don't understand them well enough yet.
@@ -20,6 +20,7 @@ class Trainer:
             early_stopping=None,
             log_activations=True,
             accumulate_grad_batches=1,
+            **kwargs
             ):
         '''
         Args:
@@ -122,7 +123,9 @@ class Trainer:
             torch.cuda.empty_cache()
         else:
             self.use_gpu = False
-        
+
+        self.use_closure = isinstance(self.optimizer, torch.optim.LBFGS) or isinstance(self.optimizer, LBFGSNew)
+
         # main training loop
         if self.optimize_graph:
             torch.backends.cudnn.benchmark = True # uses the inbuilt cudnn auto-tuner to find the fastest convolution algorithms.
@@ -261,6 +264,8 @@ class Trainer:
     def train_one_epoch(self, train_loader, epoch=0):
         # train for one epoch
         
+        assert not self.use_closure, "Trainer: LBFGS and LBFGSNew are supported by LBFGSTrainer"
+        
         self.model.train() # set model to training mode
 
         runningloss = 0
@@ -271,10 +276,7 @@ class Trainer:
         for batch_idx, data in enumerate(pbar):
             
             # handle optimization step
-            if isinstance(self.optimizer, torch.optim.LBFGS):
-                out = self.train_lbfgs_step(data, batch_idx=batch_idx)
-            else:
-                out = self.train_one_step(data, batch_idx=batch_idx)
+            out = self.train_one_step(data, batch_idx=batch_idx)
 
             if self.use_gpu:
                 torch.cuda.empty_cache()
@@ -287,36 +289,6 @@ class Trainer:
             pbar.set_postfix({'train_loss': runningloss/(batch_idx + 1)})
 
         return {'train_loss': runningloss/self.nbatch} # should this be an aggregate out?
-
-    def train_lbfgs_step(self, data, batch_idx=None):
-        # # Version 1: This version is based on the torch.optim.lbfgs implementation
-        
-        # Data to device if it's not already there
-        if self.use_gpu:
-            for dsub in data:
-                if data[dsub].device != self.device:
-                    data[dsub] = data[dsub].to(self.device)
-                    
-        def closure():
-            self.optimizer.zero_grad()
-            
-            with torch.set_grad_enabled(True):
-                out = self.model.training_step(data)
-            
-            loss = out['loss']
-            loss.backward()
-
-            return loss
-            
-        # calculate the loss for monitoring
-        loss = closure()
-        
-        if ((batch_idx + 1) % self.accumulate_grad_batches == 0) or (batch_idx + 1 == self.nbatch):
-            self.optimizer.step(closure)
-            self.optimizer.zero_grad()
-            
-        
-        return {'train_loss': loss.detach().item()}
 
 
     def train_one_step(self, data, batch_idx=None):
@@ -402,3 +374,68 @@ class Trainer:
     
         # self.logger.export_scalars_to_json(os.path.join(self.dirpath, "all_scalars.json"))
         self.logger.close()
+
+class LBFGSTrainer(Trainer):
+
+    def __init__(self,
+            full_batch=False,
+            **kwargs,
+            ):
+
+        super().__init__(**kwargs)
+
+        self.fullbatch = full_batch
+        
+        
+    def train_one_epoch(self, train_loader, epoch=0):
+        # train for one epoch
+        if self.fullbatch:
+            self.accumulate_grad_batches = len(train_loader)
+        
+        self.model.train() # set model to training mode
+
+        self.iter = 1
+        max_iter = self.optimizer.param_groups[0]['max_iter']
+
+        def closure():
+
+            # pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
+            # pbar.set_description("Epoch %i, iter %d/%d" %(epoch, self.iter, max_iter))
+            
+            self.optimizer.zero_grad()
+            loss = torch.zeros(1, device=self.device)
+
+            for batch_idx, data in enumerate(train_loader):
+            
+                if batch_idx < self.accumulate_grad_batches:
+
+                    if self.use_gpu:
+                        for dsub in data:
+                            if data[dsub].device != self.device:
+                                data[dsub] = data[dsub].to(self.device)
+
+                    out = self.model.training_step(data)
+                    loss += out['loss']
+                    self.n_iter += 1
+                    self.logger.add_scalar('Loss/Train', out['train_loss'].detach().item(), self.n_iter)
+                    # update progress bar
+                    # pbar.set_postfix({'train_loss': loss.detach().item()/(batch_idx + 1)})
+                else:
+                    break
+
+            loss/=self.accumulate_grad_batches
+            loss.backward()
+
+            self.iter += 1
+
+            return loss
+
+        loss = self.optimizer.step(closure)
+        print("Epoch %d (%d iter): loss = %02.3f" %(epoch, self.iter, loss.detach().item()))
+        self.optimizer.zero_grad() # zero the gradients for the next batch
+        
+        if self.use_gpu:
+                torch.cuda.empty_cache()
+
+        return {'train_loss': loss} # should this be an aggregate out?
+
