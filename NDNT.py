@@ -473,51 +473,54 @@ class NDN(nn.Module):
             y = data['robs']
             dfs = data['dfs']
 
-            if self.loss_type == 'poisson':
-                #loss = nn.PoissonNLLLoss(log_input=False, reduction='none')
-                loss = self.loss_module.lossNR
+            if 'poisson' in m0.loss_type:
+                loss = m0.loss_module.lossNR
             else:
                 print("This loss-type is not supported for eval_models.")
                 loss = None
 
-            LLraw = torch.sum( 
-                torch.multiply( 
-                    dfs, 
-                    loss(yhat, y)),
-                    axis=0).detach().cpu().numpy()
-            obscnt = torch.sum(
-                torch.multiply(dfs, y), axis=0).detach().cpu().numpy()
-            
-            Ts = np.maximum(torch.sum(dfs, axis=0).detach().cpu().numpy(), 1)
+            with torch.no_grad():
+                LLraw = torch.sum( 
+                    torch.multiply( 
+                        dfs, 
+                        loss(yhat, y)),
+                        axis=0).detach().cpu().numpy()
+                obscnt = torch.sum(
+                    torch.multiply(dfs, y), axis=0).detach().cpu().numpy()
+                
+                Ts = np.maximum(torch.sum(dfs, axis=0).detach().cpu().numpy(), 1)
 
-            LLneuron = LLraw / np.maximum(obscnt,1) # note making positive
+                LLneuron = LLraw / np.maximum(obscnt,1) # note making positive
 
-            if null_adjusted:
-                predcnt = torch.sum(
-                    torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
-                rbar = np.divide(predcnt, Ts)
-                LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
-                LLneuron = -LLneuron - LLnulls             
+                if null_adjusted:
+                    predcnt = torch.sum(
+                        torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
+                    rbar = np.divide(predcnt, Ts)
+                    LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
+                    LLneuron = -LLneuron - LLnulls             
+
             return LLneuron  # end of the old method
 
         else:
             # This will be the 'modern' eval_models using already-defined self.loss_module
             # In this case, assume data is dataset
             if data_inds is None:
-                data_inds = np.arange(len(data), dtype='int64')
+                data_inds = range(len(data))
 
             LLsum, Tsum, Rsum = 0, 0, 0
+            from tqdm import tqdm
             d = next(self.parameters()).device  # device the model is on
-            for tt in data_inds:
+            for tt in tqdm(data_inds, desc='Eval models'):
                 data_sample = data[tt]
                 for dsub in data_sample.keys():
                     if data_sample[dsub].device != d:
                         data_sample[dsub] = data_sample[dsub].to(d)
-                pred = self(data_sample)
-                LLsum += self.loss_module.unit_loss( 
-                    pred, data_sample['robs'], data_filters=data_sample['dfs'], temporal_normalize=False)
-                Tsum += torch.sum(data_sample['dfs'], axis=0)
-                Rsum += torch.sum(torch.mul(data_sample['dfs'], data_sample['robs']), axis=0)
+                with torch.no_grad():
+                    pred = self(data_sample)
+                    LLsum += self.loss_module.unit_loss( 
+                        pred, data_sample['robs'], data_filters=data_sample['dfs'], temporal_normalize=False)
+                    Tsum += torch.sum(data_sample['dfs'], axis=0)
+                    Rsum += torch.sum(torch.mul(data_sample['dfs'], data_sample['robs']), axis=0)
             LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
 
             # Null-adjust
