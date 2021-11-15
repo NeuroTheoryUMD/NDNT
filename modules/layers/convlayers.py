@@ -164,9 +164,23 @@ class STconvLayer(ConvLayer):
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         tent_basis = None
         if temporal_tent_spacing is not None:
-            from utils import tent_basis_generate
+            from NDNT.utils import tent_basis_generate
             num_lags = conv_dims[2]
-            tent_basis = tent_basis_generate(np.arange(0, num_lags, temporal_tent_spacing))
+            tentctrs = list(np.arange(0, num_lags, temporal_tent_spacing))
+            tent_basis = tent_basis_generate(tentctrs)
+            if tent_basis.shape[0] != num_lags:
+                print('Warning: tent_basis.shape[0] != num_lags')
+                print('tent_basis.shape = ', tent_basis.shape)
+                print('num_lags = ', num_lags)
+                print('Adding zeros or truncating to match')
+                if tent_basis.shape[0] > num_lags:
+                    print('Truncating')
+                    tent_basis = tent_basis[:num_lags,:]
+                else:
+                    print('Adding zeros')
+                    tent_basis = np.concatenate([tent_basis, np.zeros((num_lags-tent_basis.shape[0], tent_basis.shape[1]))], axis=0)
+                
+            tent_basis = tent_basis[:num_lags,:]
             num_lag_params = tent_basis.shape[1]
             print('STconv: num_lag_params =', num_lag_params)
             conv_dims[2] = num_lag_params
