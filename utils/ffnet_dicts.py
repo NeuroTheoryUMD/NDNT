@@ -129,7 +129,7 @@ def ffnet_dict_NIM(
     for ll in range(num_layers):
         pos_con = False
         if ll > 0:
-            if ei_layers[ll-1] is not None:
+            if ei_layers[ll-1] is not None and ei_layers[ll-1] > 0:
                 pos_con = True
         if ei_layers[ll] is None:
             num_inh = 0
