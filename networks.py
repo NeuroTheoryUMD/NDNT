@@ -13,6 +13,7 @@ LayerTypes = {
     'divnorm': layers.DivNormLayer,
     'stconv': layers.STconvLayer,
     'fixation': layers.FixationLayer,
+    'time': layers.TimeLayer,
     # 'external': layers.ExternalLayer,
     
 }
@@ -48,9 +49,16 @@ class FFnetwork(nn.Module):
         self.xstim_n = xstim_n
         self.ffnets_in = ffnet_n
 
-        assert self.determine_input_dims(input_dims_list, ffnet_type=ffnet_type), 'Invalid network inputs.'
+        if layer_list is None:
+            num_layers = 0
+        else:
+            num_layers = len(self.layer_list)
 
-        num_layers = len(self.layer_list)
+        if num_layers == 0:
+            self.layers = nn.ModuleList()
+            return
+            
+        assert self.determine_input_dims(input_dims_list, ffnet_type=ffnet_type), 'Invalid network inputs.'
 
         # Check that first layer has matching input dims (to FFnetwork)
         if self.layer_list[0]['input_dims'] is None:
@@ -255,7 +263,7 @@ class ReadoutNetwork(FFnetwork):
         Currently there is no extra code required at the network level. I think the constructor
         can be left off entirely, but leaving in in case want to add something.
         """
-        super(ReadoutNetwork, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.network_type = 'readout'
 
     def determine_input_dims( self, input_dims_list, **kwargs):

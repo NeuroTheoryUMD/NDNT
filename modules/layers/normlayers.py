@@ -37,10 +37,10 @@ class DivNormLayer(NDNLayer):
             pos_constraint=pos_constraint, **kwargs)
 
         self.output_dims = self.input_dims
-        self.num_outputs = np.prod(self.output_dims)
+        self.num_outputs = int(np.prod(self.output_dims))
 
-        self.weight.data.fill_(1/self.num_outputs)
-        self.bias.data.fill_(0.5)
+        # self.weight.data.fill_(1/self.num_outputs)
+        # self.bias.data.fill_(0.5)
 
     def forward(self, x):
         # TODO: make if statement for 1-d or 2-d, 3-d indpendent of x, should be specified by a property

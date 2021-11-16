@@ -62,6 +62,8 @@ class ConvLayer(NDNLayer):
         if input_dims[2] == 1:  # then 1-d spatial
             filter_dims[2] = 1
             self.is1D = (self.input_dims[2] == 1)
+        else:
+            self.is1D = False
 
         self.filter_dims = filter_dims
         # Checks to ensure cuda-bug with large convolutional filters is not activated #1
@@ -111,7 +113,8 @@ class ConvLayer(NDNLayer):
                 F.pad(s, self.padding, "constant", 0), # we do our own padding
                 torch.reshape( w, (-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]) ), 
                 bias=self.bias,
-                stride=self.stride, padding=self.padding, dilation=self.dilation)
+                stride=self.stride,
+                dilation=self.dilation)
 
         y = torch.reshape(y, (-1, self.num_outputs))
         
