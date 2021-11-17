@@ -137,13 +137,15 @@ class NDN(nn.Module):
             if self.networks[ii].ffnets_in is None:
                 # then getting external input
                 net_outs.append( self.networks[ii]( [Xs[self.networks[ii].xstim_n]] ) )
+                net_ins.append( [Xs[self.networks[ii].xstim_n]] )
             else:
                 in_nets = self.networks[ii].ffnets_in
                 # Assemble network inputs in list, which will be used by FFnetwork
                 inputs = []
                 for mm in range(len(in_nets)):
                     inputs.append( net_outs[in_nets[mm]] )
-
+                
+                net_ins.append(inputs)
                 net_outs.append( self.networks[ii](inputs) ) 
         return net_ins, net_outs
     # END compute_network_outputs
@@ -269,9 +271,10 @@ class NDN(nn.Module):
             num_workers=4,
             train_inds=None,
             val_inds=None,
+            is_fixation=False,
             data_seed=None):
 
-        from torch.utils.data import DataLoader, random_split
+        from torch.utils.data import DataLoader, random_split, Subset
 
         if train_inds is None or val_inds is None:
             # check dataset itself
@@ -294,22 +297,29 @@ class NDN(nn.Module):
                     val_inds = val_ds.indices
             
         # build dataloaders:
+        if is_fixation:
+            # we use a batch sampler to sample the data because it generates indices for the whole batch at one time
+            # instead of iterating over each sample. This is both faster (probably) for our cases, and it allows us
+            # to use the "Fixation" datasets and concatenate along a variable-length batch dimension
+            train_sampler = torch.utils.data.sampler.BatchSampler(
+                torch.utils.data.sampler.SubsetRandomSampler(train_inds),
+                batch_size=batch_size,
+                drop_last=False)
+            
+            val_sampler = torch.utils.data.sampler.BatchSampler(
+                torch.utils.data.sampler.SubsetRandomSampler(val_inds),
+                batch_size=batch_size,
+                drop_last=False)
 
-        # we use a batch sampler to sample the data because it generates indices for the whole batch at one time
-        # instead of iterating over each sample. This is both faster (probably) for our cases, and it allows us
-        # to use the "Fixation" datasets and concatenate along a variable-length batch dimension
-        train_sampler = torch.utils.data.sampler.BatchSampler(
-            torch.utils.data.sampler.SubsetRandomSampler(train_inds),
-            batch_size=batch_size,
-            drop_last=False)
-        
-        val_sampler = torch.utils.data.sampler.BatchSampler(
-            torch.utils.data.sampler.SubsetRandomSampler(val_inds),
-            batch_size=batch_size,
-            drop_last=False)
+            train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
+            valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
+        else:
+            train_ds = Subset(dataset, train_inds)
+            val_ds = Subset(dataset, val_inds)
 
-        train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
-        valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
+            train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+            valid_dl = DataLoader(val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+                
         return train_dl, valid_dl
     # END NDN.get_dataloaders
 
