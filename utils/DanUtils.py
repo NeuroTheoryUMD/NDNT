@@ -215,6 +215,7 @@ def monocular_data_import( datadir, exptn, time_shift=1, num_lags=20):
     return stim_all, Robs_all, DFs_all, Eadd_info
 
 
+###### GENERAL UTILITIES NOT SPECIFIC TO NDN ######
 def subplot_setup(num_rows, num_cols, row_height=2, fighandle=False):
     fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
     fig.set_size_inches(16, row_height*num_rows)
@@ -227,3 +228,22 @@ def filename_num2str( n, num_digits=2 ):
     place_shift = int(np.maximum(num_digits-num_places, 0))
     s = '0'*place_shift + str(n%(10**num_digits))[:]
     return s
+
+
+def fold_sample( num_items, folds=5, random_gen=False, which_fold=None):
+    """Divide fold sample deterministically or randomly distributed over number of items. More options
+    can be added, but his captures the basics."""
+    if random_gen:
+        num_val = int(num_items/folds)
+        tmp_seq = np.random.permutation(num_items)
+        val_items = np.sort(tmp_seq[:num_val])
+        rem_items = np.sort(tmp_seq[num_val:])
+    else:
+        if which_fold is None:
+            offset = int(folds//2) # sample middle folds as test_data
+        else:
+            assert which_fold < folds
+            offset = which_fold
+        val_items = np.arange(offset, num_items, folds, dtype='int64')
+        rem_items = np.delete(np.arange(num_items, dtype='int64'), val_items)
+    return val_items, rem_items
