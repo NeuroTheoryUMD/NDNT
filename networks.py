@@ -190,7 +190,7 @@ class FFnetwork(nn.Module):
         This is done immediately before training, because it can change during training and tuning.
         """
         for layer in self.layers:
-            if 'reg' in layer.__dict__:
+            if hasattr(self, 'reg'):
                 layer.reg.build_reg_modules()
             
     def compute_reg_loss(self):
