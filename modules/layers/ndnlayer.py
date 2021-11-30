@@ -248,21 +248,9 @@ class NDNLayer(nn.Module):
         """
         ws = self.get_weights(time_reverse=time_reverse)
         # check if 1d: otherwise return error for now
-        num_filters = ws.shape[-1]
-        if num_filters < 8:
-            num_cols = num_filters
-        num_rows = np.ceil(num_filters/num_cols).astype(int)
         if self.input_dims[2] == 1:
-            import matplotlib.pyplot as plt
-            # then 1-d spatiotemporal plots
-            fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
-            fig.set_size_inches(16, row_height*num_rows)
-            plt.tight_layout()
-            for cc in range(num_filters):
-                ax = plt.subplot(num_rows, num_cols, cc+1)
-                plt.imshow(ws[:,:,cc].T, cmap=cmaps)
-                ax.set_yticklabels([])
-                ax.set_xticklabels([])
-            plt.show()
+            from NDNT.utils import plot_filters_ST1D
+            plot_filters_ST1D(ws, cmaps=cmaps, num_cols=num_cols, row_height=row_height, time_reverse=time_reverse)
         else:
-            print("Not implemented plotting 3-d filters yet.")
+            from NDNT.utils import plot_filters_ST2D
+            plot_filters_ST2D(ws)

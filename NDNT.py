@@ -238,6 +238,9 @@ class NDN(nn.Module):
                     device = opt_params['device']
                 else:
                     raise ValueError("opt_params['device'] must be a string or torch.device")
+            else:
+                # Assign default device
+                device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         assert isinstance(device, torch.device), "NDN.get_trainer: device must be a torch.device by this point"
 
         if 'optimize_graph' in opt_params.keys(): # specifies whether to attempt to optimize the graph
@@ -576,7 +579,6 @@ class NDN(nn.Module):
             self.networks[ii].set_parameters(layer_target=layer_target, name=name, val=val)
 
     def plot_filters(self, cmaps=None, ffnet_target=0, layer_target=0, num_cols=8):
-        print('NDN level 1234')
         self.networks[ffnet_target].plot_filters(layer_target=layer_target, cmaps=cmaps, num_cols=num_cols)
 
     def save_model(self, filename=None, alt_dirname=None):

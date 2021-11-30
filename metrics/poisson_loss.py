@@ -7,7 +7,7 @@
 #    unit_loss: returns loss for each output unit (without reduction)
 #    Also tried adding __repr__ but not sure how this works: a placeholder
 
-from os import POSIX_FADV_NOREUSE
+#from os import POSIX_FADV_NOREUSE
 import torch
 from torch import nn
 
