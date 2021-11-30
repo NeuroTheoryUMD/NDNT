@@ -346,7 +346,6 @@ class NDN(nn.Module):
             no_decay_names = []
             no_decay = []
             for name, m in self.named_parameters():
-                print('checking {}'.format(name))
                 if 'weight' in name:
                     decay.append(m)
                     decay_names.append(name)
