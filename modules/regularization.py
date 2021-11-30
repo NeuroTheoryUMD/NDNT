@@ -200,7 +200,7 @@ class RegModule(nn.Module):
         Args:
             reg_type (str): see `_allowed_reg_types` for options
         """
-        import create_reg_matrices as get_rmats
+        import NDNT.utils.create_reg_matrices as get_rmats
 
         if (reg_type == 'd2t') or (reg_type == 'd2x') or (reg_type == 'd2xt'):
             #reg_mat = get_rmats.create_tikhonov_matrix(self.input_dims, reg_type)
