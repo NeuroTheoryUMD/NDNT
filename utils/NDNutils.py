@@ -21,13 +21,15 @@ def create_optimizer_params(
         num_gpus=1,
         progress_bar_refresh=20, # num of batches 
         num_workers=4,
+        max_epochs=None,
         line_search='Wolfe', # see LBFGS for meaning of line_search method
         history=10):
 
-    if early_stopping:
-        max_epochs = 1000
-    else:
-        max_epochs = 300
+    if max_epochs is None:
+        if early_stopping:
+            max_epochs = 1000
+        else:
+            max_epochs = 300
 
     optpar = {
         'batch_size': batch_size,

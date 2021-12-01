@@ -280,9 +280,6 @@ class Trainer:
 
             if self.use_gpu:
                 torch.cuda.empty_cache()
-            
-            self.n_iter += 1
-            self.logger.add_scalar('Loss/Train', out['train_loss'], self.n_iter)
 
             runningloss += out['train_loss']
             # update progress bar
@@ -303,6 +300,11 @@ class Trainer:
             out = self.model.module.training_step(data)
         else:
             out = self.model.training_step(data)
+        
+        self.n_iter += 1
+        self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
+        self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
+        self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
 
         loss = out['loss']
         # with torch.set_grad_enabled(True):

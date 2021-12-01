@@ -13,6 +13,7 @@ class DivNormLayer(NDNLayer):
             num_filters=None,
             filter_dims=None,
             pos_constraint=True,
+            bias=False,
             **kwargs,
         ):
 
@@ -34,6 +35,7 @@ class DivNormLayer(NDNLayer):
         super().__init__(input_dims,
             num_filters,
             filter_dims=filter_dims,
+            bias=bias,
             pos_constraint=pos_constraint, **kwargs)
 
         self.output_dims = self.input_dims
@@ -57,19 +59,19 @@ class DivNormLayer(NDNLayer):
         # Linear processing to create divisive drive
         xdiv = torch.einsum('nc...,ck->nk...', x, w)
 
-        if len(x.shape)==2:
-            xdiv = xdiv + self.bias[None,:]
-        elif len(x.shape)==3:
-            xdiv = xdiv + self.bias[None,:,None] # is 1D convolutional
-        elif len(x.shape)==4:
-            xdiv = xdiv + self.bias[None,:,None,None] # is 2D convolutional
-        elif len(x.shape)==5:
-            xdiv = xdiv + self.bias[None,:,None,None,None] # is 2D convolutional
-        else:
-            raise NotImplementedError('DivNormLayer only supports 2D, 3D, and 4D tensors')
+        # if len(x.shape)==2:
+        #     xdiv = xdiv + self.bias[None,:]
+        # elif len(x.shape)==3:
+        #     xdiv = xdiv + self.bias[None,:,None] # is 1D convolutional
+        # elif len(x.shape)==4:
+        #     xdiv = xdiv + self.bias[None,:,None,None] # is 2D convolutional
+        # elif len(x.shape)==5:
+        #     xdiv = xdiv + self.bias[None,:,None,None,None] # is 2D convolutional
+        # else:
+        #     raise NotImplementedError('DivNormLayer only supports 2D, 3D, and 4D tensors')
             
         # apply divisive drive
-        x = x / xdiv.clamp_(0.001) # divide
+        x = x / xdiv.clamp_(0.1) # divide
         
         x = x.reshape((-1, self.num_outputs))
         return x
