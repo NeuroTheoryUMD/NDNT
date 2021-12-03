@@ -15,7 +15,7 @@ class ReadoutLayer(NDNLayer):
             filter_dims=None, 
             batch_sample=True,
             init_mu_range=0.1,
-            init_sigma=0.1,
+            init_sigma=0.2,
             gauss_type: str='uncorrelated', # 'isotropic', 'uncorrelated', or 'full'
             align_corners=False,
             **kwargs):
@@ -102,10 +102,10 @@ class ReadoutLayer(NDNLayer):
         Initializes the mean, and sigma of the Gaussian readout 
         """
         self._mu.data.uniform_(-self.init_mu_range, self.init_mu_range)  # random initializations uniformly spread....
-        if self.gauss_type != 'full':
-            self.sigma.data.fill_(self.init_sigma)
-        else:
-            self.sigma.data.uniform_(-self.init_sigma, self.init_sigma)
+        # if self.gauss_type != 'full':
+        #     self.sigma.data.fill_(self.init_sigma)
+        # else:
+        self.sigma.data.uniform_(0, self.init_sigma)
         
         #self.weight.data.fill_(1 / self.input_dims[0])
 
