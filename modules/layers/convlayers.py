@@ -1,5 +1,6 @@
 import torch
 from torch.nn import functional as F
+import torch.nn as nn
 
 from .ndnlayer import NDNLayer
 import numpy as np
@@ -24,6 +25,7 @@ class ConvLayer(NDNLayer):
             num_filters=None,
             conv_dims=None,
             filter_dims=None,
+            output_norm=None,
             stride=None,
             dilation=1,
             **kwargs,
@@ -93,6 +95,16 @@ class ConvLayer(NDNLayer):
         self.folded_dims = self.input_dims[0]*self.input_dims[3]
         self.num_outputs = np.prod(self.output_dims)
 
+        # check if output normalization is specified
+        if output_norm is 'batch':
+            if self.is1D:
+                self.output_norm = nn.BatchNorm1d(self.num_filters)
+            else:
+                self.output_norm = nn.BatchNorm2d(self.num_filters)
+        else:
+            self.output_norm = None
+
+
     def forward(self, x):
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
@@ -115,6 +127,9 @@ class ConvLayer(NDNLayer):
                 bias=self.bias,
                 stride=self.stride,
                 dilation=self.dilation)
+
+        if self.output_norm is not None:
+            y = self.output_norm(y)
 
         y = torch.reshape(y, (-1, self.num_outputs))
         
@@ -229,18 +244,6 @@ class STconvLayer(ConvLayer):
         # Combine filter and temporal dimensions for conv -- collapses over both
         self.num_outputs = np.prod(self.output_dims)
 
-    #     # Initialize weights
-    #     self.initialize_weights()
-
-    #     # NOTE FROM DAN: this can inherit the NDNlayer initialization (specificied in layer_dicts) rather than automatically do thi
-    #     # just replace this initialize_weights with reset_parameters: no need to overload: will use the one in NDNlayer
-    # # END STconvLayer.__init__
-
-    # def initialize_weights(self):
-    #     """Initialize weights and biases"""
-    #     nn.init.xavier_normal_(self.weight.data)
-    #     if self.bias is not None:
-    #         self.bias.data.fill_(0)
 
     def forward(self, x):
         # Reshape stim matrix LACKING temporal dimension [bcwh] 
@@ -278,7 +281,9 @@ class STconvLayer(ConvLayer):
                 stride=self.stride, dilation=self.dilation)
             y = y.permute(2,1,3,4,0)    
         
-        #y = torch.reshape(y, (-1, self.num_outputs))
+        if self.output_norm is not None:
+            y = self.output_norm(y)
+        
         y = y.reshape((-1, self.num_outputs))
 
         # Nonlinearity
