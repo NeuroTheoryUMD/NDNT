@@ -131,14 +131,18 @@ class ConvLayer(NDNLayer):
         if self.output_norm is not None:
             y = self.output_norm(y)
 
-        y = torch.reshape(y, (-1, self.num_outputs))
-        
         # Nonlinearity
         if self.NL is not None:
             y = self.NL(y)
-        
+            
         if self.ei_mask is not None:
-            y = y * self.ei_mask
+            y = y * self.ei_mask[None,:,None,None]
+            # y = torch.einsum('bchw, c -> bchw* self.ei_mask
+            # w = torch.einsum('nctw,tz->nczw', w, self.tent_basis)
+
+        y = torch.reshape(y, (-1, self.num_outputs))
+        
+        
 
         return y
 
@@ -168,6 +172,7 @@ class STconvLayer(ConvLayer):
         conv_dims=None, # [w,h,t]
         filter_dims=None, # [C, w, h, t]
         temporal_tent_spacing=None,
+        output_norm=None,
         stride=1,
         dilation=1,
         **kwargs):
@@ -244,6 +249,15 @@ class STconvLayer(ConvLayer):
         # Combine filter and temporal dimensions for conv -- collapses over both
         self.num_outputs = np.prod(self.output_dims)
 
+        # check if output normalization is specified
+        if output_norm is 'batch':
+            if self.is1D:
+                self.output_norm = nn.BatchNorm2d(self.num_filters)
+            else:
+                self.output_norm = nn.BatchNorm3d(self.num_filters)
+        else:
+            self.output_norm = None
+
 
     def forward(self, x):
         # Reshape stim matrix LACKING temporal dimension [bcwh] 
@@ -283,12 +297,16 @@ class STconvLayer(ConvLayer):
         
         if self.output_norm is not None:
             y = self.output_norm(y)
-        
-        y = y.reshape((-1, self.num_outputs))
 
         # Nonlinearity
         if self.NL is not None:
             y = self.NL(y)
+        
+        if self.ei_mask is not None:
+            y = y * self.ei_mask[None,:,None,None,None]
+        
+        y = y.reshape((-1, self.num_outputs))
+
         return y
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
