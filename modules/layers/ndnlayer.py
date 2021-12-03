@@ -119,8 +119,7 @@ class NDNLayer(nn.Module):
         if num_inh == 0:
             self.ei_mask = None
         else:
-            self.register_buffer('ei_mask', torch.ones(self.num_filters))  
-            self.ei_mask[-(num_inh+1):0] = -1
+            self.register_buffer('ei_mask', torch.cat( (torch.ones(self.num_filters-num_inh), -torch.ones(num_inh))) )
 
         self.reset_parameters( weights_initializer, bias_initializer )
 
