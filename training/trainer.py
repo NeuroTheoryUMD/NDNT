@@ -19,6 +19,7 @@ class Trainer:
             max_epochs=100,
             early_stopping=None,
             log_activations=True,
+            step_scheduler_after='batch',
             accumulate_grad_batches=1,
             **kwargs
             ):
@@ -88,7 +89,7 @@ class Trainer:
         self.val_loss_min = np.Inf
         
         # scheduler defaults
-        self.step_scheduler_after = 'epoch' # this is the only option for now
+        self.step_scheduler_after = step_scheduler_after # this is the only option for now
         self.step_scheduler_metric = None
 
 
