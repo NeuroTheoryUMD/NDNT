@@ -465,7 +465,7 @@ class NDN(nn.Module):
 
         return torch.divide( Rsum, Tsum.clamp(1))
 
-    def eval_models(self, data, data_inds=None, bits=False, null_adjusted=True):
+    def eval_models(self, data, data_inds=None, bits=False, null_adjusted=True, batch_size=1000, num_workers=8):
         '''
         get null-adjusted log likelihood (if null_adjusted = True)
         bits=True will return in units of bits/spike
@@ -517,13 +517,17 @@ class NDN(nn.Module):
             # This will be the 'modern' eval_models using already-defined self.loss_module
             # In this case, assume data is dataset
             if data_inds is None:
-                data_inds = range(len(data))
+                data_inds = list(range(len(data)))
+
+            data_dl, _ = self.get_dataloaders(data, batch_size=batch_size, num_workers=num_workers, train_inds=data_inds)
+
+            
 
             LLsum, Tsum, Rsum = 0, 0, 0
             from tqdm import tqdm
             d = next(self.parameters()).device  # device the model is on
-            for tt in tqdm(data_inds, desc='Eval models'):
-                data_sample = data[tt]
+            for data_sample in tqdm(data_dl, desc='Eval models'):
+                # data_sample = data[tt]
                 for dsub in data_sample.keys():
                     if data_sample[dsub].device != d:
                         data_sample[dsub] = data_sample[dsub].to(d)

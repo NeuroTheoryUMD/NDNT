@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from .ndnlayer import NDNLayer
 import numpy as np
 class DivNormLayer(NDNLayer):
@@ -13,6 +14,7 @@ class DivNormLayer(NDNLayer):
             num_filters=None,
             filter_dims=None,
             pos_constraint=True,
+            bias=True,
             **kwargs,
         ):
 
@@ -28,25 +30,28 @@ class DivNormLayer(NDNLayer):
             input_dims = [num_filters, 1, 1, 1] # assume non-convolutional
 
         # number of filters (and size of filters) is set by channel dims on the input
-        
+        bias = True
         filter_dims = [num_filters, 1, 1, 1]
 
         super().__init__(input_dims,
             num_filters,
             filter_dims=filter_dims,
+            bias=bias,
             pos_constraint=pos_constraint, **kwargs)
 
         self.output_dims = self.input_dims
         self.num_outputs = int(np.prod(self.output_dims))
-
-        # self.weight.data.fill_(1/self.num_outputs)
-        # self.bias.data.fill_(0.5)
+        self.register_buffer('mask', 1-torch.eye(num_filters))
+        
+        torch.nn.init.xavier_uniform_(self.weight)
+        self.bias.data.fill_(0.5)
 
     def forward(self, x):
         # TODO: make if statement for 1-d or 2-d, 3-d indpendent of x, should be specified by a property
 
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
+        w *= self.mask
 
         # Nonlinearity (apply first)
         if self.NL is not None:
@@ -69,7 +74,7 @@ class DivNormLayer(NDNLayer):
             raise NotImplementedError('DivNormLayer only supports 2D, 3D, and 4D tensors')
             
         # apply divisive drive
-        x = x / xdiv.clamp_(0.001) # divide
+        x = x / xdiv.clamp_(0.01) # divide
         
         x = x.reshape((-1, self.num_outputs))
         return x

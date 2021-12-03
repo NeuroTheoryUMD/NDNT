@@ -3,7 +3,7 @@ from copy import deepcopy
 #################### CREATE NETWORK PARAMETER-DICTS ####################
 def layer_dict(
     input_dims=None, num_filters=1, NLtype='relu', 
-    norm_type=0, pos_constraint=False, num_inh=0,
+    norm_type=0, pos_constraint=False, num_inh=0, output_norm=None,
     conv=False, conv_width=None, stride=None, dilation=None):
 
     """input dims are [num_filters, space1, space2, num_lags]"""
@@ -38,6 +38,7 @@ def layer_dict(
         'output_dims': output_dims,
         'num_filters': num_filters,
         'filter_dims': filter_dims, 
+        'output_norm': output_norm,
         'NLtype': NLtype, 
         'norm_type': norm_type, 
         'pos_constraint': pos_constraint,
