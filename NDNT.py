@@ -419,13 +419,13 @@ class NDN(nn.Module):
         # Make reg modules
         self.prepare_regularization()
 
-        # Create dataloaders
-        batchsize = self.opt_params['batch_size']
-        train_dl, valid_dl = self.get_dataloaders(
-            dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds)
-
         if opt_params is None:
             opt_params = self.opt_params
+            
+        # Create dataloaders
+        batchsize = opt_params['batch_size']
+        train_dl, valid_dl = self.get_dataloaders(
+            dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds)
             
         # get trainer 
         trainer = self.get_trainer(
