@@ -182,7 +182,7 @@ class Trainer:
         for epoch in range(epochs):
             self.epoch += 1
             # train one epoch
-            out = self.train_one_epoch(train_loader, epoch)
+            out = self.train_one_epoch(train_loader, self.epoch)
             self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], epoch)
 
             if self.log_activations:
