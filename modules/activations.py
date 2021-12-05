@@ -8,6 +8,14 @@ def adaptive_elu(x, xshift, yshift, inplace=False):
     return F.elu(x - xshift, inplace=inplace) + yshift
 
 
+class Square(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x):
+        return x**2
+
 class AdaptiveELU(nn.Module):
     """
     Exponential Linear Unit shifted by user specified values.
@@ -29,7 +37,7 @@ NLtypes = {
     'lin': None,
     'relu': nn.ReLU(),
     'elu': AdaptiveELU(),
-    'square': torch.square, # this doesn't exist: just apply exponent?
+    'square': Square(),
     'softplus': nn.Softplus(),
     'tanh': nn.Tanh(),
     'sigmoid': nn.Sigmoid()
