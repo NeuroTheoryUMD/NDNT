@@ -43,8 +43,8 @@ class DivNormLayer(NDNLayer):
         self.num_outputs = int(np.prod(self.output_dims))
         self.register_buffer('mask', 1-torch.eye(num_filters))
         
-        torch.nn.init.xavier_uniform_(self.weight)
-        self.bias.data.fill_(0.5)
+        torch.nn.init.uniform_(self.weight, 0.0, 1.0)
+        torch.nn.init.uniform_(self.bias, 0.0, 1.0)
 
     def forward(self, x):
         # TODO: make if statement for 1-d or 2-d, 3-d indpendent of x, should be specified by a property
@@ -60,7 +60,7 @@ class DivNormLayer(NDNLayer):
         x = x.reshape([-1] + self.input_dims)
 
         # Linear processing to create divisive drive
-        xdiv = torch.einsum('nc...,ck->nk...', x, w)
+        xdiv = torch.einsum('nc...,ck->nk...', x, w.T)
 
         if len(x.shape)==2:
             xdiv = xdiv + self.bias[None,:]
@@ -69,7 +69,7 @@ class DivNormLayer(NDNLayer):
         elif len(x.shape)==4:
             xdiv = xdiv + self.bias[None,:,None,None] # is 2D convolutional
         elif len(x.shape)==5:
-            xdiv = xdiv + self.bias[None,:,None,None,None] # is 2D convolutional
+            xdiv = xdiv + self.bias[None,:,None,None,None] # is 3D convolutional
         else:
             raise NotImplementedError('DivNormLayer only supports 2D, 3D, and 4D tensors')
             
