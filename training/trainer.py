@@ -19,7 +19,8 @@ class Trainer:
             max_epochs=100,
             early_stopping=None,
             log_activations=True,
-            step_scheduler_after='batch',
+            scheduler_after='batch',
+            scheduler_metric=None,
             accumulate_grad_batches=1,
             **kwargs
             ):
@@ -89,8 +90,8 @@ class Trainer:
         self.val_loss_min = np.Inf
         
         # scheduler defaults
-        self.step_scheduler_after = step_scheduler_after # this is the only option for now
-        self.step_scheduler_metric = None
+        self.step_scheduler_after = scheduler_after # this is the only option for now
+        self.step_scheduler_metric = scheduler_metric
 
 
     def fit(self, model, train_loader, val_loader, seed=None):
@@ -183,7 +184,7 @@ class Trainer:
             self.epoch += 1
             # train one epoch
             out = self.train_one_epoch(train_loader, self.epoch)
-            self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], epoch)
+            self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], self.epoch)
 
             if self.log_activations:
                 for name in self.logged_parameters:
@@ -191,13 +192,13 @@ class Trainer:
                         self.logger.add_histogram(
                                     f"Activations/{name.replace('.', ' ')}/hist",
                                     activations[name].view(-1),
-                                    epoch,
+                                    self.epoch,
                                 )
 
                         self.logger.add_scalar(
                                     f"Activations/{name.replace('.', ' ')}/mean",
                                     activations[name].mean(),
-                                    epoch,
+                                    self.epoch,
                                 )
 
                         self.logger.add_scalar(
@@ -205,16 +206,16 @@ class Trainer:
                                     activations[name]
                                     .std(dim=0)
                                     .mean(),
-                                    epoch,
+                                    self.epoch,
                                 )
                     except:
                         pass
 
             # validate every epoch
-            if epoch % 1 == 0:
+            if self.epoch % 1 == 0:
                 out = self.validate_one_epoch(val_loader)
                 self.val_loss_min = out['val_loss']
-                self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, epoch)
+                self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
             
             # scheduler if scheduler steps at epoch level
             if self.scheduler:
@@ -222,11 +223,11 @@ class Trainer:
                     if self.step_scheduler_metric is None:
                         self.scheduler.step()
                     else:
-                        step_metric = self.name_to_metric(self.step_scheduler_metric)
+                        step_metric = out[self.step_scheduler_metric]
                         self.scheduler.step(step_metric)
             
             # checkpoint
-            self.checkpoint_model(epoch)
+            self.checkpoint_model(self.epoch)
 
             # callbacks: e.g., early stopping
             if self.early_stopping:
@@ -310,18 +311,20 @@ class Trainer:
         loss = out['loss']
         # with torch.set_grad_enabled(True):
         loss.backward()
+        # loss.backward(create_graph=True)
         
         # optimization step
         if ((batch_idx + 1) % self.accumulate_grad_batches == 0) or (batch_idx + 1 == self.nbatch):
             self.optimizer.step()
-            self.optimizer.zero_grad() # zero the gradients for the next batch
+            self.optimizer.zero_grad(set_to_none=True)
+            # self.optimizer.zero_grad() # zero the gradients for the next batch
             
             if self.scheduler:
                 if self.step_scheduler_after == "batch":
                     if self.step_scheduler_metric is None:
                         self.scheduler.step()
                     else:
-                        step_metric = self.name_to_metric(self.step_scheduler_metric)
+                        step_metric = out[self.step_scheduler_metric]
                         self.scheduler.step(step_metric)
         
         return {'train_loss': loss.detach().item()}
@@ -421,6 +424,7 @@ class LBFGSTrainer(Trainer):
                     loss += out['loss']
                     self.n_iter += 1
                     self.logger.add_scalar('Loss/Train', out['train_loss'].detach().item(), self.n_iter)
+                    torch.cuda.empty_cache()
                     # update progress bar
                     # pbar.set_postfix({'train_loss': loss.detach().item()/(batch_idx + 1)})
                 else:
