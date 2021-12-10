@@ -96,7 +96,7 @@ class ConvLayer(NDNLayer):
         self.num_outputs = np.prod(self.output_dims)
 
         # check if output normalization is specified
-        if output_norm is 'batch':
+        if output_norm == 'batch':
             if self.is1D:
                 self.output_norm = nn.BatchNorm1d(self.num_filters)
             else:
@@ -250,7 +250,7 @@ class STconvLayer(ConvLayer):
         self.num_outputs = np.prod(self.output_dims)
 
         # check if output normalization is specified
-        if output_norm is 'batch':
+        if output_norm == 'batch':
             if self.is1D:
                 self.output_norm = nn.BatchNorm2d(self.num_filters)
             else:

@@ -22,6 +22,7 @@ class Trainer:
             scheduler_after='batch',
             scheduler_metric=None,
             accumulate_grad_batches=1,
+            verbose=True,
             **kwargs
             ):
         '''
@@ -49,6 +50,7 @@ class Trainer:
         self.optimize_graph = optimize_graph
         self.log_activations = log_activations
         self.accumulate_grad_batches = accumulate_grad_batches
+        self.verbose = verbose
         
         ensure_dir(dirpath)
 
@@ -408,10 +410,15 @@ class LBFGSTrainer(Trainer):
             # pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
             # pbar.set_description("Epoch %i, iter %d/%d" %(epoch, self.iter, max_iter))
             
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
             loss = torch.zeros(1, device=self.device)
+            if self.verbose:
+                pbar = tqdm(train_loader, total=len(train_loader), bar_format=None)
+                pbar.set_description("Training ver=%d" %self.version)
+            else:
+                pbar = train_loader
 
-            for batch_idx, data in enumerate(train_loader):
+            for batch_idx, data in enumerate(pbar):
             
                 if batch_idx < self.accumulate_grad_batches:
 
@@ -423,10 +430,16 @@ class LBFGSTrainer(Trainer):
                     out = self.model.training_step(data)
                     loss += out['loss']
                     self.n_iter += 1
-                    self.logger.add_scalar('Loss/Train', out['train_loss'].detach().item(), self.n_iter)
+                    self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
+                    self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
+                    self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
                     torch.cuda.empty_cache()
-                    # update progress bar
-                    # pbar.set_postfix({'train_loss': loss.detach().item()/(batch_idx + 1)})
+                    if self.verbose:
+                        # update progress bar
+                        pbar.set_postfix({'train_loss': loss.detach().item()/(batch_idx + 1),
+                            'fevals': self.optimizer.state_dict()['state'][0]['func_evals'],
+                            'n_iter': self.optimizer.state_dict()['state'][0]['n_iter']})
+                            
                 else:
                     break
 
