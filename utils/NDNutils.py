@@ -709,3 +709,24 @@ def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0
     summary_str += "----------------------------------------------------------------" + "\n"
     # return summary
     return summary_str, (total_params, trainable_params)
+
+def load_model(checkpoint_path, model_name='', version=None):
+    out = get_fit_versions(checkpoint_path, model_name)
+    if version is None:
+        version = out['version_num'][np.argmax(np.asarray(out['val_loss']))]
+        print("No version requested. Using (best) version (v=%d)" %version)
+
+    assert version in out['version_num'], "Version %d not found in %s. Must be: %s" %(version, checkpoint_path, str(out['version_num']))
+    ver_ix = np.where(version==np.asarray(out['version_num']))[0][0]
+    # Load the model
+    try:
+        model = torch.load(out['model_file'][ver_ix])
+    except AttributeError:
+        print("load_model: could not load model. AttributeError. This likely means that the file [%s] was not pickled correctly because you were changing the class too much while training" %out['model_file'][ver_ix])
+        print("Loading the state dict from the last checkpoint instead")
+        filename = out['model_file'][ver_ix]
+        modelname = os.path.basename(filename)
+        model = torch.load(filename.replace(modelname, 'model_checkpoint.ckpt'))
+        return model
+
+    return model

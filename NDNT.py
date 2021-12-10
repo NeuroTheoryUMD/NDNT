@@ -673,19 +673,11 @@ class NDN(nn.Module):
                 model: loaded model
         '''
         
-        from NDNT.utils.NDNutils import get_fit_versions
+        from NDNT.utils.NDNutils import load_model as load
 
         assert checkpoint_path is not None, "Need to provide a checkpoint_path"
         assert model_name is not None, "Need to provide a model_name"
 
-        out = get_fit_versions(checkpoint_path, model_name)
-        if version is None:
-            version = out['version_num'][np.argmax(np.asarray(out['val_loss']))]
-            print("No version requested. Using (best) version (v=%d)" %version)
-
-        assert version in out['version_num'], "Version %d not found in %s. Must be: %s" %(version, checkpoint_path, str(out['version_num']))
-        ver_ix = np.where(version==np.asarray(out['version_num']))[0][0]
-        # Load the model
-        model = torch.load(out['model_file'][ver_ix])
+        model = load(checkpoint_path, model_name, version)
         
         return model
