@@ -121,7 +121,9 @@ class Trainer:
         '''
         GPU_FLAG = torch.cuda.is_available()
         GPU_USED = self.device.type == 'cuda'
-        print("\nGPU Available: %r, GPU Used: %r" %(GPU_FLAG, GPU_USED))
+        if self.verbose > 0:
+            print("\nGPU Available: %r, GPU Used: %r" %(GPU_FLAG, GPU_USED))
+
         if GPU_FLAG and GPU_USED:
             self.use_gpu = True
             torch.cuda.empty_cache()
@@ -148,7 +150,8 @@ class Trainer:
         
         # if more than one device, use parallel training
         if torch.cuda.device_count() > 1 and self.multi_gpu:
-            print("Using", torch.cuda.device_count(), "GPUs!") # this should be specified in requewstee
+            if self.verbose > 0:
+                print("Using", torch.cuda.device_count(), "GPUs!") # this should be specified in requewstee
             # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
             self.model = nn.DataParallel(self.model)
         
@@ -235,7 +238,8 @@ class Trainer:
             if self.early_stopping:
                 self.early_stopping(out['val_loss'])
                 if self.early_stopping.early_stop:
-                    print("Early stopping")
+                    if self.verbose > 0:
+                        print("Early stopping")
                     break
 
     def validate_one_epoch(self, val_loader):
@@ -245,8 +249,12 @@ class Trainer:
         self.model.eval()
         runningloss = 0
         nsteps = len(val_loader)
-        pbar = tqdm(val_loader, total=nsteps, bar_format=None)
-        pbar.set_description("Validating ver=%d" %self.version)
+        if self.verbose > 0:
+            pbar = tqdm(val_loader, total=nsteps, bar_format=None)
+            pbar.set_description("Validating ver=%d" %self.version)
+        else:
+            pbar = val_loader
+
         with torch.no_grad():
             for batch_idx, data in enumerate(pbar):
                 
@@ -261,7 +269,9 @@ class Trainer:
                     out = self.model.validation_step(data)
 
                 runningloss += out['val_loss'].item()
-                pbar.set_postfix({'val_loss': runningloss/(batch_idx+1)})
+
+                if self.verbose > 0:
+                    pbar.set_postfix({'val_loss': runningloss/(batch_idx+1)})
 
         return {'val_loss': runningloss/nsteps}
             
@@ -273,9 +283,11 @@ class Trainer:
         self.model.train() # set model to training mode
 
         runningloss = 0
-
-        pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
-        pbar.set_description("Epoch %i" %epoch)
+        if self.verbose > 0:
+            pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
+            pbar.set_description("Epoch %i" %epoch)
+        else:
+            pbar = train_loader
 
         for batch_idx, data in enumerate(pbar):
             
@@ -286,8 +298,9 @@ class Trainer:
                 torch.cuda.empty_cache()
 
             runningloss += out['train_loss']
-            # update progress bar
-            pbar.set_postfix({'train_loss': runningloss/(batch_idx + 1)})
+            if self.verbose > 0:
+                # update progress bar
+                pbar.set_postfix({'train_loss': runningloss/(batch_idx + 1)})
 
         return {'train_loss': runningloss/self.nbatch} # should this be an aggregate out?
 
@@ -350,7 +363,8 @@ class Trainer:
         save_checkpoint(cpkt, os.path.join(self.dirpath, 'model_checkpoint.ckpt'))
     
     def graceful_exit(self):
-        print("Done fitting")
+        if self.verbose > 0:
+            print("Done fitting")
         # to run upon keybord interrupt
         self.checkpoint_model() # save checkpoint
 
@@ -393,6 +407,65 @@ class LBFGSTrainer(Trainer):
         super().__init__(**kwargs)
 
         self.fullbatch = full_batch
+    
+    def fit(self, model, train_loader, val_loader=None, seed=None):
+        
+        self.model = model # can we just assign this here? --> makes it look more like the way lightning trainer is called (with model passed into fit)
+
+        self.prepare_fit(seed=seed)
+
+        if isinstance(train_loader, dict):
+            ''' fit entire dataset at once'''
+            self.fit_data_dict(train_loader)
+            if val_loader is not None:
+                if isinstance(val_loader, dict):
+                    for dsub in val_loader:
+                        val_loader[dsub] = val_loader[dsub].to(self.device)
+                    out = self.model.validation_step(val_loader)
+                else:
+                    out = self.validate_one_epoch(val_loader)
+                self.val_loss_min = out['val_loss']
+                self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
+
+        else:
+            ''' fit one epoch at a time (can still accumulate the grads across epochs, but is much slower. handles datasets that cannot fit in memory'''
+            # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
+            try:            
+                self.fit_loop(self.max_epochs, train_loader, val_loader)
+                
+            except KeyboardInterrupt: # user aborted training
+                
+                self.graceful_exit()
+                return
+
+        self.graceful_exit()
+
+    def fit_data_dict(self, train_data):
+        "fit data that is provided in a dictionary"
+        for dsub in train_data:
+            train_data[dsub] = train_data[dsub].to(self.device)
+            
+        def closure():
+        
+            self.optimizer.zero_grad(set_to_none=True)
+            loss = torch.zeros(1, device=self.device)
+
+            out = self.model.training_step(train_data)
+            loss = out['loss']
+            loss.backward()
+            
+            # torch.cuda.empty_cache()
+            if self.verbose > 0:
+                print('Iteration: {} | Loss: {}'.format(self.optimizer.state_dict()['state'][0]['n_iter'], loss.item()))
+            
+            return loss
+
+        loss = self.optimizer.step(closure)
+        self.optimizer.zero_grad(set_to_none=True)
+        if self.use_gpu:
+                torch.cuda.empty_cache()
+
+        return {'train_loss': loss}
         
         
     def train_one_epoch(self, train_loader, epoch=0):
@@ -458,4 +531,3 @@ class LBFGSTrainer(Trainer):
                 torch.cuda.empty_cache()
 
         return {'train_loss': loss} # should this be an aggregate out?
-
