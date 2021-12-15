@@ -710,11 +710,12 @@ def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0
     # return summary
     return summary_str, (total_params, trainable_params)
 
-def load_model(checkpoint_path, model_name='', version=None):
+def load_model(checkpoint_path, model_name='', version=None, verbose=True):
     out = get_fit_versions(checkpoint_path, model_name)
     if version is None:
         version = out['version_num'][np.argmin(np.asarray(out['val_loss']))]
-        print("No version requested. Using (best) version (v=%d)" %version)
+        if verbose:
+            print("No version requested. Using (best) version (v=%d)" %version)
 
     assert version in out['version_num'], "Version %d not found in %s. Must be: %s" %(version, checkpoint_path, str(out['version_num']))
     ver_ix = np.where(version==np.asarray(out['version_num']))[0][0]
