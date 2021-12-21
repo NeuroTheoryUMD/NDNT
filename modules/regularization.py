@@ -138,7 +138,7 @@ class Regularization(nn.Module):
 
         if self.need_reshape:
             wsize = weights.size()
-            num_filters = wsize[-1]
+            
             w = torch.reshape(
                     torch.reshape(
                         weights, 
@@ -150,7 +150,7 @@ class Regularization(nn.Module):
 
         rloss = 0
         for regmod in self.reg_modules:
-            rloss += regmod( weights )
+            rloss += regmod( w )
         return rloss
     # END Regularization.define_reg_loss
 
@@ -233,10 +233,10 @@ class RegModule(nn.Module):
         """Calculate regularization penalty for various reg types"""
         #print('  internal', self.reg_type)
         if self.reg_type == 'l1':
-            reg_pen = torch.sum(torch.abs(weights))
+            reg_pen = torch.mean(torch.abs(weights))
 
         elif self.reg_type == 'l2':
-            reg_pen = torch.sum(torch.square(weights))
+            reg_pen = torch.mean(torch.square(weights))
 
         elif self.reg_type in ['d2t', 'd2x', 'd2xt']:
             #reg_pen = torch.sum( torch.square( torch.matmul(self.rmat, weights) ) )
@@ -259,7 +259,7 @@ class RegModule(nn.Module):
         else:
             reg_pen = 0.0
 
-        return self.val*reg_pen
+        return self.val*reg_pen*10e3
     # END RegModule.forward
 
     def make_laplacian( self, reg_type ):
@@ -336,15 +336,15 @@ class RegModule(nn.Module):
         # Apply boundary conditions dependent on default values (that can be set by hand):
         if self.num_dims == 1:
             # prepare for 1-d convolve
-            rpen = torch.sum(F.conv1d( 
+            rpen = torch.mean(F.conv1d( 
                 w.reshape( [-1, 1] + self.reg_dims[:1] ),  # [batch_dim, all non-conv dims, conv_dim]
-                self.rmat, padding=self.BC ).pow(2) ) / weight_dims[-1]
+                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
         elif self.num_dims == 2:
-            rpen = torch.sum(F.conv2d( 
+            rpen = torch.mean(F.conv2d( 
                 w.reshape( [-1, 1] + self.reg_dims[:2] ), 
-                self.rmat, padding=self.BC ).pow(2) ) / weight_dims[-1]
+                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
         elif self.num_dims == 3:
-            rpen = torch.sum(F.conv3d( 
+            rpen = torch.mean(F.conv3d( 
                 w.reshape( [-1,1] + self.reg_dims),
-                self.rmat, padding=self.BC ).pow(2) ) / weight_dims[-1]
+                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
         return rpen

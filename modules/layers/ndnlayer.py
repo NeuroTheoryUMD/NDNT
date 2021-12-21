@@ -101,6 +101,8 @@ class NDNLayer(nn.Module):
             # return error
 
         self.shape = tuple([np.prod(self.filter_dims), self.num_filters])
+        self.weight_scale = np.sqrt(self.shape[0]) / 100
+        # self.weight_scale = np.sqrt(self.shape[0]) * 100
 
         # Make layer variables
         self.weight = Parameter(torch.Tensor(size=self.shape))
@@ -180,15 +182,20 @@ class NDNLayer(nn.Module):
         else:
             w = self.weight
         # Add normalization
-        if self.norm_type > 0: # so far just standard filter-specific normalization
+        if self.norm_type == 1: # so far just standard filter-specific normalization
             w = F.normalize( w, dim=0 )
         return w
 
     def forward(self, x):
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
+
         # Simple linear processing and bias
-        x = torch.matmul(x, w) + self.bias
+        x = torch.matmul(x, w)
+        if self.norm_type == 2:
+            x = x / self.weight_scale
+
+        x = x + self.bias
 
         # Nonlinearity
         if self.NL is not None:

@@ -321,4 +321,4 @@ def create_localpenalty_matrix(input_dims, separable=True, spatial_global=False)
         else:
             rmat = np.kron(mat_seed, np.ones([num_filt, num_filt], dtype=np.float32))
 
-    return rmat
+    return rmat.astype(np.float32)

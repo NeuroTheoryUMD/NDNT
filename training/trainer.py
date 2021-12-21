@@ -23,6 +23,7 @@ class Trainer:
             scheduler_metric=None,
             accumulate_grad_batches=1,
             verbose=True,
+            set_grad_to_none=False,
             **kwargs
             ):
         '''
@@ -51,6 +52,7 @@ class Trainer:
         self.log_activations = log_activations
         self.accumulate_grad_batches = accumulate_grad_batches
         self.verbose = verbose
+        self.set_to_none = set_grad_to_none
         
         ensure_dir(dirpath)
 
@@ -331,7 +333,7 @@ class Trainer:
         # optimization step
         if ((batch_idx + 1) % self.accumulate_grad_batches == 0) or (batch_idx + 1 == self.nbatch):
             self.optimizer.step()
-            self.optimizer.zero_grad(set_to_none=True)
+            self.optimizer.zero_grad(set_to_none=self.set_to_none)
             # self.optimizer.zero_grad() # zero the gradients for the next batch
             
             if self.scheduler:
@@ -447,7 +449,7 @@ class LBFGSTrainer(Trainer):
             
         def closure():
         
-            self.optimizer.zero_grad(set_to_none=True)
+            self.optimizer.zero_grad(set_to_none=self.set_to_none)
             loss = torch.zeros(1, device=self.device)
 
             out = self.model.training_step(train_data)
@@ -461,7 +463,7 @@ class LBFGSTrainer(Trainer):
             return loss
 
         loss = self.optimizer.step(closure)
-        self.optimizer.zero_grad(set_to_none=True)
+        self.optimizer.zero_grad(set_to_none=self.set_to_none)
         if self.use_gpu:
                 torch.cuda.empty_cache()
 
@@ -483,7 +485,7 @@ class LBFGSTrainer(Trainer):
             # pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
             # pbar.set_description("Epoch %i, iter %d/%d" %(epoch, self.iter, max_iter))
             
-            self.optimizer.zero_grad(set_to_none=True)
+            self.optimizer.zero_grad(set_to_none=self.set_to_none)
             loss = torch.zeros(1, device=self.device)
             if self.verbose:
                 pbar = tqdm(train_loader, total=len(train_loader), bar_format=None)
@@ -525,7 +527,7 @@ class LBFGSTrainer(Trainer):
 
         loss = self.optimizer.step(closure)
         print("Epoch %d (%d iter): loss = %02.3f" %(epoch, self.iter, loss.detach().item()))
-        self.optimizer.zero_grad() # zero the gradients for the next batch
+        self.optimizer.zero_grad(set_to_none=self.set_to_none) # zero the gradients for the next batch
         
         if self.use_gpu:
                 torch.cuda.empty_cache()
