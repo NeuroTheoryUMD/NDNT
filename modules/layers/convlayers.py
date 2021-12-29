@@ -2,6 +2,8 @@ import torch
 from torch.nn import functional as F
 import torch.nn as nn
 
+from datasets.mitchell.pixel import time_embedded
+
 from .ndnlayer import NDNLayer
 import numpy as np
 
@@ -59,7 +61,7 @@ class ConvLayer(NDNLayer):
 
         output_dims = [num_filters, 1, 1, 1]
         output_dims[1:3] = input_dims[1:3]
-        self.output_dims = output_dims
+        self._output_dims = output_dims
 
         if input_dims[2] == 1:  # then 1-d spatial
             filter_dims[2] = 1
@@ -93,7 +95,7 @@ class ConvLayer(NDNLayer):
 
         # Combine filter and temporal dimensions for conv -- collapses over both
         self.folded_dims = self.input_dims[0]*self.input_dims[3]
-        self.num_outputs = np.prod(self.output_dims)
+        # self.num_outputs = np.prod(self.output_dims)
 
         # check if output normalization is specified
         if output_norm == 'batch':
@@ -104,6 +106,26 @@ class ConvLayer(NDNLayer):
         else:
             self.output_norm = None
 
+    @property
+    def output_dims(self):
+        self.num_outputs = int(np.prod(self._output_dims))
+        return self._output_dims
+    
+    @output_dims.setter
+    def output_dims(self, value):
+        self._output_dims = value
+        self.num_outputs = int(np.prod(self._output_dims))
+    
+    @property
+    def padding(self):
+        return self._padding
+    
+    @padding.setter
+    def padding(self, value):
+        self._padding = value
+        npad = [value[i*2]+value[i*2+1] for i in range(len(value)//2)]
+        self.output_dims = [self.num_filters] + [self.input_dims[i+1] - self.filter_dims[i+1] + 1 + npad[-i-1] for i in range(2)]
+        self.output_dims += [1]
 
     def forward(self, x):
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
@@ -247,7 +269,7 @@ class STconvLayer(ConvLayer):
 
 
         # Combine filter and temporal dimensions for conv -- collapses over both
-        self.num_outputs = np.prod(self.output_dims)
+        # self.num_outputs = np.prod(self.output_dims)
 
         # check if output normalization is specified
         if output_norm == 'batch':
@@ -294,6 +316,188 @@ class STconvLayer(ConvLayer):
                 bias=self.bias,
                 stride=self.stride, dilation=self.dilation)
             y = y.permute(2,1,3,4,0)    
+        
+        if self.output_norm is not None:
+            y = self.output_norm(y)
+
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+        
+        if self.ei_mask is not None:
+            y = y * self.ei_mask[None,:,None,None,None]
+        
+        y = y.reshape((-1, self.num_outputs))
+
+        return y
+
+    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
+        # Overload plot_filters to automatically time_reverse
+        super().plot_filters( 
+            cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
+            time_reverse=time_reverse)
+
+class TconvLayer(ConvLayer):
+    """
+    Temporal convolutional layer.
+    TConv does not integrate out the time dimension and instead treats it as a true convolutional dimension
+
+    Args:
+        input_dims (list of ints): input dimensions [C, W, H, T]
+        num_filters (int): number of filters
+        filter_dims (list of ints): filter dimensions [C, w, h, T]
+            w < W, h < H
+        stride (int): stride of convolution
+
+    
+    """ 
+
+    def __init__(self,
+        input_dims=None, # [C, W, H, T]
+        num_filters=None, # int
+        conv_dims=None, # [w,h,t]
+        filter_dims=None, # [C, w, h, t]
+        temporal_tent_spacing=None,
+        output_norm=None,
+        stride=1,
+        dilation=1,
+        **kwargs):
+        
+        assert input_dims is not None, "TConvLayer: input_dims must be specified"
+        assert num_filters is not None, "TConvLayer: num_filters must be specified"
+        assert (conv_dims is not None) or (filter_dims is not None), "STConvLayer: conv_dims or filter_dims must be specified"
+        
+        if conv_dims is None:
+            conv_dims = filter_dims[1:]
+
+        # If tent-basis, figure out how many lag-dimensions using tent_basis transform
+        tent_basis = None
+        if temporal_tent_spacing is not None:
+            from NDNT.utils import tent_basis_generate
+            num_lags = conv_dims[2]
+            tentctrs = list(np.arange(0, num_lags, temporal_tent_spacing))
+            tent_basis = tent_basis_generate(tentctrs)
+            if tent_basis.shape[0] != num_lags:
+                print('Warning: tent_basis.shape[0] != num_lags')
+                print('tent_basis.shape = ', tent_basis.shape)
+                print('num_lags = ', num_lags)
+                print('Adding zeros or truncating to match')
+                if tent_basis.shape[0] > num_lags:
+                    print('Truncating')
+                    tent_basis = tent_basis[:num_lags,:]
+                else:
+                    print('Adding zeros')
+                    tent_basis = np.concatenate([tent_basis, np.zeros((num_lags-tent_basis.shape[0], tent_basis.shape[1]))], axis=0)
+                
+            tent_basis = tent_basis[:num_lags,:]
+            num_lag_params = tent_basis.shape[1]
+            print('STconv: num_lag_params =', num_lag_params)
+            conv_dims[2] = num_lag_params
+
+        if filter_dims is None:
+            filter_dims = [input_dims[0]] + conv_dims
+        else:            
+            filter_dims[1:] = conv_dims
+
+        assert stride == 1, 'Cannot handle greater strides than 1.'
+        assert dilation == 1, 'Cannot handle greater dilations than 1.'
+
+        # All parameters of filter (weights) should be correctly fit in layer_params
+        super().__init__(input_dims,
+            num_filters, conv_dims, stride=stride, dilation=dilation, **kwargs)
+
+        self.num_lags = self.input_dims[3]
+
+        if tent_basis is not None:
+            self.register_buffer('tent_basis', torch.Tensor(tent_basis.T))
+        else:
+            self.tent_basis = None
+
+        # Check if 1 or 2-d convolution required
+        self.is1D = (self.input_dims[2] == 1)
+        # "1D" really means a 2D convolution (1D space, 1D time) since time is handled with
+        # convolutions instead of embedding lags
+
+        # Do spatial padding by hand -- will want to generalize this for two-ds
+        if self.is1D:
+            self.padding = (self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+                self.num_lags-1, 0)
+        else:
+            # Checks to ensure cuda-bug with large convolutional filters is not activated #2
+            assert self.filter_dims[2] < self.input_dims[2], "Filter widths must be smaller than input dims."
+
+            # self.padding = (self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+            #     self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2,
+            #     self.num_lags-1, 0)
+
+            self.padding = (self.num_lags-1, 0, self.filter_dims[1]//2,
+                (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+                self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
+        
+
+        # check if output normalization is specified
+        if output_norm == 'batch':
+            if self.is1D:
+                self.output_norm = nn.BatchNorm2d(self.num_filters)
+            else:
+                self.output_norm = nn.BatchNorm3d(self.num_filters)
+        else:
+            self.output_norm = None
+
+    @property
+    def padding(self):
+        return super().padding
+    
+    @padding.setter
+    def padding(self, value):
+        super(TconvLayer, self.__class__).padding.fset(self, value)
+        npad = [value[i*2]+value[i*2+1] for i in range(len(value)//2)]
+        self.output_dims[-1] = self.input_dims[-1] - self.filter_dims[-1] + 1 + npad[0]
+
+    def forward(self, x):
+        # Reshape stim matrix LACKING temporal dimension [bcwh] 
+        # and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        # pytorch likes 3D convolutions to be [B,C,T,W,H].
+        # I benchmarked this and it'sd a 20% speedup to put the "Time" dimension first.
+
+        w = self.preprocess_weights()
+        if self.is1D:
+
+
+            s = x.reshape([-1] + self.input_dims[:3]).permute(0,1,3,2) # [B,C,W,T]->[B,C,T,W] 
+            w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
+            # time-expand using tent-basis if it exists
+            if self.tent_basis is not None:
+                w = torch.einsum('nctw,tz->nczw', w, self.tent_basis)
+
+            y = F.conv2d(
+                F.pad(s, self.padding, "constant", 0),
+                w, 
+                bias=self.bias,
+                stride=self.stride, dilation=self.dilation)
+            
+            y = y.permute(0,1,3,2)  # [B,C,T,W] -> [B,C,W,T]
+
+        else:
+
+            # s = x.reshape([-1] + self.input_dims).permute(0,1,4,2,3) # [B,C,W,H,T] -> [B,C,T,W,H]
+            # w = w.view(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
+
+            w = w.view(self.filter_dims + [-1]).permute(4,0,1,2,3)
+            s = x.unflatten(dim=1, sizes=self.input_dims)
+            
+            # time-expand using tent-basis if it exists
+            if self.tent_basis is not None:
+                # w = torch.einsum('nctwh,tz->nczwh', w, self.tent_basis)
+                w = torch.einsum('ncwht,tz->ncwhz', w, self.tent_basis)
+
+            y = F.conv3d(
+                F.pad(s, self.padding, "constant", 0),
+                w, 
+                bias=self.bias,
+                stride=self.stride, dilation=self.dilation)
+
+            # y = y.permute(0,1,3,4,2)  # [B,C,T,W,H] -> [B,C,W,H,T]
         
         if self.output_norm is not None:
             y = self.output_norm(y)

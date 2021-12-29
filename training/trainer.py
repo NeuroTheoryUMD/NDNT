@@ -457,7 +457,7 @@ class LBFGSTrainer(Trainer):
             loss.backward()
             
             # torch.cuda.empty_cache()
-            if self.verbose > 0:
+            if self.verbose > 1:
                 print('Iteration: {} | Loss: {}'.format(self.optimizer.state_dict()['state'][0]['n_iter'], loss.item()))
             
             return loss
@@ -487,7 +487,7 @@ class LBFGSTrainer(Trainer):
             
             self.optimizer.zero_grad(set_to_none=self.set_to_none)
             loss = torch.zeros(1, device=self.device)
-            if self.verbose:
+            if self.verbose > 1:
                 pbar = tqdm(train_loader, total=len(train_loader), bar_format=None)
                 pbar.set_description("Training ver=%d" %self.version)
             else:
@@ -509,7 +509,7 @@ class LBFGSTrainer(Trainer):
                     self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
                     self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
                     torch.cuda.empty_cache()
-                    if self.verbose:
+                    if self.verbose > 1:
                         # update progress bar
                         pbar.set_postfix({'train_loss': loss.detach().item()/(batch_idx + 1),
                             'fevals': self.optimizer.state_dict()['state'][0]['func_evals'],
