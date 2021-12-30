@@ -1,8 +1,10 @@
 ### regularization.py: managing regularization
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from copy import deepcopy
+import numpy as np
 
 class Regularization(nn.Module):
     """Class for handling layer-wise regularization
@@ -25,11 +27,7 @@ class Regularization(nn.Module):
 
     """
 
-    _allowed_reg_types = ['l1', 'l2', 'norm2', 'norm2_space', 'norm2_filt',
-                          'd2t', 'd2x', 'd2xt', 'local', 'glocal', 'center',
-                          'max', 'max_filt', 'max_space', 'orth']
-
-    def __init__(self, filter_dims=None, num_filters=None, vals=None):
+    def __init__(self, filter_dims=None, vals=None, **kwargs):
         """Constructor for Regularization class. This stores all info for regularization, and 
         sets up regularization modules for training, and returns reg_penalty from layer when passed in weights
         
@@ -51,37 +49,18 @@ class Regularization(nn.Module):
 
         # check input
         assert filter_dims is not None, "Must specify `input_dims`"
-        self.input_dims_original = filter_dims
-        # the "input_dims" are ordered differently for matrix implementations,
-        # so this is a temporary fix to be able to use old functions
-        self.input_dims = [
-            filter_dims[0]*filter_dims[3], # non-spatial
-            filter_dims[1], filter_dims[2]]  # spatial 
- 
-        # will this need to combine first and last input dims? (or just ignore first)
-        if filter_dims[0] == 1:
-            self.need_reshape = False
-        else:
-            self.need_reshape = True
-        self.need_reshape=False  # actually correctly handles d2xt without reshape now
+        self.input_dims = filter_dims
 
         self.vals = {}
         self.reg_modules = nn.ModuleList() 
 
         # read user input
         if vals is not None:
-            #for reg_type, reg_val in vals.iteritems():  # python3 mod
             for reg_type, reg_val in vals.items():
                 if reg_val is not None:
                     self.set_reg_val(reg_type, reg_val)
         
-        # Set default boundary-conditons (that can be reset)
-        self.boundary_conditions = {'d2xt':1, 'd2x':1, 'd2t':1}
     # END Regularization.__init__
-
-    #def __repr__(self):
-    #    s = super().__repr__()
-        # Add other details for printing out if we want
 
     def set_reg_val(self, reg_type, reg_val=None):
         """Set regularization value in self.vals dict (doesn't affect a tf 
@@ -101,7 +80,7 @@ class Regularization(nn.Module):
         """
 
         # check inputs
-        if reg_type not in self._allowed_reg_types:
+        if reg_type not in self.get_reg_class():
             raise ValueError('Invalid regularization type ''%s''' % reg_type)
 
         if reg_val is None:  # then eliminate reg_type
@@ -117,41 +96,20 @@ class Regularization(nn.Module):
 
     def build_reg_modules(self):
         """Prepares regularization modules in train based on current regularization values"""
+        
         self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
-        #self.reg_modules.clear()  # no 'clear' exists for module lists
-        for kk, vv in self.vals.items():
-            if kk in self.boundary_conditions:
-                bc = self.boundary_conditions[kk]
-            else:
-                bc = 0
-            # Awkwardly, old regularization (inherited uses 3-d input_dims, but new reg uses the 4-d)
-            if kk in ['d2xt', 'd2x', 'd2t']:
-                self.reg_modules.append( 
-                    RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims_original, bc_val=bc ) )
-            else: # old-way: 3-d input_dims
-                self.reg_modules.append( RegModule(reg_type=kk, reg_val=vv, input_dims=self.input_dims) )
+        
+        for reg, val in self.vals.items():
+
+            reg_obj = self.get_reg_class(reg)(reg_type=reg, reg_val=val, input_dims=self.input_dims)
+            self.reg_modules.append(reg_obj)
 
     def compute_reg_loss(self, weights):  # this could also be a forward?
-        """Define regularization loss. Will reshape weights as needed"""
         
-        if len(self.reg_modules) == 0:
-            return 0.0
-
-        if self.need_reshape:
-            wsize = weights.size()
-            
-            w = torch.reshape(
-                    torch.reshape(
-                        weights, 
-                        self.input_dims_original + [wsize[-1]]
-                        ).permute(1,2,0,3,4), 
-                    wsize)
-        else:
-            w = weights
-
         rloss = 0
         for regmod in self.reg_modules:
-            rloss += regmod( w )
+            rloss += regmod( weights )
+
         return rloss
     # END Regularization.define_reg_loss
 
@@ -162,107 +120,233 @@ class Regularization(nn.Module):
         reg_target.vals = deepcopy(self.val)
 
         return reg_target
+
+    @staticmethod
+    def get_reg_class(reg_type=None):
+
+        reg_index = {'d2xt': ConvReg,
+                        'd2x': ConvReg,
+                        'd2t': ConvReg,
+                        'l1': InlineReg,
+                        'l2': InlineReg,
+                        'norm2': InlineReg,
+                        'orth': InlineReg,
+                        'glocalx': LocalityReg,
+                        'glocalt': LocalityReg,
+                        'local': Tikhanov,
+                        'glocal': Tikhanov,
+                        'max': Tikhanov,
+                        'max_filt': Tikhanov,
+                        'max_space': Tikhanov,
+                        'center': DiagonalReg,}
+
+        if reg_type is None:
+            ret = reg_index.keys()
+        else:
+            ret = reg_index[reg_type]
+
+        return ret
     # END Regularization.reg_copy
 
-class RegModule(nn.Module):
+class RegModule(nn.Module): 
+    """ Base class for regularization modules """
 
-    def __init__(self, reg_type=None, reg_val=None, input_dims=None, bc_val=0):
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, **kwargs):
         """Constructor for Reg_module class"""
 
         assert reg_type is not None, 'Need reg_type.'
         assert reg_val is not None, 'Need reg_val'
         assert input_dims is not None, 'Need input dims'
 
-        super(RegModule, self).__init__()
+        super().__init__()
 
         self.reg_type = reg_type
         self.register_buffer( 'val', torch.tensor(reg_val))
         self.input_dims = input_dims
-        self.num_dims = 0 # this is the relevant number of dimensions for some filters -- will be set within functions
-
-        # Make appropriate reg_matrix as buffer (non-fit parameter)
-        reg_tensor = self._build_reg_mats( reg_type)
-        if reg_tensor is None:  # some reg dont need rmat 
-            self.rmat = None
-        else:
-            self.register_buffer( 'rmat', reg_tensor)
-
-        # Default boundary conditions for convolutional regularization
-        self.BC = bc_val
-    # END RegModule.__init__
-
-    #def __repr__(self):
-    #    s = super().__repr__()
-        # Add other details for printing out if we want
-
-    def _build_reg_mats(self, reg_type):
-        """Build regularization matrices in default tf Graph
-
-        Args:
-            reg_type (str): see `_allowed_reg_types` for options
-        """
-        import NDNT.utils.create_reg_matrices as get_rmats
-
-        if (reg_type == 'd2t') or (reg_type == 'd2x') or (reg_type == 'd2xt'):
-            #reg_mat = get_rmats.create_tikhonov_matrix(self.input_dims, reg_type)
-            #name = reg_type + '_laplacian'
-            reg_mat = self.make_laplacian(reg_type)
-        elif (reg_type == 'max') or (reg_type == 'max_filt') or (reg_type == 'max_space'):
-            reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
-            #name = reg_type + '_reg'
-        elif reg_type == 'center':
-            reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
-            #name = reg_type + '_reg'
-        elif reg_type == 'local':
-            reg_mat = get_rmats.create_localpenalty_matrix(
-                self.input_dims, separable=False)
-            #name = reg_type + '_reg'
-        elif reg_type == 'glocal':
-            reg_mat = get_rmats.create_localpenalty_matrix(
-                self.input_dims, separable=False, spatial_global=True)
-            #name = reg_type + '_reg'
-        else:
-            reg_mat = None
-
-        if reg_mat is None:
-            return None
-        else:
-            return torch.Tensor(reg_mat)
-    # END RegModule._build_reg_mats
+        self.num_dims = num_dims # this is the relevant number of dimensions for some filters -- will be set within functions
 
     def forward(self, weights):
+
+        rpen = self.compute_reg_penalty(weights)
+
+        return self.val * rpen * 10e3
+
+class LocalityReg(RegModule):
+    """ Regularization to penalize locality separably for each dimension"""
+    
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, **kwargs):
+        """Constructor for LocalityReg class"""
+        _valid_reg_types = ['glocalx', 'glocalt']
+        assert reg_type in _valid_reg_types, '{} is not a valid Regd2 type'.format(reg_type)
+
+        super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
+
+        self.build_reg_mats()
+
+    def compute_reg_penalty(self, weights):
+        """Compute regularization penalty for locality"""
+
+        rpen = 0
+        if self.reg_type == 'glocalx':
+            
+            # glocal
+            w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
+            wx = w.mean(dim=(0,2,3)) # sum over y and t
+            wy = w.mean(dim=(0,1,3)) # sum over x and t
+
+            penx = torch.einsum('xn,xw->wn', wx, self.localx_pen)
+            penx = torch.einsum('xn,xn->n', penx, wx)
+
+            peny = torch.einsum('yn,yw->wn', wy, self.localy_pen)
+            peny = torch.einsum('yn,yn->n', peny, wy)
+
+            rpen = penx + peny
+
+        elif self.reg_type == 'glocalt':
+            # glocal
+            w = weights.reshape(self.input_dims + [-1])**2
+            wt = w.mean(dim=(0,1,2))
+
+            rpen = torch.einsum('tn,tw->wn', wt, self.localt_pen)
+            rpen = torch.einsum('tn,tn->n', rpen, wt)
+
+
+        return rpen.sum()
+    # END LocalityReg.compute_reg_penalty
+
+    def build_reg_mats(self):
+        
+        if self.reg_type == 'glocalx':
+            self.register_buffer('localx_pen',((torch.arange(self.input_dims[1])-torch.arange(self.input_dims[1])[:,None]).abs()).float()/self.input_dims[1])
+            if self.input_dims[1]==self.input_dims[2]:
+                self.localy_pen = self.localx_pen
+            else:
+                self.register_buffer('localy_pen',((torch.arange(self.input_dims[2])-torch.arange(self.input_dims[2])[:,None]).abs()).float()/self.input_dims[2])
+        elif self.reg_type == 'glocalt':
+            self.register_buffer('localt_pen',((torch.arange(self.input_dims[3])-torch.arange(self.input_dims[3])[:,None]).abs()).float()/self.input_dims[3])
+
+class DiagonalReg(RegModule):
+    """ Regularization module for diagonal penalties"""
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, **kwargs):
+        assert reg_type in ['center'], "{} is not a valid Diagonal Regularization type".format(reg_type)
+        super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, **kwargs)
+
+        # the "input_dims" are ordered differently for matrix implementations,
+        # so this is a temporary fix to be able to use old functions
+        self.input_dims = [
+            input_dims[0]*input_dims[3], # non-spatial
+            input_dims[1], input_dims[2]]  # spatial 
+
+        reg_mat = self._build_reg_mats( reg_type)
+        self.register_buffer( 'rmat', torch.Tensor(reg_mat))
+    
+    def compute_reg_penalty(self, weights):
+        """Compute regularization loss"""
+        rpen = torch.mean( torch.matmul( (weights**2).T, self.rmat) )
+        
+        return rpen
+    
+    def _build_reg_mats(self, reg_type):
+        
+        num_filt= self.input_dims[0]
+        # additional dimensions are spatial (Nx and Ny)
+        num_pix = self.input_dims[1] * self.input_dims[2]
+        dims_prod = num_filt * num_pix
+
+        rmat = np.zeros(dims_prod, dtype=np.float32)
+    
+        if reg_type == 'center':
+            for i in range(dims_prod):
+                pos_x = (i % (self.input_dims[0] * self.input_dims[1])) // self.input_dims[0]
+                pos_y = i // (self.input_dims[0] * self.input_dims[1])
+
+                center_x = (self.input_dims[1] - 1) / 2
+                center_y = (self.input_dims[2] - 1) / 2
+
+                alpha = np.square(pos_x - center_x) + np.square(pos_y - center_y)
+
+                rmat[i] = 0.01*alpha
+        
+        return rmat
+
+class InlineReg(RegModule):
+    """ Regularization module for inline penalties"""
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, **kwargs):
+        assert reg_type in ['l1', 'l2', 'norm2', 'orth'], "{} is not a valid Inline Regularization type".format(reg_type)
+        super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, **kwargs)
+
+    def compute_reg_penalty(self, weights):
         """Calculate regularization penalty for various reg types"""
-        #print('  internal', self.reg_type)
         if self.reg_type == 'l1':
             reg_pen = torch.mean(torch.abs(weights))
 
         elif self.reg_type == 'l2':
             reg_pen = torch.mean(torch.square(weights))
-
-        elif self.reg_type in ['d2t', 'd2x', 'd2xt']:
-            #reg_pen = torch.sum( torch.square( torch.matmul(self.rmat, weights) ) )
-            reg_pen = self.d2xt( weights )
-
+        
         elif self.reg_type == 'norm2':  # [custom] convex (I think) soft-normalization regularization
             reg_pen = torch.square( torch.mean(torch.square(weights))-1 )
 
-        elif self.reg_type in ['max', 'max_filt', 'max_space', 'local', 'glocal', 'center']:  # [custom]
-            # my old implementation didnt square weights before passing into center. should it? I think....
-            w2 = torch.square(weights)
-            reg_pen = torch.trace(
-                torch.matmul( w2.T, torch.matmul(self.rmat, w2) ))
-        # ORTH MORE COMPLICATED: needs another buffer?
-        #elif self.reg_type == 'orth':  # [custom]
-        #    diagonal = np.ones(weights.shape[1], dtype='float32')
-        #    # sum( (W^TW - I).^2)
-        #    reg_pen = tf.multiply(self.vals_var['orth'],
-        #        tf.reduce_sum(tf.square(tf.math.subtract(tf.matmul(tf.transpose(weights), weights),tf.linalg.diag(diagonal)))))
+        elif self.reg_type == 'orth':  # [custom] orthogonal regularization
+            w = (weights.T @ weights).abs()
+            reg_pen = w.sum() - w.trace()
         else:
             reg_pen = 0.0
 
-        return self.val*reg_pen*10e3
-    # END RegModule.forward
+        return reg_pen
 
+class ConvReg(RegModule):
+    """ Regularization module for convolutional penalties"""
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, bc_val=1, **kwargs):
+        """Constructor for Reg_module class"""
+        _valid_reg_types = ['d2x', 'd2t', 'd2xt']
+        assert reg_type in _valid_reg_types, '{} is not a valid ConvReg type'.format(reg_type)
+        super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, **kwargs)
+
+        reg_mat = self.make_laplacian(reg_type)
+        self.register_buffer( 'rmat', torch.Tensor(reg_mat))
+        self.BC = bc_val
+    
+    def compute_reg_penalty(self, weights):
+        """I'm separating the code for more complicated regularization penalties in the simplest possible way here, but
+        this can be done more (or less) elaborately in the future. The challenge here is that the dimension of the weight
+        vector (1-D, 2-D, 3-D) determines what sort of Laplacian matrix, and convolution, to do
+        Note that all convolutions are implicitly 'valid' so no boundary conditions"""
+        
+        weight_dims = self.input_dims + [weights.shape[1]]
+        w = weights.reshape(weight_dims)
+        # puts in [C, W, H, T, num_filters]: to reorder depending on reg type
+        # default reg_dims
+        if self.reg_type == 'd2t':
+            w = w.permute(4,0,1,2,3) # needs temporal dimension last so only convolved
+            #reg_dims = [weight_dims[3]]
+        elif self.reg_type == 'd2xt':
+            w = w.permute(4,0,1,2,3) 
+            # Reg-dims will depend on whether space is one- or two-dimensional
+            #if weight_dims[2] > 1:
+            #    reg_dims = [weight_dims[1], weight_dims[2], weight_dims[3]]
+            #else:
+            #    reg_dims = [weight_dims[1], weight_dims[3]]
+        else:  # then d2x
+            w = w.permute(4,0,3,1,2)  # rotate temporal dimensions next to filter dims
+            #reg_dims = [weight_dims[1], weight_dims[2]]
+
+        # Apply boundary conditions dependent on default values (that can be set by hand):
+        if self.num_dims == 1:
+            # prepare for 1-d convolve
+            rpen = torch.mean(F.conv1d( 
+                w.reshape( [-1, 1] + self.reg_dims[:1] ),  # [batch_dim, all non-conv dims, conv_dim]
+                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
+        elif self.num_dims == 2:
+            rpen = torch.mean(F.conv2d( 
+                w.reshape( [-1, 1] + self.reg_dims[:2] ), 
+                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
+        elif self.num_dims == 3:
+            rpen = torch.mean(F.conv3d( 
+                w.reshape( [-1,1] + self.reg_dims),
+                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
+        
+        return rpen
+    
     def make_laplacian( self, reg_type ):
         """This will make the Laplacian of the right dimensionality depending on d2xt, d2t, d2x"""
 
@@ -308,44 +392,58 @@ class RegModule(nn.Module):
             rmat = np.array([1])
             print("Warning: %s regularization does not have the necessary filter dimensions.")
         return rmat
-
-    def d2xt(self, weights):
-        """I'm separating the code for more complicated regularization penalties in the simplest possible way here, but
-        this can be done more (or less) elaborately in the future. The challenge here is that the dimension of the weight
-        vector (1-D, 2-D, 3-D) determines what sort of Laplacian matrix, and convolution, to do
-        Note that all convolutions are implicitly 'valid' so no boundary conditions"""
-        from torch.nn import functional as F
         
-        weight_dims = self.input_dims + [weights.shape[1]]
-        w = weights.reshape(weight_dims)
-        # puts in [C, W, H, T, num_filters]: to reorder depending on reg type
-        # default reg_dims
-        if self.reg_type == 'd2t':
-            w = w.permute(4,0,1,2,3) # needs temporal dimension last so only convolved
-            #reg_dims = [weight_dims[3]]
-        elif self.reg_type == 'd2xt':
-            w = w.permute(4,0,1,2,3) 
-            # Reg-dims will depend on whether space is one- or two-dimensional
-            #if weight_dims[2] > 1:
-            #    reg_dims = [weight_dims[1], weight_dims[2], weight_dims[3]]
-            #else:
-            #    reg_dims = [weight_dims[1], weight_dims[3]]
-        else:  # then d2x
-            w = w.permute(4,0,3,1,2)  # rotate temporal dimensions next to filter dims
-            #reg_dims = [weight_dims[1], weight_dims[2]]
 
-        # Apply boundary conditions dependent on default values (that can be set by hand):
-        if self.num_dims == 1:
-            # prepare for 1-d convolve
-            rpen = torch.mean(F.conv1d( 
-                w.reshape( [-1, 1] + self.reg_dims[:1] ),  # [batch_dim, all non-conv dims, conv_dim]
-                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
-        elif self.num_dims == 2:
-            rpen = torch.mean(F.conv2d( 
-                w.reshape( [-1, 1] + self.reg_dims[:2] ), 
-                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
-        elif self.num_dims == 3:
-            rpen = torch.mean(F.conv3d( 
-                w.reshape( [-1,1] + self.reg_dims),
-                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
-        return rpen
+class Tikhanov(RegModule):
+    """Regularization module for Tikhanov regularization"""
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, bc_val=0, **kwargs):
+        """Constructor for Tikhanov class"""
+
+        super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, bc_val=bc_val, **kwargs)
+        
+        _valid_reg_types = ['local', 'glocal', 'max', 'maxfilt']
+        assert reg_type in _valid_reg_types, "{} is not a valid Tikhanov regularization type".format(reg_type)
+        
+        # the "input_dims" are ordered differently for matrix implementations,
+        # so this is a temporary fix to be able to use old functions
+        self.input_dims = [
+            input_dims[0]*input_dims[3], # non-spatial
+            input_dims[1], input_dims[2]]  # spatial 
+
+        # Make appropriate reg_matrix as buffer (non-fit parameter)
+        reg_tensor = self._build_reg_mats( reg_type)
+        self.register_buffer( 'rmat', reg_tensor)
+    
+    def compute_reg_penalty(self, weights):
+        """Calculate regularization penalty for Tikhanov reg types"""
+
+        w2 = torch.square(weights)
+        reg_pen = torch.trace(
+                torch.matmul( w2.T, torch.matmul(self.rmat, w2) ))
+
+        return reg_pen
+
+    def _build_reg_mats(self, reg_type):
+        """Build regularization matrices in default tf Graph
+
+        Args:
+            reg_type (str): see `_allowed_reg_types` for options
+        """
+        import NDNT.utils.create_reg_matrices as get_rmats
+
+        if (reg_type == 'max') or (reg_type == 'max_filt') or (reg_type == 'max_space'):
+            reg_mat = get_rmats.create_maxpenalty_matrix(self.input_dims, reg_type)
+        elif reg_type == 'local':
+            reg_mat = get_rmats.create_localpenalty_matrix(
+                self.input_dims, separable=False)
+        elif reg_type == 'glocal':
+            reg_mat = get_rmats.create_localpenalty_matrix(
+                self.input_dims, separable=False, spatial_global=True)
+        else:
+            reg_mat = None
+
+        if reg_mat is None:
+            return None
+        else:
+            return torch.Tensor(reg_mat)
+    # END RegModule._build_reg_mats
