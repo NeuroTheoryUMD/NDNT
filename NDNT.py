@@ -519,9 +519,7 @@ class NDN(nn.Module):
             if data_inds is None:
                 data_inds = list(range(len(data)))
 
-            data_dl, _ = self.get_dataloaders(data, batch_size=batch_size, num_workers=num_workers, train_inds=data_inds)
-
-            
+            data_dl, _ = self.get_dataloaders(data, batch_size=batch_size, num_workers=num_workers, train_inds=data_inds, val_inds=data_inds)
 
             LLsum, Tsum, Rsum = 0, 0, 0
             from tqdm import tqdm

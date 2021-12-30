@@ -258,5 +258,9 @@ class NDNLayer(nn.Module):
             from NDNT.utils import plot_filters_ST1D
             plot_filters_ST1D(ws, cmaps=cmaps, num_cols=num_cols, row_height=row_height, time_reverse=time_reverse)
         else:
-            from NDNT.utils import plot_filters_ST2D
-            plot_filters_ST2D(ws)
+            if self.input_dims[0] == 1:
+                from NDNT.utils import plot_filters_ST2D
+                plot_filters_ST2D(ws)
+            else:
+                from NDNT.utils import plot_filters_ST3D
+                plot_filters_ST3D(ws)

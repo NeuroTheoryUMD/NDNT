@@ -63,6 +63,7 @@ class Regularization(nn.Module):
             self.need_reshape = False
         else:
             self.need_reshape = True
+        self.need_reshape=False  # actually correctly handles d2xt without reshape now
 
         self.vals = {}
         self.reg_modules = nn.ModuleList() 

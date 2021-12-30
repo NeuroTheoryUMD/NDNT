@@ -66,3 +66,54 @@ def plot_filters_ST2D(ws, sort=False):
         plt.axhline(0, color='k')
         plt.axvline(bestlag, color=(.5, .5, .5))
         plt.axis("off")
+
+
+def plot_filters_ST3D(ws, sort=False):
+    from NDNT.utils import subplot_setup
+
+    MAX_PER_LINE = 2
+    clrs='kgbrcm'
+
+    nfilt = ws.shape[-1]
+    ei_mask = np.ones(nfilt)
+    sz = ws.shape
+    nchan = sz[0]
+
+    # Max 
+    if nfilt < MAX_PER_LINE:
+        sy = nfilt*(nchan+1)
+        sx = 1
+    else:
+        sy = ((nchan+1)*MAX_PER_LINE)
+        sx = np.ceil(nfilt/MAX_PER_LINE).astype(int)
+
+    if type(sort) is np.ndarray:
+        cinds = sort
+    elif sort:
+        n = np.asarray([np.max(abs(w[:,:,i])) for i in range(nfilt)])
+        cinds = np.argsort(n)[::-1][-len(n):]
+    else:
+        cinds = np.arange(0, nfilt)
+
+    # Collapse spatial dims together
+    wt = ws.reshape(nchan, sz[1]*sz[2], sz[3], nfilt)
+    
+    f = subplot_setup(sx, sy, fighandle=True)
+    f.tight_layout()
+    for cc,jj in zip(cinds, range(nfilt)):
+        bestlags = np.argmax(np.max(abs(wt[:,:,:, cc]), axis=1), axis=1)
+        bestxy = np.argmax(np.max(abs(wt[:,:,:, cc]), axis=2), axis=1)
+
+        plt.subplot(sx,sy,jj*(nchan+1)+1)
+        for nn in range(nchan):
+            plt.plot(wt[nn, bestxy[nn], :, cc ], clrs[nn])
+            #plt.axvline(bestlags[nn], clrs[nn]+'--')
+        plt.plot([0, sz[3]],[0,0],'r--')
+        #plt.axhline(0, color='k')
+        plt.title(str(cc))
+
+        m = np.max(abs(wt[:,:,:,cc]))
+        for nn in range(nchan):
+            plt.subplot(sx,sy,jj*(nchan+1)+2+nn)
+            plt.imshow( ws[nn, :, :, bestlags[nn], cc], interpolation=None, vmin=-m, vmax=m )
+            plt.axis("off")
