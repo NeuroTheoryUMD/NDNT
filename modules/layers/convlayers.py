@@ -390,30 +390,11 @@ class STconvLayer(TconvLayer):
         super().__init__(input_dims,
             num_filters, conv_dims, output_norm=output_norm, **kwargs)
 
+        assert self.input_dims[3] == self.filter_dims[3], "STConvLayer: input_dims[3] must equal filter_dims[3]"
         self.num_lags = self.input_dims[3]
         self.input_dims[3] = 1  # take lag info and use for temporal convolution
-
-        # Do spatial padding by hand -- will want to generalize this for two-ds
-        if self.is1D:
-            self.padding = (self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
-                self.num_lags-1, 0)
-        else:
-            # Checks to ensure cuda-bug with large convolutional filters is not activated #2
-            assert self.filter_dims[2] < self.input_dims[2], "Filter widths must be smaller than input dims."
-
-            self.padding = (self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
-                self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2,
-                self.num_lags-1, 0)
-
-        # check if output normalization is specified
-        if output_norm == 'batch':
-            if self.is1D:
-                self.output_norm = nn.BatchNorm2d(self.num_filters)
-            else:
-                self.output_norm = nn.BatchNorm3d(self.num_filters)
-        else:
-            self.output_norm = None
-
+        self.output_dims[-1] = 1
+        self.output_dims = self.output_dims # annoying fix for the num_outputs dependency on all output_dims values being updated
 
     def forward(self, x):
         # Reshape stim matrix LACKING temporal dimension [bcwh] 
@@ -427,8 +408,14 @@ class STconvLayer(TconvLayer):
             w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
             
             if self.padding:
-                s = F.pad(s, self.padding, "constant", 0)
+                # flip order of padding for STconv
+                pad = (self.padding[2], self.padding[3], self.padding[0], self.padding[1])
+            else:
+                # still need to pad the batch dimension
+                pad = (0,0,self.filter_dims[-1]-1,0)
 
+            s = F.pad(s, pad, "constant", 0)
+            
             y = F.conv2d(
                 s,
                 w, 
@@ -440,8 +427,14 @@ class STconvLayer(TconvLayer):
         else:
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
             w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
+            
             if self.padding:
-                s = F.pad(s, self.padding, "constant", 0)
+                pad = (self.padding[2], self.padding[3], self.padding[4], self.padding[5], self.padding[0], self.padding[1])
+            else:
+                # still need to pad the batch dimension
+                pad = (0,0,0,0,self.filter_dims[-1]-1,0)
+
+            s = F.pad(s, pad, "constant", 0)
 
             y = F.conv3d(
                 s,
@@ -449,7 +442,7 @@ class STconvLayer(TconvLayer):
                 bias=self.bias,
                 stride=self.stride, dilation=self.dilation)
 
-            y = y.permute(2,1,3,4,0)
+            y = y.permute(2,1,3,4,0) # [1,N,B,W,H] -> [B,N,W,H,1]
         
         if self.output_norm is not None:
             y = self.output_norm(y)
