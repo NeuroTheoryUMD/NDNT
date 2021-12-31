@@ -188,25 +188,29 @@ class LocalityReg(RegModule):
             
             # glocal
             w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
-            wx = w.mean(dim=(0,2,3)) # sum over y and t
-            wy = w.mean(dim=(0,1,3)) # sum over x and t
+            wx = w.sum(dim=(0,2,3)) # sum over y and t
+            wy = w.sum(dim=(0,1,3)) # sum over x and t
 
             penx = torch.einsum('xn,xw->wn', wx, self.localx_pen)
             penx = torch.einsum('xn,xn->n', penx, wx)
 
-            peny = torch.einsum('yn,yw->wn', wy, self.localy_pen)
-            peny = torch.einsum('yn,yn->n', peny, wy)
+            if self.same_dims:
+                peny = torch.einsum('yn,yw->wn', wy, self.localx_pen)
+                peny = torch.einsum('yn,yn->n', peny, wy)
+            else:    
+                peny = torch.einsum('yn,yw->wn', wy, self.localy_pen)
+                peny = torch.einsum('yn,yn->n', peny, wy)
 
             rpen = penx + peny
 
         elif self.reg_type == 'glocalt':
-            # glocal
+            
+            # glocal on time
             w = weights.reshape(self.input_dims + [-1])**2
-            wt = w.mean(dim=(0,1,2))
+            wt = w.sum(dim=(0,1,2))
 
             rpen = torch.einsum('tn,tw->wn', wt, self.localt_pen)
             rpen = torch.einsum('tn,tn->n', rpen, wt)
-
 
         return rpen.sum()
     # END LocalityReg.compute_reg_penalty
@@ -216,9 +220,11 @@ class LocalityReg(RegModule):
         if self.reg_type == 'glocalx':
             self.register_buffer('localx_pen',((torch.arange(self.input_dims[1])-torch.arange(self.input_dims[1])[:,None]).abs()).float()/self.input_dims[1])
             if self.input_dims[1]==self.input_dims[2]:
-                self.localy_pen = self.localx_pen
+                self.same_dims = True
             else:
+                self.same_dims = False
                 self.register_buffer('localy_pen',((torch.arange(self.input_dims[2])-torch.arange(self.input_dims[2])[:,None]).abs()).float()/self.input_dims[2])
+
         elif self.reg_type == 'glocalt':
             self.register_buffer('localt_pen',((torch.arange(self.input_dims[3])-torch.arange(self.input_dims[3])[:,None]).abs()).float()/self.input_dims[3])
 
