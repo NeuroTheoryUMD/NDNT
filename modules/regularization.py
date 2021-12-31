@@ -63,8 +63,7 @@ class Regularization(nn.Module):
     # END Regularization.__init__
 
     def set_reg_val(self, reg_type, reg_val=None):
-        """Set regularization value in self.vals dict (doesn't affect a tf 
-        Graph until a session is run and `assign_reg_vals` is called)
+        """Set regularization value in self.vals dict 
         
         Args:
             reg_type (str): see `_allowed_reg_types` for options
@@ -75,8 +74,7 @@ class Regularization(nn.Module):
             
         Raises:
             ValueError: If `reg_type` is not a valid regularization type
-            ValueError: If `reg_val` is less than 0.0
-            
+            ValueError: If `reg_val` is less than 0.0            
         """
 
         # check inputs
@@ -166,16 +164,15 @@ class RegModule(nn.Module):
         self.num_dims = num_dims # this is the relevant number of dimensions for some filters -- will be set within functions
 
     def forward(self, weights):
-
         rpen = self.compute_reg_penalty(weights)
-
-        return self.val * rpen * 10e3
+        return self.val * rpen * 1e4
 
 class LocalityReg(RegModule):
     """ Regularization to penalize locality separably for each dimension"""
     
     def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, **kwargs):
         """Constructor for LocalityReg class"""
+
         _valid_reg_types = ['glocalx', 'glocalt']
         assert reg_type in _valid_reg_types, '{} is not a valid Regd2 type'.format(reg_type)
 
@@ -227,46 +224,47 @@ class LocalityReg(RegModule):
 
 class DiagonalReg(RegModule):
     """ Regularization module for diagonal penalties"""
+
     def __init__(self, reg_type=None, reg_val=None, input_dims=None, **kwargs):
+
         assert reg_type in ['center'], "{} is not a valid Diagonal Regularization type".format(reg_type)
         super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, **kwargs)
 
         # the "input_dims" are ordered differently for matrix implementations,
         # so this is a temporary fix to be able to use old functions
-        self.input_dims = [
-            input_dims[0]*input_dims[3], # non-spatial
-            input_dims[1], input_dims[2]]  # spatial 
+        self.input_dims = input_dims
 
-        reg_mat = self._build_reg_mats( reg_type)
+        reg_mat = self._build_reg_mats(reg_type)
         self.register_buffer( 'rmat', torch.Tensor(reg_mat))
     
     def compute_reg_penalty(self, weights):
         """Compute regularization loss"""
-        rpen = torch.mean( torch.matmul( (weights**2).T, self.rmat) )
-        
+
+        # Collapse weights across non-spatial dimensions
+        w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
+        wcollapse = w.mean(dim=(0,3,4)).reshape([-1])
+
+        rpen = torch.mean( torch.matmul( wcollapse, self.rmat) )
+
         return rpen
     
     def _build_reg_mats(self, reg_type):
-        
-        num_filt= self.input_dims[0]
-        # additional dimensions are spatial (Nx and Ny)
-        num_pix = self.input_dims[1] * self.input_dims[2]
-        dims_prod = num_filt * num_pix
-
-        rmat = np.zeros(dims_prod, dtype=np.float32)
     
+        NX, NY = self.input_dims[1:3]
+
         if reg_type == 'center':
-            for i in range(dims_prod):
-                pos_x = (i % (self.input_dims[0] * self.input_dims[1])) // self.input_dims[0]
-                pos_y = i // (self.input_dims[0] * self.input_dims[1])
 
-                center_x = (self.input_dims[1] - 1) / 2
-                center_y = (self.input_dims[2] - 1) / 2
+            center_x = (NX - 1) / 2
+            px = (np.arange(NX)-center_x)/center_x
 
-                alpha = np.square(pos_x - center_x) + np.square(pos_y - center_y)
+            if NY == 1:  # then 1-d space
+                rmat = px**2
+            else:
+                center_y = (NY - 1) / 2
+                py = (np.arange(NY)-center_y)/center_y
 
-                rmat[i] = 0.01*alpha
-        
+                # Make a matrix and then reshape
+                rmat = np.reshape( px[:,None]**2 @ np.ones([1,NY]) + np.ones([NX,1]) @ py[None,:]**2, [-1])
         return rmat
 
 class InlineReg(RegModule):

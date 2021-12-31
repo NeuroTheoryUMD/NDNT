@@ -12,43 +12,83 @@ from collections import OrderedDict
 def create_optimizer_params(
         optimizer='AdamW',
         batch_size=1000,
-        weight_decay=0.01,
+        max_iter=None,
+        max_epochs=None,
+        num_workers=1,
+        num_gpus=1,
+        optimize_graph = True,
+        log_activations = False,
+        progress_bar_refresh=20, # num of batches 
+        # AdamW specific
         early_stopping=True,
         early_stopping_patience=4,
-        max_iter=10000,
+        weight_decay=0.01,
         learning_rate=1e-3,
         betas=[0.9, 0.999],
-        num_gpus=1,
-        progress_bar_refresh=20, # num of batches 
-        num_workers=4,
-        max_epochs=None,
-        line_search='Wolfe', # see LBFGS for meaning of line_search method
-        history=10):
+        # L-BFGS specific
+        full_batch=True,
+        tolerance_change=1e-5,
+        tolerance_grad=1e-9,
+        history_size=10,
+        accumulated_grad_batches=1,
+        line_search_fn=None):
 
-    if max_epochs is None:
-        if early_stopping:
-            max_epochs = 1000
-        else:
-            max_epochs = 300
+    # Make optimizer params based on Adam or LBFGS, filling in chosen defaults
+    if optimizer in ['LBFGS', 'lbfgs']:
 
-    optpar = {
-        'batch_size': batch_size,
-        'device': None,
-        'weight_decay': weight_decay,
-        'early_stopping': early_stopping,
-        'early_stopping_patience': early_stopping_patience,
-        'max_iter': max_iter,
-        'max_epochs': max_epochs,
-        'learning_rate': learning_rate,
-        'betas': betas, 
-        'amsgrad': False,
-        'auto_lr': False,
-        'progress_bar_refresh': progress_bar_refresh,
-        'num_workers': num_workers,
-        'num_gpus': num_gpus,
-        'history': history,
-        'line_search': line_search,
-        'optimizer': optimizer}
+        # L-BFGS specific defaults
+        if max_iter is None:
+            max_iter = 300
+        if max_epochs is None:
+            max_epochs = 5
+
+        optpar = {
+            'optimizer': 'LBFGS',
+            'full_batch': full_batch,
+            'batch_size': batch_size,
+            'max_iter': max_iter,
+            'max_epochs': max_epochs,
+            'progress_bar_refresh': progress_bar_refresh,
+            'log_activations': log_activations, 
+            'optimize_graph': optimize_graph,
+            'num_workers': num_workers,
+            'num_gpus': num_gpus,
+            'history_size': history_size,
+            'line_search_fn': line_search_fn,
+            'tolerance_change': tolerance_change,
+            'tolerance_grad': tolerance_grad,
+            'accumulated_grad_batches': accumulated_grad_batches,
+            'early_stopping': False,
+            'device': None}
+
+    else: # Assume some sort of adam / sgd with similar params/defaults
+        if max_iter is None:
+            max_iter = 10000
+
+        if max_epochs is None:
+            if early_stopping:
+                max_epochs = 100
+            else:
+                max_epochs = 30
+
+        optpar = {
+            'optimizer': optimizer,
+            'batch_size': batch_size,
+            'weight_decay': weight_decay,
+            'early_stopping': early_stopping,
+            'early_stopping_patience': early_stopping_patience,
+            'max_iter': max_iter,
+            'max_epochs': max_epochs,
+            'learning_rate': learning_rate,
+            'betas': betas, 
+            'amsgrad': False,
+            'auto_lr': False,
+            'num_workers': num_workers,
+            'num_gpus': num_gpus,
+            'progress_bar_refresh': progress_bar_refresh,
+            'log_activations': log_activations, 
+            'optimize_graph': optimize_graph,
+            'device': None} 
 
     return optpar
 # END create_optimizer_params

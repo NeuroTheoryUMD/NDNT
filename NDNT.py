@@ -199,7 +199,7 @@ class NDN(nn.Module):
         optimizer = None,
         scheduler = None,
         device = None,
-        accumulated_grad_batches=1,
+        accumulated_grad_batches=None,  # default=1 if not set in opt_params
         log_activations=True,
         opt_params = None, 
         full_batch=False):
@@ -215,6 +215,7 @@ class NDN(nn.Module):
         
         if opt_params is None:
                 opt_params = create_optimizer_params()
+                print('WARNING: using default optimization parameters.')
 
         if optimizer is None:
             optimizer = self.get_optimizer(**opt_params)
@@ -228,6 +229,12 @@ class NDN(nn.Module):
                 earlystopping = EarlyStopping(patience=opt_params['early_stopping_patience'],delta=0.0)
         else:
             earlystopping = None
+
+        if accumulated_grad_batches is None:
+            if opt_params is None:
+                accumulated_grad_batches = 1
+            else:
+                accumulated_grad_batches = opt_params['accumulated_grad_batches']
 
         # Check for device assignment in opt_params
         if device is None:
@@ -262,6 +269,7 @@ class NDN(nn.Module):
                 device=device,
                 scheduler=scheduler,
                 accumulate_grad_batches=accumulated_grad_batches,
+                max_epochs=opt_params['max_epochs'],
                 log_activations=log_activations,
                 version=version,
                 full_batch=full_batch)
@@ -270,8 +278,9 @@ class NDN(nn.Module):
 
     def get_dataloaders(self,
             dataset,
-            batch_size=10,
-            num_workers=4,
+            opt_params=None,
+            batch_size=None,  # default 10
+            num_workers=None, # default 1
             train_inds=None,
             val_inds=None,
             is_fixation=False,
@@ -279,6 +288,17 @@ class NDN(nn.Module):
 
         from torch.utils.data import DataLoader, random_split, Subset
 
+        if opt_params is not None:
+            if batch_size is None:
+                batch_size = opt_params['batch_size']
+            if num_workers is None:
+                num_workers = opt_params['num_workers']
+        else:
+            if batch_size is None:
+                batch_size = 10
+            if num_workers is None:
+                num_workers = 1
+        
         if train_inds is None or val_inds is None:
             # check dataset itself
             if hasattr(dataset, 'val_inds') and \
@@ -320,8 +340,13 @@ class NDN(nn.Module):
             train_ds = Subset(dataset, train_inds)
             val_ds = Subset(dataset, val_inds)
 
-            train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-            valid_dl = DataLoader(val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+            shuffle_data = True
+            if opt_params is not None:
+                if (opt_params['optimizer'] == 'LBFGS') & opt_params['full_batch']:
+                    shuffle_data = False
+
+            train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
+            valid_dl = DataLoader(val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
                 
         return train_dl, valid_dl
     # END NDN.get_dataloaders
@@ -334,6 +359,9 @@ class NDN(nn.Module):
             betas=(0.9, 0.999),
             max_iter=10,
             history_size=4,
+            tolerance_change=1e-3,
+            tolerance_grad=1e-4,
+            line_search_fn=None,
             **kwargs):
         
         # Assign optimizer
@@ -365,9 +393,12 @@ class NDN(nn.Module):
 
         elif optimizer=='LBFGS':
 
-            optimizer = torch.optim.LBFGS(self.parameters(), history_size=history_size,
-                            max_iter=max_iter,
-                            tolerance_change=1e-3)
+            optimizer = torch.optim.LBFGS(
+                self.parameters(), 
+                history_size=history_size, max_iter=max_iter, 
+                tolerance_change=tolerance_change,
+                tolerance_grad=tolerance_grad,
+                line_search_fn=line_search_fn)
 
         else:
             raise ValueError('optimizer [%s] not supported' %optimizer)
@@ -385,15 +416,15 @@ class NDN(nn.Module):
         version:int=None,
         save_dir:str=None,
         name:str=None,
-        optimizer=None,
+        optimizer=None,  # this can pass in full optimizer (rather than keyword)
         scheduler=None, 
         train_inds=None,
         val_inds=None,
-        opt_params=None,
+        opt_params=None, # Currently this params will 
         device=None,
-        accumulated_grad_batches=1,
-        full_batch=False,
-        log_activations=True,
+        #accumulated_grad_batches=None, # 1 default unless overruled by opt_params # does ADAM use this? Can pass in through opt_pars, as with many others
+        #full_batch=None,  # False default unless overruled by opt-params
+        #log_activations=None, # True default
         seed=None):
         '''
         This is the main training loop.
@@ -421,11 +452,14 @@ class NDN(nn.Module):
 
         if opt_params is None:
             opt_params = self.opt_params
-            
+        else:
+            # replace optimizer parameters
+            self.opt_params = opt_params
+
         # Create dataloaders
         batchsize = opt_params['batch_size']
         train_dl, valid_dl = self.get_dataloaders(
-            dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds)
+            dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds, opt_params=opt_params)
             
         # get trainer 
         trainer = self.get_trainer(
@@ -435,10 +469,10 @@ class NDN(nn.Module):
             save_dir=save_dir,
             name=name,
             device=device,
-            accumulated_grad_batches=accumulated_grad_batches,
-            log_activations=log_activations,
+            accumulated_grad_batches=opt_params['accumulated_grad_batches'],
+            log_activations=opt_params['log_activations'],
             opt_params=opt_params,
-            full_batch=full_batch)
+            full_batch=opt_params['full_batch'])
 
         t0 = time.time()
         trainer.fit(self, train_dl, valid_dl, seed=seed)
@@ -579,6 +613,13 @@ class NDN(nn.Module):
         for ii in ffnet_target:
             assert(ii < len(self.networks)), 'Invalid network %d.'%ii
             self.networks[ii].set_parameters(layer_target=layer_target, name=name, val=val)
+
+    def set_reg_val(self, reg_type=None, reg_val=None, ffnet_target=None, layer_target=None ):
+        """Set reg_values for listed network and layer targets (default 0,0)."""
+        if ffnet_target is None:
+            ffnet_target = 0
+        assert ffnet_target < len(self.networks), "ffnet target too large (max = %d)"%len(self.networks)
+        self.networks[ffnet_target].set_reg_val( reg_type=None, reg_val=None, layer_target=None )
 
     def plot_filters(self, cmaps=None, ffnet_target=0, layer_target=0, num_cols=8):
         self.networks[ffnet_target].plot_filters(layer_target=layer_target, cmaps=cmaps, num_cols=num_cols)

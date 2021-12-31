@@ -219,6 +219,13 @@ class FFnetwork(nn.Module):
             assert nn < len(self.layers), '  Invalid layer %d.'%nn
             self.layers[nn].set_parameters(name=name, val=val)
 
+    def set_reg_val(self, reg_type=None, reg_val=None, layer_target=None ):
+        """Set reg_values for listed layer or for all layers."""
+        if layer_target is None:
+            layer_target = 0
+        assert layer_target < len(self.layers), "layer target too large (max = %d)"%len(self.layers)
+        self.layers[layer_target].reg.set_reg_val( reg_type=None, reg_val=None )
+
     def plot_filters(self, layer_target=0, cmaps=None, num_cols=8):
         self.layers[layer_target].plot_filters(cmaps=cmaps, num_cols=num_cols)
     # END FFnetwork class
