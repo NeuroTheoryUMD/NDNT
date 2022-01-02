@@ -131,6 +131,8 @@ class Regularization(nn.Module):
                         'orth': InlineReg,
                         'glocalx': LocalityReg,
                         'glocalt': LocalityReg,
+                        'localx': LocalityReg,
+                        'localt': LocalityReg,
                         'local': Tikhanov,
                         'glocal': Tikhanov,
                         'max': Tikhanov,
@@ -173,8 +175,8 @@ class LocalityReg(RegModule):
     def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, **kwargs):
         """Constructor for LocalityReg class"""
 
-        _valid_reg_types = ['glocalx', 'glocalt']
-        assert reg_type in _valid_reg_types, '{} is not a valid Regd2 type'.format(reg_type)
+        _valid_reg_types = ['localx', 'localt', 'glocalx', 'glocalt']
+        assert reg_type in _valid_reg_types, '{} is not a valid Locality Reg type'.format(reg_type)
 
         super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
 
@@ -211,13 +213,38 @@ class LocalityReg(RegModule):
 
             rpen = torch.einsum('tn,tw->wn', wt, self.localt_pen)
             rpen = torch.einsum('tn,tn->n', rpen, wt)
+        
+        elif self.reg_type == 'localx':
+            
+            # glocal
+            w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
 
-        return rpen.sum()
+            penx = torch.einsum('cxytn,xw->wn', w, self.localx_pen)
+            penx = torch.einsum('xn,cxytn->n', penx, w)
+
+            if self.same_dims:
+                peny = torch.einsum('cxytn,yw->wn', w, self.localx_pen)
+                peny = torch.einsum('yn,cxytn->n', peny, w)
+            else:    
+                peny = torch.einsum('cxytn,yw->wn', w, self.localy_pen)
+                peny = torch.einsum('yn,cxytn->n', peny, w)
+
+            rpen = penx + peny
+        
+        elif self.reg_type == 'localt':
+            
+            # glocal on time
+            w = weights.reshape(self.input_dims + [-1])**2
+
+            rpen = torch.einsum('cxytn,tw->wn', w, self.localt_pen)
+            rpen = torch.einsum('tn,cxytn->n', rpen, w)
+
+        return rpen.mean()
     # END LocalityReg.compute_reg_penalty
 
     def build_reg_mats(self):
         
-        if self.reg_type == 'glocalx':
+        if self.reg_type == 'glocalx' or self.reg_type == 'localx':
             self.register_buffer('localx_pen',((torch.arange(self.input_dims[1])-torch.arange(self.input_dims[1])[:,None]).abs()).float()/self.input_dims[1])
             if self.input_dims[1]==self.input_dims[2]:
                 self.same_dims = True
@@ -225,7 +252,7 @@ class LocalityReg(RegModule):
                 self.same_dims = False
                 self.register_buffer('localy_pen',((torch.arange(self.input_dims[2])-torch.arange(self.input_dims[2])[:,None]).abs()).float()/self.input_dims[2])
 
-        elif self.reg_type == 'glocalt':
+        elif self.reg_type == 'glocalt' or self.reg_type == 'localt':
             self.register_buffer('localt_pen',((torch.arange(self.input_dims[3])-torch.arange(self.input_dims[3])[:,None]).abs()).float()/self.input_dims[3])
 
 class DiagonalReg(RegModule):
