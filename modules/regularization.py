@@ -138,7 +138,9 @@ class Regularization(nn.Module):
                         'max': Tikhanov,
                         'max_filt': Tikhanov,
                         'max_space': Tikhanov,
-                        'center': DiagonalReg,}
+                        'center': DiagonalReg,
+                        'edge_t': DiagonalReg,
+                        'edge_x': DiagonalReg,}
 
         if reg_type is None:
             ret = reg_index.keys()
@@ -267,21 +269,32 @@ class DiagonalReg(RegModule):
         # so this is a temporary fix to be able to use old functions
         self.input_dims = input_dims
 
-        reg_mat = self._build_reg_mats(reg_type)
-        self.register_buffer( 'rmat', torch.Tensor(reg_mat))
+        reg_mat = self.build_reg_mats(reg_type)
     
     def compute_reg_penalty(self, weights):
         """Compute regularization loss"""
 
         # Collapse weights across non-spatial dimensions
         w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
-        wcollapse = w.mean(dim=(0,3,4)).reshape([-1])
 
-        rpen = torch.mean( torch.matmul( wcollapse, self.rmat) )
+        if self.reg_type == 'center':
+            wcollapse = w.mean(dim=(0,3,4)).reshape([-1])
+            rpen = torch.mean( torch.matmul( wcollapse, self.regcost) )
+
+        elif self.reg_type == 'edge_t':
+            wcollapse = w.mean(dim=(0,1,2,4)).reshape([-1])
+            rpen = torch.mean( torch.matmul( wcollapse, self.regcost) )
+
+        elif self.reg_type == 'edge_x':
+            wcollapse = w.mean(dim=(0,2,3,4)).reshape([-1])
+            rpen = torch.mean( torch.matmul( wcollapse, self.regcost_x) )
+            if self.input_dims[2] > 1:
+                wcollapse = w.mean(dim=(0,1,3,4)).reshape([-1])
+                rpen += torch.mean( torch.matmul( wcollapse, self.regcost_y) )
 
         return rpen
     
-    def _build_reg_mats(self, reg_type):
+    def build_reg_mats(self, reg_type):
     
         NX, NY = self.input_dims[1:3]
 
@@ -298,7 +311,25 @@ class DiagonalReg(RegModule):
 
                 # Make a matrix and then reshape
                 rmat = np.reshape( px[:,None]**2 @ np.ones([1,NY]) + np.ones([NX,1]) @ py[None,:]**2, [-1])
-        return rmat
+
+            self.register_buffer( 'regcost', torch.Tensor(rmat))
+
+        elif reg_type == 'edge_t':
+            rmat = np.zeros(self.input_dims[3])
+            rmat[0] = 1
+            rmat[-1] = 1
+            self.register_buffer( 'regcost', torch.Tensor(rmat))
+
+        elif reg_type == 'edge_x':
+            rmat_x = np.zeros(self.input_dims[1])
+            rmat_x[0] = 1
+            rmat_x[-1] = 1
+            self.register_buffer( 'regcost_x', torch.Tensor(rmat_x))
+            rmat_y = np.zeros(self.input_dims[2])
+            rmat_y[0] = 1
+            rmat_y[-1] = 1
+            self.register_buffer( 'regcost_y', torch.Tensor(rmat_y))
+
 
 class InlineReg(RegModule):
     """ Regularization module for inline penalties"""
@@ -333,7 +364,7 @@ class ConvReg(RegModule):
         assert reg_type in _valid_reg_types, '{} is not a valid ConvReg type'.format(reg_type)
         super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, **kwargs)
 
-        reg_mat = self.make_laplacian(reg_type)
+        reg_mat = self._make_laplacian(reg_type)
         self.register_buffer( 'rmat', torch.Tensor(reg_mat))
         self.BC = bc_val
     
@@ -378,7 +409,7 @@ class ConvReg(RegModule):
         
         return rpen
     
-    def make_laplacian( self, reg_type ):
+    def _make_laplacian( self, reg_type ):
         """This will make the Laplacian of the right dimensionality depending on d2xt, d2t, d2x"""
 
         import numpy as np
@@ -477,4 +508,4 @@ class Tikhanov(RegModule):
             return None
         else:
             return torch.Tensor(reg_mat)
-    # END RegModule._build_reg_mats
+    # END RegModule.build_reg_mats
