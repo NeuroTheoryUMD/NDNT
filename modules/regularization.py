@@ -262,7 +262,7 @@ class DiagonalReg(RegModule):
 
     def __init__(self, reg_type=None, reg_val=None, input_dims=None, **kwargs):
 
-        assert reg_type in ['center'], "{} is not a valid Diagonal Regularization type".format(reg_type)
+        assert reg_type in ['center', 'edge_t', 'edge_x'], "{} is not a valid Diagonal Regularization type".format(reg_type)
         super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, **kwargs)
 
         # the "input_dims" are ordered differently for matrix implementations,

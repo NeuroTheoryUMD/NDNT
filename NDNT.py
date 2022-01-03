@@ -619,7 +619,7 @@ class NDN(nn.Module):
         if ffnet_target is None:
             ffnet_target = 0
         assert ffnet_target < len(self.networks), "ffnet target too large (max = %d)"%len(self.networks)
-        self.networks[ffnet_target].set_reg_val( reg_type=None, reg_val=None, layer_target=None )
+        self.networks[ffnet_target].set_reg_val( reg_type=reg_type, reg_val=reg_val, layer_target=layer_target )
 
     def plot_filters(self, cmaps=None, ffnet_target=0, layer_target=0, num_cols=8):
         self.networks[ffnet_target].plot_filters(layer_target=layer_target, cmaps=cmaps, num_cols=num_cols)

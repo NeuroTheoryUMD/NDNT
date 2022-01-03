@@ -224,7 +224,7 @@ class FFnetwork(nn.Module):
         if layer_target is None:
             layer_target = 0
         assert layer_target < len(self.layers), "layer target too large (max = %d)"%len(self.layers)
-        self.layers[layer_target].reg.set_reg_val( reg_type=None, reg_val=None )
+        self.layers[layer_target].reg.set_reg_val( reg_type=reg_type, reg_val=reg_val )
 
     def plot_filters(self, layer_target=0, cmaps=None, num_cols=8):
         self.layers[layer_target].plot_filters(cmaps=cmaps, num_cols=num_cols)
