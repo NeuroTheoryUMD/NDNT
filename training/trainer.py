@@ -165,8 +165,11 @@ class Trainer:
     def fit_loop(self, epochs, train_loader, val_loader):
         
         self.nbatch = len(train_loader)
-        self.accumulate_grad_batches = min([self.nbatch, self.accumulate_grad_batches])
 
+        if self.fullbatch:
+            self.accumulate_grad_batches = len(train_loader)
+        self.accumulate_grad_batches = min([self.nbatch, self.accumulate_grad_batches])
+        
         if self.log_activations:
             activations = {}
             self.hooks = []
@@ -472,8 +475,8 @@ class LBFGSTrainer(Trainer):
         
     def train_one_epoch(self, train_loader, epoch=0):
         # train for one epoch
-        if self.fullbatch:
-            self.accumulate_grad_batches = len(train_loader)
+        #if self.fullbatch:
+        #    self.accumulate_grad_batches = len(train_loader)
         
         self.model.train() # set model to training mode
 
