@@ -39,7 +39,14 @@ class ConvLayer(NDNLayer):
         assert (conv_dims is not None) or (filter_dims is not None), "ConvLayer: conv_dims or filter_dims must be specified"
         
         if conv_dims is None:
-            conv_dims = filter_dims[1:]
+            conv_dims = copy(filter_dims[1:])
+        
+        if isinstance(conv_dims, int):
+            from copy import copy
+            if input_dims[2] == 1:
+                conv_dims = [copy(conv_dims), input_dims[-1]]
+            else:
+                conv_dims = [copy(conv_dims), copy(conv_dims), input_dims[-1]]
 
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         tent_basis = None
