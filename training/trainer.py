@@ -53,6 +53,7 @@ class Trainer:
         self.accumulate_grad_batches = accumulate_grad_batches
         self.verbose = verbose
         self.set_to_none = set_grad_to_none
+        self.fullbatch = False
         
         ensure_dir(dirpath)
 
