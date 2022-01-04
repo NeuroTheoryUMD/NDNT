@@ -247,15 +247,15 @@ class LocalityReg(RegModule):
     def build_reg_mats(self):
         
         if self.reg_type == 'glocalx' or self.reg_type == 'localx':
-            self.register_buffer('localx_pen',((torch.arange(self.input_dims[1])-torch.arange(self.input_dims[1])[:,None]).abs()).float()/self.input_dims[1])
+            self.register_buffer('localx_pen',((torch.arange(self.input_dims[1])-torch.arange(self.input_dims[1])[:,None])**2).float()/self.input_dims[1]**2)
             if self.input_dims[1]==self.input_dims[2]:
                 self.same_dims = True
             else:
                 self.same_dims = False
-                self.register_buffer('localy_pen',((torch.arange(self.input_dims[2])-torch.arange(self.input_dims[2])[:,None]).abs()).float()/self.input_dims[2])
+                self.register_buffer('localy_pen',((torch.arange(self.input_dims[2])-torch.arange(self.input_dims[2])[:,None])**2).float()/self.input_dims[2]**2)
 
         elif self.reg_type == 'glocalt' or self.reg_type == 'localt':
-            self.register_buffer('localt_pen',((torch.arange(self.input_dims[3])-torch.arange(self.input_dims[3])[:,None]).abs()).float()/self.input_dims[3])
+            self.register_buffer('localt_pen',((torch.arange(self.input_dims[3])-torch.arange(self.input_dims[3])[:,None])**2).float()/self.input_dims[3]**2)
 
 class DiagonalReg(RegModule):
     """ Regularization module for diagonal penalties"""
