@@ -14,6 +14,7 @@ LayerTypes = {
     'stconv': layers.STconvLayer,
     'fixation': layers.FixationLayer,
     'time': layers.TimeLayer,
+    'dim0': layers.Dim0Layer,
     # 'external': layers.ExternalLayer,
     
 }
@@ -61,6 +62,7 @@ class FFnetwork(nn.Module):
         assert self.determine_input_dims(input_dims_list, ffnet_type=ffnet_type), 'Invalid network inputs.'
 
         # Check that first layer has matching input dims (to FFnetwork)
+        # This also means they can be set up None and assigned during network building
         if self.layer_list[0]['input_dims'] is None:
             self.layer_list[0]['input_dims'] = self.input_dims
 
@@ -70,6 +72,9 @@ class FFnetwork(nn.Module):
         # Make each layer as part of an array
         self.layers = nn.ModuleList()
         for ll in range(num_layers):
+            if ll > 0:
+                if self.layer_list[ll]['input_dims'] is None:
+                    self.layer_list[ll]['input_dims'] = self.layer_list[ll-1]['output_dims']
             self.layers.append(
                 LayerTypes[self.layer_types[ll]](**self.layer_list[ll], reg_vals=reg_params[ll]) )
 

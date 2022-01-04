@@ -452,7 +452,7 @@ class ConvReg(RegModule):
                 [[2, 3, 2],[3, 6, 3], [2, 3, 2]]]]])
         else:
             rmat = np.array([1])
-            print("Warning: %s regularization does not have the necessary filter dimensions.")
+            print( "Warning: %s regularization does not have the necessary filter dimensions."%self.reg_type )
         return rmat
         
 
