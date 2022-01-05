@@ -183,7 +183,7 @@ class NDNLayer(nn.Module):
             w = self.weight
         # Add normalization
         if self.norm_type == 1: # so far just standard filter-specific normalization
-            w = F.normalize( w, dim=0 )
+            w = F.normalize( w, dim=0 ) / self.weight_scale
         return w
 
     def forward(self, x):
