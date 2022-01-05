@@ -425,6 +425,7 @@ class NDN(nn.Module):
         #accumulated_grad_batches=None, # 1 default unless overruled by opt_params # does ADAM use this? Can pass in through opt_pars, as with many others
         #full_batch=None,  # False default unless overruled by opt-params
         #log_activations=None, # True default
+        initialize_biases=True, 
         seed=None):
         '''
         This is the main training loop.
@@ -449,6 +450,9 @@ class NDN(nn.Module):
 
         # Make reg modules
         self.prepare_regularization()
+
+        if initialize_biases:
+            self.initialize_biases( dataset )
 
         if opt_params is None:
             opt_params = self.opt_params
@@ -484,20 +488,41 @@ class NDN(nn.Module):
     def compute_average_responses( self, dataset, data_inds=None ):
         if data_inds is None:
             data_inds = range(len(dataset))
-
-        #if hasattr( dataset, 'use_units') and (len(dataset.use_units) > 0):
-        #    rselect = dataset.use_units
-        #else:
-        #    rselect = dataset.num
         
         # Iterate through dataset to compute average rates
-        Rsum, Tsum = 0, 0
+        NC = dataset[0]['robs'].shape[-1]
+        Rsum, Tsum = torch.zeros(NC), torch.zeros(NC)
         for tt in data_inds:
             sample = dataset[tt]
-            Tsum += torch.sum(sample['dfs'], axis=0)
-            Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0)
+            if len(sample['robs'].shape) == 1:  # then one datapoint at a time
+                Tsum += sample['dfs']
+                Rsum += torch.mul(sample['dfs'], sample['robs'])
+            else: # then each sample contains multiple datapoints and need to sum
+                Tsum += torch.sum(sample['dfs'], axis=0)
+                Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0)
 
         return torch.divide( Rsum, Tsum.clamp(1))
+
+    def initialize_biases( self, dataset, data_inds=None, ffnet_target=-1, layer_target=-1 ):
+
+        avRs = self.compute_average_responses( dataset=dataset, data_inds=data_inds )
+        # Invert last layer nonlinearity
+        assert len(avRs) == len(self.networks[ffnet_target].layers[layer_target].bias), 'Need to specify output NL correctly: layer confusion.'
+        if self.networks[ffnet_target].layers[layer_target].NL is None:
+            print( 'Initializing biases given linear NL')
+            biases = avRs
+            
+        elif isinstance(self.networks[ffnet_target].layers[layer_target].NL, nn.Softplus):
+            print( 'Initializing biases given Softplus NL')
+            # Invert softplus
+            beta = self.networks[0].layers[0].NL.beta
+            biases = np.log(np.exp(np.maximum(avRs, 1e-6))-1)/beta
+        else:
+            biases = np.zeros(len(avRs))
+        
+        self.networks[ffnet_target].layers[layer_target].bias.data[dataset.cells_out] = biases
+
+    # otherwise not initializing biases, even if desired
 
     def eval_models(self, data, data_inds=None, bits=False, null_adjusted=True, batch_size=1000, num_workers=8):
         '''
