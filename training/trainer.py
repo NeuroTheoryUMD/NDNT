@@ -225,6 +225,10 @@ class Trainer:
             # validate every epoch
             if self.epoch % 1 == 0:
                 out = self.validate_one_epoch(val_loader)
+                if out['val_loss'] < self.val_loss_min:
+                    is_best=True
+                else:
+                    is_best=False
                 self.val_loss_min = out['val_loss']
                 self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
             
@@ -238,7 +242,7 @@ class Trainer:
                         self.scheduler.step(step_metric)
             
             # checkpoint
-            self.checkpoint_model(self.epoch)
+            self.checkpoint_model(self.epoch, is_best=is_best)
 
             # callbacks: e.g., early stopping
             if self.early_stopping:
@@ -350,7 +354,7 @@ class Trainer:
         
         return {'train_loss': loss.detach().item()}
     
-    def checkpoint_model(self, epoch=None):
+    def checkpoint_model(self, epoch=None, is_best=False):
         if isinstance(self.model, nn.DataParallel):
             state = self.model.module.state_dict()
         else:
@@ -366,7 +370,7 @@ class Trainer:
             'optim': self.optimizer.state_dict()
         } # probably also want to track n_ter =>  'n_iter': n_iter,
 
-        save_checkpoint(cpkt, os.path.join(self.dirpath, 'model_checkpoint.ckpt'))
+        save_checkpoint(cpkt, os.path.join(self.dirpath, 'model_checkpoint.ckpt'), is_best=is_best)
     
     def graceful_exit(self):
         if self.verbose > 0:
@@ -402,6 +406,12 @@ class Trainer:
     
         # self.logger.export_scalars_to_json(os.path.join(self.dirpath, "all_scalars.json"))
         self.logger.close()
+
+        # if best model checkpoint exists, load that and save it
+        
+        # if os.path.exists(os.path.join(self.dirpath, 'best_model.ckpt')):
+        #     os.path.exists(os.path.join(self.dirpath, 'best_model.ckpt'))                
+        #     'best_model.pt'
 
 class LBFGSTrainer(Trainer):
 
