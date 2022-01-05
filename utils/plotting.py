@@ -24,7 +24,10 @@ def plot_filters_ST2D(ws, sort=False):
     """Stolendirectly from neureye -> core.plot_filters, and modified"""
     from NDNT.utils import subplot_setup
 
-    nfilt = ws.shape[-1]
+    if len(ws.shape) < 4:
+        nfilt = 1
+    else:
+        nfilt = ws.shape[-1]
     ei_mask = np.ones(nfilt)
     sz = ws.shape
     # Collapse spatial dims together

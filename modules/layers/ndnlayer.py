@@ -260,7 +260,32 @@ class NDNLayer(nn.Module):
         else:
             if self.input_dims[0] == 1:
                 from NDNT.utils import plot_filters_ST2D
+                print(ws.shape)
                 plot_filters_ST2D(ws)
             else:
                 from NDNT.utils import plot_filters_ST3D
                 plot_filters_ST3D(ws)
+    # END NDNLayer.plot_filters()
+
+    @staticmethod
+    def dim_info( input_dims=None, num_filters=None, **kwargs):
+        """
+        This uses the methods in the init to determine the input_dims, output_dims, filter_dims, and actual size of
+        the weight tensor (weight_shape), given inputs, and package in a dictionary. This should be overloaded with each
+        child of NDNLayer if want to use -- but this is external to function of actual layer.
+        """
+        assert input_dims is not None, "NDNLayer: Must include input_dims."
+        assert num_filters is not None, "NDNLayer: Must include num_filters."
+
+        filter_dims = deepcopy(input_dims)
+        output_dims = tuple([num_filters, 1, 1, 1])
+        num_outputs = np.prod(output_dims) # this will always be the case so might be extraneous, but is convenient....
+        weight_shape = tuple([np.prod(filter_dims), num_filters])  # likewise
+
+        dinfo = {
+            'input_dims': tuple(input_dims), 'filter_dims': tuple(filter_dims), 
+            'output_dims': output_dims, 'num_outputs': num_outputs,
+            'weight_shape': weight_shape}
+
+        return dinfo
+    # END [static] NDNLayer.dim_info
