@@ -390,6 +390,31 @@ def generate_xv_folds(nt, num_folds=5, num_blocks=3, which_fold=None):
 
     return train_inds, test_inds
 
+
+def initialize_gaussian_envelope( ws, w_shape):
+    """
+    This assumes a set of filters is passed in, and windows by Gaussian along each non-singleton dimension
+    ws is all filters (ndims x nfilters)
+    wshape is individual filter shape
+    """
+    ndims, nfilt = ws.shape
+    assert np.prod(w_shape) == ndims
+    wx = np.reshape(deepcopy(ws), w_shape + [nfilt])
+    for dd in range(1,len(w_shape)):
+        if w_shape[dd] > 1:
+            L = w_shape[dd]
+            genv = np.exp(-(np.arange(L)-L/2)**2/(2*(L/6)**2))
+            if dd == 0:
+                wx = np.einsum('abcde, a->abcde', wx, genv)
+            elif dd == 1:
+                wx = np.einsum('abcde, b->abcde', wx, genv)
+            elif dd == 2:
+                wx = np.einsum('abcde, c->abcde', wx, genv)
+            else:
+                wx = np.einsum('abcde, d->abcde', wx, genv)
+    return np.reshape(wx, [-1, nfilt])
+
+
 def save_checkpoint(state, save_path: str, is_best: bool = False, max_keep: int = None):
     """Saves torch model to checkpoint file.
     Args:

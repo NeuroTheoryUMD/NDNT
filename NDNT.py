@@ -520,8 +520,7 @@ class NDN(nn.Module):
         else:
             biases = np.zeros(len(avRs))
         
-        self.networks[ffnet_target].layers[layer_target].bias.data[dataset.cells_out] = biases
-
+        self.networks[ffnet_target].layers[layer_target].bias.data = biases
     # otherwise not initializing biases, even if desired
 
     def eval_models(self, data, data_inds=None, bits=False, null_adjusted=True, batch_size=1000, num_workers=8):

@@ -65,6 +65,7 @@ class NDNLayer(nn.Module):
             num_inh:int=0,
             bias:bool=False,
             weights_initializer:str='xavier_uniform',
+            initialize_center=False,
             bias_initializer:str='zeros',
             reg_vals:dict=None,
             **kwargs,
@@ -123,8 +124,11 @@ class NDNLayer(nn.Module):
         else:
             self.register_buffer('ei_mask', torch.cat( (torch.ones(self.num_filters-num_inh), -torch.ones(num_inh))) )
 
+        # Set inital weight and bias values
         self.reset_parameters( weights_initializer, bias_initializer )
-
+        if initialize_center:
+            self.initialize_gaussian_envelope()
+            
     def reset_parameters(self, weights_initializer=None, bias_initializer=None, param=None) -> None:
         '''
         Initialize the weights and bias parameters of the layer.
@@ -175,6 +179,11 @@ class NDNLayer(nn.Module):
         else:
             print('bias initializer not defined')
     
+    def initialize_gaussian_envelope(self):
+        from NDNT.utils import initialize_gaussian_envelope
+        w_centered = initialize_gaussian_envelope( self.get_weights(to_reshape=False), self.filter_dims)
+        self.weight.data = torch.tensor(w_centered, dtype=torch.float32)
+
     def preprocess_weights(self):
         # Apply positive constraints
         if self.pos_constraint:
