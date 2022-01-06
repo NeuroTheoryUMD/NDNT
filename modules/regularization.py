@@ -27,7 +27,7 @@ class Regularization(nn.Module):
 
     """
 
-    def __init__(self, filter_dims=None, vals=None, **kwargs):
+    def __init__(self, filter_dims=None, vals=None, normalize=False, **kwargs):
         """Constructor for Regularization class. This stores all info for regularization, and 
         sets up regularization modules for training, and returns reg_penalty from layer when passed in weights
         
@@ -53,6 +53,7 @@ class Regularization(nn.Module):
 
         self.vals = {}
         self.reg_modules = nn.ModuleList() 
+        self.normalize = normalize
 
         # read user input
         if vals is not None:
@@ -103,7 +104,9 @@ class Regularization(nn.Module):
             self.reg_modules.append(reg_obj)
 
     def compute_reg_loss(self, weights):  # this could also be a forward?
-        
+        if self.normalize:
+            weights = F.normalize(weights, dim=0)
+
         rloss = 0
         for regmod in self.reg_modules:
             rloss += regmod( weights )
