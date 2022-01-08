@@ -12,8 +12,7 @@ class Dim0Layer(NDNLayer):
     def __init__(self,
             input_dims=None,
             num_filters=None,
-            filter_dims=None,
-            bias=True,
+            bias=False,
             **kwargs,
         ):
 
@@ -86,3 +85,21 @@ class Dim0Layer(NDNLayer):
 
         return dinfo
     # END [static] Dim0Layer.dim_info
+
+    @classmethod
+    def layer_dict(cls):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- Values that are fixed (not settable) will be set to None or not included
+        -- Values that are needed will be lists or strings with default values
+        -- Required inputs will be set to empty lists
+        """
+
+        Ldict = super().layer_dict()
+        # Added arguments -- none
+        # subtracted arguments
+        del Ldict['filter_dims']
+
+        return Ldict
+    # END [classmethod] Dim0Layer.layer_dict

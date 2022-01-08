@@ -142,6 +142,82 @@ class ConvLayer(NDNLayer):
         else:
             self.output_norm = None
 
+    @staticmethod
+    def dim_info(
+        input_dims=None, num_filters=None, conv_dims=None, 
+        filter_dims=None, temporal_tent_spacing=None, padding='same',
+        **kwargs):
+        """
+        This uses the methods in the init to determine the input_dims, output_dims, filter_dims, and actual size of
+        the weight tensor (weight_shape), given inputs, and package in a dictionary. This should be overloaded with each
+        child of NDNLayer if want to use -- but this is external to function of actual layer.
+        """
+        assert input_dims is not None, "NDNLayer: Must include input_dims."
+        assert num_filters is not None, "NDNLayer: Must include num_filters."
+
+        # Id like to eliminate conv_dims argument, but right now still in there
+        assert (conv_dims is not None) or (filter_dims is not None), "ConvLayer: conv_dims or filter_dims must be specified"
+
+        print( 'WARNING: ConvLayers.dim_info() needs to be checked for accuracy. This is a placeholder.')
+        from copy import copy
+        if conv_dims is None:
+            conv_dims = copy(filter_dims[1:])
+        
+        if isinstance(conv_dims, int):
+            from copy import copy
+            if input_dims[2] == 1:
+                conv_dims = [copy(conv_dims), input_dims[-1]]
+            else:
+                conv_dims = [copy(conv_dims), copy(conv_dims), input_dims[-1]]
+
+        if filter_dims is None:
+            filter_dims = [input_dims[0]] + conv_dims
+        else:            
+            filter_dims[1:] = conv_dims
+
+        num_lags = filter_dims[3]
+
+        # If tent-basis, figure out how many lag-dimensions -- need to check
+        if temporal_tent_spacing is not None and temporal_tent_spacing > 1:
+            filter_dims[3] = int(np.ceil(filter_dims[3]//temporal_tent_spacing))
+
+        # check padding to figure out output dims
+        output_dims = [num_filters, input_dims[1], input_dims[2], 1]  # this is for 'same'
+        if padding == 'valid': # adjust for valid padding -- and need to check
+            for nn in [1,2]:
+                output_dims[nn] += -2*((filter_dims[nn]-1)//2)
+
+        weight_shape = tuple([np.prod(filter_dims), num_filters])  # likewise
+        num_outputs = np.prod(output_dims)
+
+        dinfo = {
+            'input_dims': tuple(input_dims), 'filter_dims': tuple(filter_dims), 
+            'output_dims': tuple(output_dims), 'num_outputs': num_outputs,
+            'weight_shape': weight_shape}
+
+        return dinfo
+    # END [static] NDNLayer.dim_info
+
+    @classmethod
+    def layer_dict(cls):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- Values that are fixed (not settable) will be set to None or not included
+        -- Values that are needed will be lists or strings with default values
+        -- Required inputs will be set to empty lists
+        """
+
+        Ldict = super().layer_dict()
+        # Added arguments
+        Ldict['temporal_tent_spacing'] = 1
+        Ldict['output_norm'] = None
+        Ldict['stride'] = 1
+        Ldict['dilation'] = 1
+        Ldict['padding'] = 'same'
+
+        return Ldict
+
     @property
     def output_dims(self):
         self.num_outputs = int(np.prod(self._output_dims))

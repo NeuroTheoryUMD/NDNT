@@ -298,3 +298,29 @@ class NDNLayer(nn.Module):
 
         return dinfo
     # END [static] NDNLayer.dim_info
+
+    @classmethod
+    def layer_dict(cls):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- Values that are fixed (not settable) will be set to None or not included
+        -- Values that are needed will be lists or strings with default values
+        -- Required inputs will be set to empty lists
+        """
+
+        return {
+            'input_dims': [],
+            'num_filters': [],
+            'filter_dims': None,
+            'NLtype': 'lin',
+            'norm_type': 0,
+            'pos_constraint': False,
+            'num_inh': 0,
+            'bias': False,
+            'weights_initializer': 'xavier_uniform',
+            'bias_initializer': 'zeros',
+            'initialize_center': False,
+            'reg_vals': {}
+        }
+

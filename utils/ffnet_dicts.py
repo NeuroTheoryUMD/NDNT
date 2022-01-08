@@ -1,6 +1,7 @@
 from copy import deepcopy
 # Access all potential layer information
 from NDNT.modules.layers import *   
+from NDNT.modules.activations import NLtypes
 
 #################### CREATE NETWORK PARAMETER-DICTS ####################
 def layer_dict(
@@ -11,8 +12,7 @@ def layer_dict(
     """input dims are [num_filters, space1, space2, num_lags]"""
 
     # Add any other nonlinaerities here (and pass to functionals below)
-    val_nls = ['lin', 'relu', 'elu', 'quad', 'softplus', 'tanh', 'sigmoid']
-    assert NLtype in val_nls, 'NLtype not valid.'
+    assert NLtype in NLtypes, 'NLtype not valid.'
 
     output_dims = [num_filters, 1, 1, 1]
     if conv:
