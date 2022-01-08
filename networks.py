@@ -9,14 +9,14 @@ import NDNT.modules.layers as layers
 LayerTypes = {
     'normal': layers.NDNLayer,
     'conv': layers.ConvLayer,
-    'readout': layers.ReadoutLayer,
     'divnorm': layers.DivNormLayer,
+    'tconv': layers.TconvLayer,
     'stconv': layers.STconvLayer,
+    'readout': layers.ReadoutLayer,
     'fixation': layers.FixationLayer,
     'time': layers.TimeLayer,
     'dim0': layers.Dim0Layer,
-    # 'external': layers.ExternalLayer,
-    
+    # 'external': layers.ExternalLayer,    
 }
 
 _valid_ffnet_types = ['normal', 'add', 'mult', 'readout']
