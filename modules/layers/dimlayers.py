@@ -91,15 +91,12 @@ class Dim0Layer(NDNLayer):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
-        -- Values that are fixed (not settable) will be set to None or not included
-        -- Values that are needed will be lists or strings with default values
-        -- Required inputs will be set to empty lists
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
         """
 
         Ldict = super().layer_dict()
-        # Added arguments -- none
-        # subtracted arguments
-        del Ldict['filter_dims']
-
+        Ldict['layer_type'] = 'dim0'
         return Ldict
     # END [classmethod] Dim0Layer.layer_dict

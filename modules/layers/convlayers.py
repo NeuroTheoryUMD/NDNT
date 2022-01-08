@@ -196,20 +196,21 @@ class ConvLayer(NDNLayer):
             'weight_shape': weight_shape}
 
         return dinfo
-    # END [static] NDNLayer.dim_info
+    # END [static] ConvLayer.dim_info
 
     @classmethod
     def layer_dict(cls):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
-        -- Values that are fixed (not settable) will be set to None or not included
-        -- Values that are needed will be lists or strings with default values
-        -- Required inputs will be set to empty lists
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
         """
 
         Ldict = super().layer_dict()
         # Added arguments
+        Ldict['layer_type'] = 'conv'
         Ldict['temporal_tent_spacing'] = 1
         Ldict['output_norm'] = None
         Ldict['stride'] = 1
@@ -296,6 +297,7 @@ class ConvLayer(NDNLayer):
         y = torch.reshape(y, (-1, self.num_outputs))
         
         return y
+    # END ConvLayer.forward
 
 class TconvLayer(ConvLayer):
     """
@@ -369,7 +371,7 @@ class TconvLayer(ConvLayer):
                 self.output_norm = nn.BatchNorm3d(self.num_filters)
         else:
             self.output_norm = None
-        
+    #END TconvLayer.__init__
 
     @property
     def padding(self):
@@ -429,6 +431,7 @@ class TconvLayer(ConvLayer):
         y = y.reshape((-1, self.num_outputs))
 
         return y
+    #END TconvLayer.forward
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
         # Overload plot_filters to automatically time_reverse
@@ -436,6 +439,21 @@ class TconvLayer(ConvLayer):
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
             time_reverse=time_reverse)
 
+    @classmethod
+    def layer_dict(cls):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict()
+        # Added arguments
+        Ldict['layer_type'] = 'tconv'
+        return Ldict
+    # END [classmethod] TconvLayer.layer_dict
 
 class STconvLayer(TconvLayer):
     """
@@ -478,6 +496,7 @@ class STconvLayer(TconvLayer):
         self.input_dims[3] = 1  # take lag info and use for temporal convolution
         self.output_dims[-1] = 1
         self.output_dims = self.output_dims # annoying fix for the num_outputs dependency on all output_dims values being updated
+    # END STconvLayer.__init__
 
     def forward(self, x):
         # Reshape stim matrix LACKING temporal dimension [bcwh] 
@@ -540,9 +559,27 @@ class STconvLayer(TconvLayer):
         y = y.reshape((-1, self.num_outputs))
 
         return y
+    # END STconvLayer.forward 
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
         # Overload plot_filters to automatically time_reverse
         super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
             time_reverse=time_reverse)
+
+    @classmethod
+    def layer_dict(cls):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict()
+        # Added arguments
+        Ldict['layer_type'] = 'stconv'
+        return Ldict
+    # END [classmethod] STconvLayer.layer_dict
+    

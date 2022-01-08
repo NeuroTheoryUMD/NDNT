@@ -304,15 +304,15 @@ class NDNLayer(nn.Module):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
-        -- Values that are fixed (not settable) will be set to None or not included
-        -- Values that are needed will be lists or strings with default values
-        -- Required inputs will be set to empty lists
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
         """
 
         return {
+            'layer_type': 'normal',
             'input_dims': [],
             'num_filters': [],
-            'filter_dims': None,
             'NLtype': 'lin',
             'norm_type': 0,
             'pos_constraint': False,

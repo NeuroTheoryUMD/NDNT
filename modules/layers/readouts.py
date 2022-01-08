@@ -78,6 +78,7 @@ class ReadoutLayer(NDNLayer):
         self.sigma = Parameter(torch.Tensor(*self.sigma_shape))  # standard deviation for gaussian for each neuron
 
         self.initialize_spatial_mapping()
+    # END ReadoutLayer.__init__
 
     @property
     def features(self):
@@ -216,6 +217,7 @@ class ReadoutLayer(NDNLayer):
             y = self.NL(y)
         
         return y
+    # END ReadoutLayer.forward
 
     def set_readout_locations(self, locs):
         """This hasn't been tested yet, but should be self-explanatory"""
@@ -230,7 +232,27 @@ class ReadoutLayer(NDNLayer):
         """Currently returns center location and sigmas, as list"""
         return self.mu.detach().cpu().numpy().squeeze(), self.sigma.detach().cpu().numpy().squeeze()    
 
+    @classmethod
+    def layer_dict(cls):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
 
+        Ldict = super().layer_dict()
+        Ldict['layer_type'] = 'readout'
+        # Added arguments
+        Ldict['batch_sample'] = True
+        Ldict['init_mu_range'] = 0.1
+        Ldict['init_sigma'] = 0.2
+        Ldict['gauss_type'] = 'uncorrelated'
+        Ldict['align_corners'] = False
+
+        return Ldict
+    # END [classmethod] ReadoutLayer.layer_dict
 
 
 class FixationLayer(NDNLayer):
@@ -322,6 +344,30 @@ class FixationLayer(NDNLayer):
                 y = (gaus_sample * s + y).clamp(-1,1)
 
         return y
+    # END FixationLayer.forward
     
     def initialize(self, *args, **kwargs):
         raise NotImplementedError("initialize is not implemented for ", self.__class__.__name__)
+
+    @classmethod
+    def layer_dict(cls):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict()
+        Ldict['layer_type'] = 'fixation'
+        # Added arguments
+        Ldict['batch_sample'] = True
+        Ldict['init_mu_range'] = 0.1
+        Ldict['init_sigma'] = 0.5
+        Ldict['single_sigma'] = False
+        Ldict['gauss_type'] = 'uncorrelated'
+        Ldict['align_corners'] = False
+
+        return Ldict
+    # END [classmethod] FixatonLayer.layer_dict
