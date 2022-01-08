@@ -787,6 +787,10 @@ def load_model(checkpoint_path, model_name='', version=None, verbose=True):
     # Load the model
     try:
         model = torch.load(out['model_file'][ver_ix])
+        dirpath = os.path.dirname(out['model_file'][ver_ix])
+        if os.path.exists(os.path.join(dirpath, 'best_model.ckpt')):
+            state_dict = torch.load(os.path.join(dirpath, 'best_model.ckpt'))
+            model.load_state_dict(state_dict['net'])
     except AttributeError:
         print("load_model: could not load model. AttributeError. This likely means that the file [%s] was not pickled correctly because you were changing the class too much while training" %out['model_file'][ver_ix])
         print("Loading the state dict from the last checkpoint instead")
