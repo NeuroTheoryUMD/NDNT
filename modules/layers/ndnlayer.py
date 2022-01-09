@@ -215,6 +215,7 @@ class NDNLayer(nn.Module):
             x = x * self.ei_mask
 
         return x 
+    # END NDNLayer.forward
         
     def compute_reg_loss(self):
         return self.reg.compute_reg_loss(self.preprocess_weights())
@@ -300,7 +301,11 @@ class NDNLayer(nn.Module):
     # END [static] NDNLayer.dim_info
 
     @classmethod
-    def layer_dict(cls):
+    def layer_dict(cls, 
+            input_dims=None, num_filters=None, # necessary parameters
+            bias=False, NLtype='lin', norm_type=0,
+            initialize_center=False, # optional parameters
+            **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -311,16 +316,16 @@ class NDNLayer(nn.Module):
 
         return {
             'layer_type': 'normal',
-            'input_dims': [],
-            'num_filters': [],
-            'NLtype': 'lin',
-            'norm_type': 0,
+            'input_dims': input_dims,
+            'num_filters': num_filters,
+            'NLtype': NLtype,
+            'norm_type': norm_type,
             'pos_constraint': False,
             'num_inh': 0,
-            'bias': False,
+            'bias': bias,
             'weights_initializer': 'xavier_uniform',
             'bias_initializer': 'zeros',
-            'initialize_center': False,
+            'initialize_center': initialize_center,
             'reg_vals': {}
         }
 

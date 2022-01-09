@@ -16,6 +16,7 @@ LayerTypes = {
     'fixation': layers.FixationLayer,
     'time': layers.TimeLayer,
     'dim0': layers.Dim0Layer,
+    'channel': layers.ChannelLayer,
     # 'external': layers.ExternalLayer,    
 }
 
@@ -24,9 +25,9 @@ _valid_ffnet_types = ['normal', 'add', 'mult', 'readout']
 class FFnetwork(nn.Module):
 
     def __init__(self,
-            ffnet_type: str = 'normal',
             layer_list: list = None,
-            layer_types: list = None,
+            ffnet_type: str = 'normal',
+            #layer_types: list = None,
             xstim_n: str = 'stim',
             ffnet_n: list = None,
             input_dims_list: list = None,
@@ -37,7 +38,8 @@ class FFnetwork(nn.Module):
 
         # if len(kwargs) > 0:
         #     print("FFnet: unknown kwargs:", kwargs)
-
+        assert layer_list is not None, "FFnetwork: Must supply a layer_list."
+        
         super().__init__()
         
         self.network_type = ffnet_type
@@ -46,37 +48,37 @@ class FFnetwork(nn.Module):
 
         # Format and record inputs into ffnet
         self.layer_list = deepcopy(layer_list)
-        self.layer_types = deepcopy(layer_types)
+        self.layer_types = []   # read from layer_list (if necessary at all)
         self.xstim_n = xstim_n
         self.ffnets_in = ffnet_n
 
-        if layer_list is None:
-            num_layers = 0
-        else:
-            num_layers = len(self.layer_list)
+        num_layers = len(self.layer_list)
 
         if num_layers == 0:
             self.layers = nn.ModuleList()
             return
             
+        # Establish input dims from the network
+        if input_dims_list is None:
+            # then pull from first layer
+            assert xstim_n is not None, "If input_dims is not specified, it must be specified in layer-0"
+            input_dims_list = [deepcopy(layer_list[0]['input_dims'])]
+        
+        # Build input_dims from sources
         assert self.determine_input_dims(input_dims_list, ffnet_type=ffnet_type), 'Invalid network inputs.'
 
-        # Check that first layer has matching input dims (to FFnetwork)
-        # This also means they can be set up None and assigned during network building
-        if self.layer_list[0]['input_dims'] is None:
-            self.layer_list[0]['input_dims'] = self.input_dims
-
         # Process regularization into layer-specific list. Will save at this level too
-        reg_params = self.__reg_setup_ffnet( reg_list )
+        #if reg_list is not None:  # can also be entered into layers directly
+        #    reg_params = self.__reg_setup_ffnet( reg_list )
 
         # Make each layer as part of an array
         self.layers = nn.ModuleList()
         for ll in range(num_layers):
             if ll > 0:
                 if self.layer_list[ll]['input_dims'] is None:
-                    self.layer_list[ll]['input_dims'] = self.layer_list[ll-1]['output_dims']
-            self.layers.append(
-                LayerTypes[self.layer_types[ll]](**self.layer_list[ll], reg_vals=reg_params[ll]) )
+                    self.layer_list[ll]['input_dims'] = self.layers[ll-1].output_dims
+            Ltype = self.layer_list[ll]['layer_type']
+            self.layers.append( LayerTypes[Ltype](**self.layer_list[ll]) )
 
         # Make scaffold output if requested
         if scaffold_levels is None:
@@ -91,7 +93,6 @@ class FFnetwork(nn.Module):
         for i in self.scaffold_levels:
             n += self.layers[i].output_dims
         return n
-
 
     def determine_input_dims( self, input_dims_list, ffnet_type='normal' ):
         """
@@ -233,6 +234,10 @@ class FFnetwork(nn.Module):
 
     def plot_filters(self, layer_target=0, cmaps=None, num_cols=8):
         self.layers[layer_target].plot_filters(cmaps=cmaps, num_cols=num_cols)
+
+    @classmethod
+    def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', **kwargs):
+        return {'layer_list': deepcopy(layer_list), 'xstim_n':xstim_n, 'ffnet_n':ffnet_n, 'ffnet_type': ffnet_type }
     # END FFnetwork class
 
 
@@ -323,6 +328,12 @@ class ReadoutNetwork(FFnetwork):
 
     def set_readout_locations(self, locs):
         self.layers[0].set_readout_locations(locs)
+
+    @classmethod
+    def ffnet_dict( cls, ffnet_n=0, **kwargs):
+        ffnet_dict = super().ffnet_dict(xstim_n=None, ffnet_n=ffnet_n, **kwargs)
+        ffnet_dict['ffnet_type'] = 'readout'
+        return ffnet_dict
     # END ReadoutNetwork
 
 
@@ -388,3 +399,9 @@ class FFnet_external(FFnetwork):
                 pp.requires_grad = val
             elif nm == name:
                 pp.requires_grad = val
+
+    @classmethod
+    def ffnet_dict( cls, **kwargs):
+        ffnet_dict = super().ffnet_dict(**kwargs)
+        ffnet_dict['ffnet_type'] = 'external'
+        return ffnet_dict

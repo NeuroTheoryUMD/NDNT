@@ -86,6 +86,7 @@ def create_optimizer_params(
             'num_workers': num_workers,
             'num_gpus': num_gpus,
             'progress_bar_refresh': progress_bar_refresh,
+            'accumulated_grad_batches': accumulated_grad_batches,
             'log_activations': log_activations, 
             'optimize_graph': optimize_graph,
             'device': None} 

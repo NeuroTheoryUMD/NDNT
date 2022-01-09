@@ -199,7 +199,7 @@ class ConvLayer(NDNLayer):
     # END [static] ConvLayer.dim_info
 
     @classmethod
-    def layer_dict(cls):
+    def layer_dict(cls, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -208,7 +208,7 @@ class ConvLayer(NDNLayer):
         -- Other values will be given their defaults
         """
 
-        Ldict = super().layer_dict()
+        Ldict = super().layer_dict(**kwargs)
         # Added arguments
         Ldict['layer_type'] = 'conv'
         Ldict['temporal_tent_spacing'] = 1
@@ -440,7 +440,7 @@ class TconvLayer(ConvLayer):
             time_reverse=time_reverse)
 
     @classmethod
-    def layer_dict(cls):
+    def layer_dict(cls, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -449,7 +449,7 @@ class TconvLayer(ConvLayer):
         -- Other values will be given their defaults
         """
 
-        Ldict = super().layer_dict()
+        Ldict = super().layer_dict(**kwargs)
         # Added arguments
         Ldict['layer_type'] = 'tconv'
         return Ldict
@@ -568,7 +568,7 @@ class STconvLayer(TconvLayer):
             time_reverse=time_reverse)
 
     @classmethod
-    def layer_dict(cls):
+    def layer_dict(cls, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -577,7 +577,7 @@ class STconvLayer(TconvLayer):
         -- Other values will be given their defaults
         """
 
-        Ldict = super().layer_dict()
+        Ldict = super().layer_dict(**kwargs)
         # Added arguments
         Ldict['layer_type'] = 'stconv'
         return Ldict

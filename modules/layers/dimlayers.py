@@ -12,7 +12,6 @@ class Dim0Layer(NDNLayer):
     def __init__(self,
             input_dims=None,
             num_filters=None,
-            bias=False,
             **kwargs,
         ):
 
@@ -26,14 +25,13 @@ class Dim0Layer(NDNLayer):
         super().__init__(input_dims,
             num_filters,
             filter_dims=filter_dims,
-            bias=bias,
+            bias=False,
             **kwargs)
 
         self.output_dims = [num_filters] + input_dims[1:]
         self.num_outputs = np.prod(self.output_dims)
 
         self.num_other_dims = input_dims[1]*input_dims[2]*input_dims[3]
-
     # END Dim0Layer.__init__
 
     def forward(self, x):
@@ -50,7 +48,7 @@ class Dim0Layer(NDNLayer):
         if self.norm_type == 2:
             x = x / self.weight_scale
 
-        x = x + self.bias
+        #x = x + self.bias
 
         # Nonlinearity
         if self.NL is not None:
@@ -87,7 +85,7 @@ class Dim0Layer(NDNLayer):
     # END [static] Dim0Layer.dim_info
 
     @classmethod
-    def layer_dict(cls):
+    def layer_dict(cls, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -96,7 +94,73 @@ class Dim0Layer(NDNLayer):
         -- Other values will be given their defaults
         """
 
-        Ldict = super().layer_dict()
+        Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'dim0'
+        del Ldict['bias']
         return Ldict
     # END [classmethod] Dim0Layer.layer_dict
+
+
+class ChannelLayer(NDNLayer):
+    """
+    Applies individual filter for each filter (dim0) dimension, preserving separate channels but filtering over other dimensions
+    => num_filters equals the channel dimension by definition, otherwise like NDNLayer
+    """ 
+
+    def __init__(self,
+            input_dims=None,
+            num_filters=None,
+            **kwargs,
+        ):
+
+        assert input_dims is not None, "ChannelLayer: Must specify input_dims"
+        assert input_dims[0] > 1, "ChannelLayer: Dim-0 of input must be non-trivial"
+        if num_filters is None:
+            num_filters = input_dims[0]
+        else:
+            assert num_filters == input_dims[0], "ChannelLayer: num_filters must match number of filter inputs"
+
+        filter_dims = [1] + input_dims[1:]
+        super().__init__(input_dims, num_filters, filter_dims=filter_dims, **kwargs)
+    # END ChannelLayer.__init__
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        del Ldict['num_filters']
+        Ldict['layer_type'] = 'channel'
+        return Ldict
+    # END [classmethod] ChannelLayer.layer_dict
+
+    def forward(self, x):
+        # Pull weights and process given pos_constrain and normalization conditions
+        w = self.preprocess_weights()
+
+        # Extract filter_dimension 
+        x = torch.reshape( x, [-1, self.num_filters, np.prod(self.filter_dims)])
+
+        # matrix multiplication of non-filter dimensions
+        y = torch.einsum('anb, bn -> an', x, w)
+        if self.norm_type == 2:
+            y = y / self.weight_scale
+
+        y = y + self.bias
+
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+
+        # Constrain output to be signed
+        if self.ei_mask is not None:
+            y = y * self.ei_mask
+
+        return y 
+    # END ChannelLayer.forward

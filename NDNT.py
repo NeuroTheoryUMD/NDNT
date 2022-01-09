@@ -17,6 +17,7 @@ class NDN(nn.Module):
 
     def __init__(self,
         ffnet_list = None,
+        layer_list = None,  # can just import layer list if consisting of single ffnetwork (simple ffnet)
         external_modules = None,
         loss_type = 'poisson',  # note poissonT will not use unit_normalization
         ffnet_out = None,
@@ -26,10 +27,15 @@ class NDN(nn.Module):
 
         super().__init__()
         
-        if ffnet_list is not None:
-            self.networks = self.assemble_ffnetworks(ffnet_list)
+        if ffnet_list is None:
+            # then must be a single ffnet specified by layer_list
+            assert layer_list is not None, "NDN: must specify either ffnet_list or layer_list."
+            from .networks import FFnetwork
+            ffnet_list = [FFnetwork.ffnet_dict(layer_list=layer_list)]
         else:
-            self.networks = None
+            assert layer_list is None, "NDN: cannot specify ffnet_list and layer_list at same time."
+ 
+        assert type(ffnet_list) is list, 'FFnetwork list in NDN constructor must be a list.'
 
         if (ffnet_out is None) or (ffnet_out == -1):
             ffnet_out = len(ffnet_list)-1
@@ -40,7 +46,6 @@ class NDN(nn.Module):
         self.configure_loss(loss_type)
 
         # Assemble FFnetworks from if passed in network-list -- else can embed model
-        assert type(ffnet_list) is list, 'FFnetwork list in NDN constructor must be a list.'
         networks = self.assemble_ffnetworks(ffnet_list, external_modules)
         
         # Check and record output of network
@@ -94,7 +99,7 @@ class NDN(nn.Module):
         1. Plug in the inputs to each ffnetwork as specified
         2. Builds the ff-network with the input
         
-        This returns the a 'network', which is (currently) a module with a 
+        This returns the 'network', which is (currently) a module with a 
         'forward' and 'reg_loss' function specified.
 
         When multiple ffnet inputs are concatenated, it will always happen in the first
@@ -219,6 +224,9 @@ class NDN(nn.Module):
 
         if optimizer is None:
             optimizer = self.get_optimizer(**opt_params)
+        
+        if 'full_batch' in opt_params:
+            full_batch = opt_params['full_batch']
 
         if opt_params['early_stopping']:
             if isinstance(opt_params['early_stopping'], EarlyStopping):
@@ -342,8 +350,9 @@ class NDN(nn.Module):
 
             shuffle_data = True
             if opt_params is not None:
-                if (opt_params['optimizer'] == 'LBFGS') & opt_params['full_batch']:
-                    shuffle_data = False
+                if opt_params['optimizer'] == 'LBFGS':
+                    if opt_params['full_batch']:
+                        shuffle_data = False
 
             train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
             valid_dl = DataLoader(val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
@@ -423,7 +432,7 @@ class NDN(nn.Module):
         opt_params=None, # Currently this params will 
         device=None,
         #accumulated_grad_batches=None, # 1 default unless overruled by opt_params # does ADAM use this? Can pass in through opt_pars, as with many others
-        #full_batch=None,  # False default unless overruled by opt-params
+        full_batch=False,  
         #log_activations=None, # True default
         initialize_biases=True, 
         seed=None):
@@ -464,7 +473,11 @@ class NDN(nn.Module):
         batchsize = opt_params['batch_size']
         train_dl, valid_dl = self.get_dataloaders(
             dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds, opt_params=opt_params)
-            
+        
+        # This is kluge until opt_params argument fixed
+        if 'full_batch' in opt_params:
+            full_batch = opt_params['full_batch']
+
         # get trainer 
         trainer = self.get_trainer(
             version=version,
@@ -476,7 +489,7 @@ class NDN(nn.Module):
             accumulated_grad_batches=opt_params['accumulated_grad_batches'],
             log_activations=opt_params['log_activations'],
             opt_params=opt_params,
-            full_batch=opt_params['full_batch'])
+            full_batch=full_batch)
 
         t0 = time.time()
         trainer.fit(self, train_dl, valid_dl, seed=seed)
@@ -515,7 +528,7 @@ class NDN(nn.Module):
         elif isinstance(self.networks[ffnet_target].layers[layer_target].NL, nn.Softplus):
             print( 'Initializing biases given Softplus NL')
             # Invert softplus
-            beta = self.networks[0].layers[0].NL.beta
+            beta = self.networks[ffnet_target].layers[layer_target].NL.beta
             biases = np.log(np.exp(np.maximum(avRs, 1e-6))-1)/beta
         else:
             biases = np.zeros(len(avRs))
