@@ -117,10 +117,12 @@ class ChannelLayer(NDNLayer):
         assert input_dims[0] > 1, "ChannelLayer: Dim-0 of input must be non-trivial"
         if num_filters is None:
             num_filters = input_dims[0]
+            num_input_filters = 1
         else:
-            assert num_filters == input_dims[0], "ChannelLayer: num_filters must match number of filter inputs"
-
-        filter_dims = [1] + input_dims[1:]
+            assert input_dims[0]%num_filters == 0, "ChannelLayer: num_filters must be multiple of number of filter inputs"
+            num_input_filters = input_dims[0] // num_filters
+ 
+        filter_dims = [num_input_filters] + input_dims[1:]
         super().__init__(input_dims, num_filters, filter_dims=filter_dims, **kwargs)
     # END ChannelLayer.__init__
 
@@ -135,7 +137,7 @@ class ChannelLayer(NDNLayer):
         """
 
         Ldict = super().layer_dict(**kwargs)
-        del Ldict['num_filters']
+        #del Ldict['num_filters']
         Ldict['layer_type'] = 'channel'
         return Ldict
     # END [classmethod] ChannelLayer.layer_dict

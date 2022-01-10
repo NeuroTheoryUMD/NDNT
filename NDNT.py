@@ -10,6 +10,8 @@ import NDNT.networks as NDNnetworks
 
 FFnets = {
     'normal': NDNnetworks.FFnetwork,
+    'add': NDNnetworks.FFnetwork,  # just controls how inputs are concatenated
+    'mult': NDNnetworks.FFnetwork, # just controls how inputs are concatenated
     'readout': NDNnetworks.ReadoutNetwork
 }
 

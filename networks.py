@@ -43,7 +43,7 @@ class FFnetwork(nn.Module):
         super().__init__()
         
         self.network_type = ffnet_type
-        print("FFnet: network type:", self.network_type)
+        #print("FFnet: network type:", self.network_type)
         assert self.network_type in _valid_ffnet_types, "ffnet_type " + self.network_type + " is unknown."
 
         # Format and record inputs into ffnet
@@ -74,8 +74,10 @@ class FFnetwork(nn.Module):
         # Make each layer as part of an array
         self.layers = nn.ModuleList()
         for ll in range(num_layers):
-            if ll > 0:
-                if self.layer_list[ll]['input_dims'] is None:
+            if self.layer_list[ll]['input_dims'] is None:
+                if ll == 0:
+                    self.layer_list[ll]['input_dims'] = deepcopy(self.input_dims)
+                else:
                     self.layer_list[ll]['input_dims'] = self.layers[ll-1].output_dims
             Ltype = self.layer_list[ll]['layer_type']
             self.layers.append( LayerTypes[Ltype](**self.layer_list[ll]) )
@@ -118,7 +120,7 @@ class FFnetwork(nn.Module):
             num_input_networks = len(self.ffnets_in)
             assert len(input_dims_list) == num_input_networks, 'Internal: misspecification of input_dims for FFnetwork.'
 
-            # Go through the input dims of the other ffnetowrks to verify they are valid for the type of network    
+            # Go through the input dims of the other ffnetowrks to verify they are valid for the type of network
             for ii in range(num_input_networks):
                 if ii == 0:
                     num_cat_filters = input_dims_list[0][0]
