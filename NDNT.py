@@ -204,10 +204,16 @@ class NDN(nn.Module):
         optimizer = None,
         scheduler = None,
         device = None,
-        accumulated_grad_batches=None,  # default=1 if not set in opt_params
-        log_activations=True,
-        opt_params = None, 
-        full_batch=False):
+        #opt_params = None, 
+        optimizer_type='AdamW',
+        early_stopping=False,
+        early_stopping_patience=5,
+        early_stopping_delta=0.0,
+        optimize_graph=False,
+        #full_batch=False, 
+        #accumulated_grad_batches=1,
+        #log_activations=True,
+        **kwargs):
         """
             Returns a trainer and object splits the training set into "train" and "valid"
         """
@@ -216,97 +222,71 @@ class NDN(nn.Module):
     
         model = self
 
+        #trainers = {'step': Trainer, 'AdamW': Trainer, 'Adam': Trainer, 'sgd': Trainer, 'lbfgs': LBFGSTrainer}
         trainers = {'step': Trainer, 'lbfgs': LBFGSTrainer}
         
-        if opt_params is None:
-                opt_params = create_optimizer_params()
-                print('WARNING: using default optimization parameters.')
-
-        if optimizer is None:
-            optimizer = self.get_optimizer(**opt_params)
+        if optimizer is None:  # then specified through optimizer inputs
+            optimizer = self.get_optimizer(optimizer=optimizer_type, **kwargs)
         
-        if 'full_batch' in opt_params:
-            full_batch = opt_params['full_batch']
-
-        if opt_params['early_stopping']:
-            if isinstance(opt_params['early_stopping'], EarlyStopping):
-                earlystopping = opt_params['early_stopping']
-            elif isinstance(opt_params['early_stopping'], dict):
-                earlystopping = EarlyStopping(patience=opt_params['early_stopping']['patience'],delta=opt_params['early_stopping']['delta'])
-            else:
-                earlystopping = EarlyStopping(patience=opt_params['early_stopping_patience'],delta=0.0)
+        if early_stopping:
+            earlystopper = EarlyStopping( patience=early_stopping_patience, delta= early_stopping_delta )
+            #if isinstance(opt_params['early_stopping'], EarlyStopping):
+            #    earlystopping = opt_params['early_stopping']
+            #elif isinstance(opt_params['early_stopping'], dict):
+            #    earlystopping = EarlyStopping(patience=opt_params['early_stopping']['patience'],delta=opt_params['early_stopping']['delta'])
+            #else:
+            #    earlystopping = EarlyStopping(patience=opt_params['early_stopping_patience'],delta=0.0)
         else:
-            earlystopping = None
-
-        if accumulated_grad_batches is None:
-            if opt_params is None:
-                accumulated_grad_batches = 1
-            else:
-                accumulated_grad_batches = opt_params['accumulated_grad_batches']
+            earlystopper = None
 
         # Check for device assignment in opt_params
         if device is None:
-            if opt_params['device'] is not None:
-                if isinstance(opt_params['device'], str):
-                    device = torch.device(opt_params['device'])
-                elif isinstance(opt_params['device'], torch.device):
-                    device = opt_params['device']
-                else:
-                    raise ValueError("opt_params['device'] must be a string or torch.device")
-            else:
-                # Assign default device
-                device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        assert isinstance(device, torch.device), "NDN.get_trainer: device must be a torch.device by this point"
-
-        if 'optimize_graph' in opt_params.keys(): # specifies whether to attempt to optimize the graph
-            optimize_graph = opt_params['optimize_graph']
-            # NOTE: will cause big problems if the batch size is variable
+            # Assign default device
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         else:
-            optimize_graph = False
+            if isinstance(device, str):
+                device = torch.device(device)
+            elif not isinstance(device, torch.device):
+                raise ValueError("opt_params['device'] must be a string or torch.device")
 
-        if isinstance(optimizer, torch.optim.LBFGS):
-            trainer_type = 'lbfgs'
+        trainer_type = 'step'
+        if optimizer is not None:
+            if isinstance(optimizer, torch.optim.LBFGS):
+                trainer_type = 'lbfgs'
         else:
-            trainer_type = 'step'
+            if optimizer_type == 'LBFGS':
+                trainer_type = 'lbfgs'
         
         trainer = trainers[trainer_type](model=model,
                 optimizer=optimizer,
-                early_stopping=earlystopping,
+                early_stopping=earlystopper,
                 dirpath=os.path.join(save_dir, name),
                 optimize_graph=optimize_graph,
                 device=device,
                 scheduler=scheduler,
-                accumulate_grad_batches=accumulated_grad_batches,
-                max_epochs=opt_params['max_epochs'],
-                log_activations=log_activations,
                 version=version,
-                full_batch=full_batch)
+                **kwargs
+                #accumulate_grad_batches=accumulated_grad_batches,
+                #max_epochs=max_epochs,
+                #og_activations=log_activations,
+                #full_batch=full_batch
+                )
 
         return trainer
 
     def get_dataloaders(self,
             dataset,
-            opt_params=None,
-            batch_size=None,  # default 10
-            num_workers=None, # default 1
             train_inds=None,
             val_inds=None,
+            batch_size=10, 
+            num_workers=1,
             is_fixation=False,
-            data_seed=None):
+            full_batch=False,
+            data_seed=None,
+            **kwargs):
 
         from torch.utils.data import DataLoader, random_split, Subset
 
-        if opt_params is not None:
-            if batch_size is None:
-                batch_size = opt_params['batch_size']
-            if num_workers is None:
-                num_workers = opt_params['num_workers']
-        else:
-            if batch_size is None:
-                batch_size = 10
-            if num_workers is None:
-                num_workers = 1
-        
         if train_inds is None or val_inds is None:
             # check dataset itself
             if hasattr(dataset, 'val_inds') and \
@@ -348,11 +328,10 @@ class NDN(nn.Module):
             train_ds = Subset(dataset, train_inds)
             val_ds = Subset(dataset, val_inds)
 
-            shuffle_data = True
-            if opt_params is not None:
-                if opt_params['optimizer'] == 'LBFGS':
-                    if opt_params['full_batch']:
-                        shuffle_data = False
+            if full_batch:
+                shuffle_data = False
+            else:
+                shuffle_data = True
 
             train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
             valid_dl = DataLoader(val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
@@ -422,20 +401,21 @@ class NDN(nn.Module):
 
     def fit(self,
         dataset,
-        version:int=None,
-        save_dir:str=None,
-        name:str=None,
-        optimizer=None,  # this can pass in full optimizer (rather than keyword)
-        scheduler=None, 
         train_inds=None,
         val_inds=None,
-        opt_params=None, # Currently this params will 
+        seed=None, # this currently seed for data AND optimization
+        save_dir:str=None,
+        version:int=None,
+        name:str=None,
+        optimizer=None,  # this can pass in full optimizer (rather than keyword)
+        scheduler=None,
+        batch_size=None,
         device=None,
+        **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
+        ):   
         #accumulated_grad_batches=None, # 1 default unless overruled by opt_params # does ADAM use this? Can pass in through opt_pars, as with many others
-        full_batch=False,  
+        #full_batch=False,  
         #log_activations=None, # True default
-        initialize_biases=True, 
-        seed=None):
         '''
         This is the main training loop.
         Steps:
@@ -444,6 +424,8 @@ class NDN(nn.Module):
             3. Run the main fit loop from the trainer, checkpoint, and save model
         '''
         import time
+
+        assert batch_size is not None, "NDN.fit() must be passed batch_size in optimization params."
 
         if save_dir is None:
             save_dir = self.data_dir
@@ -460,24 +442,10 @@ class NDN(nn.Module):
         # Make reg modules
         self.prepare_regularization()
 
-        if initialize_biases:
-            self.initialize_biases( dataset )
-
-        if opt_params is None:
-            opt_params = self.opt_params
-        else:
-            # replace optimizer parameters
-            self.opt_params = opt_params
-
         # Create dataloaders
-        batchsize = opt_params['batch_size']
         train_dl, valid_dl = self.get_dataloaders(
-            dataset, batch_size=batchsize, train_inds=train_inds, val_inds=val_inds, opt_params=opt_params)
+            dataset, batch_size=batch_size, train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
         
-        # This is kluge until opt_params argument fixed
-        if 'full_batch' in opt_params:
-            full_batch = opt_params['full_batch']
-
         # get trainer 
         trainer = self.get_trainer(
             version=version,
@@ -486,10 +454,11 @@ class NDN(nn.Module):
             save_dir=save_dir,
             name=name,
             device=device,
-            accumulated_grad_batches=opt_params['accumulated_grad_batches'],
-            log_activations=opt_params['log_activations'],
-            opt_params=opt_params,
-            full_batch=full_batch)
+            #accumulated_grad_batches=opt_params['accumulated_grad_batches'],
+            #log_activations=opt_params['log_activations'],
+            #opt_params=opt_params,
+            #full_batch=full_batch, 
+            **kwargs)
 
         t0 = time.time()
         trainer.fit(self, train_dl, valid_dl, seed=seed)
@@ -520,7 +489,7 @@ class NDN(nn.Module):
 
         avRs = self.compute_average_responses( dataset=dataset, data_inds=data_inds )
         # Invert last layer nonlinearity
-        assert len(avRs) == len(self.networks[ffnet_target].layers[layer_target].bias), 'Need to specify output NL correctly: layer confusion.'
+        assert len(avRs) == len(self.networks[ffnet_target].layers[layer_target].bias), "Need to specify output NL correctly: layer confusion."
         if self.networks[ffnet_target].layers[layer_target].NL is None:
             print( 'Initializing biases given linear NL')
             biases = avRs
