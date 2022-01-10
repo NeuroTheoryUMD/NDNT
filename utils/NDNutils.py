@@ -10,7 +10,7 @@ from collections import OrderedDict
 
 #################### CREATE OTHER PARAMETER-DICTS ####################
 def create_optimizer_params(
-        optimizer='AdamW',
+        optimizer_type='AdamW',
         batch_size=1000,
         max_iter=None,
         max_epochs=None,
@@ -22,6 +22,7 @@ def create_optimizer_params(
         # AdamW specific
         early_stopping=True,
         early_stopping_patience=4,
+        early_stopping_delta=0.0,
         weight_decay=0.01,
         learning_rate=1e-3,
         betas=[0.9, 0.999],
@@ -34,7 +35,7 @@ def create_optimizer_params(
         line_search_fn=None):
 
     # Make optimizer params based on Adam or LBFGS, filling in chosen defaults
-    if optimizer in ['LBFGS', 'lbfgs']:
+    if optimizer_type in ['LBFGS', 'lbfgs']:
 
         # L-BFGS specific defaults
         if max_iter is None:
@@ -43,7 +44,7 @@ def create_optimizer_params(
             max_epochs = 5
 
         optpar = {
-            'optimizer': 'LBFGS',
+            'optimizer_type': 'LBFGS',
             'full_batch': full_batch,
             'batch_size': batch_size,
             'max_iter': max_iter,
@@ -72,11 +73,12 @@ def create_optimizer_params(
                 max_epochs = 30
 
         optpar = {
-            'optimizer': optimizer,
+            'optimizer_type': optimizer_type,
             'batch_size': batch_size,
             'weight_decay': weight_decay,
             'early_stopping': early_stopping,
             'early_stopping_patience': early_stopping_patience,
+            'early_stopping_delta': early_stopping_delta,
             'max_iter': max_iter,
             'max_epochs': max_epochs,
             'learning_rate': learning_rate,
@@ -93,7 +95,6 @@ def create_optimizer_params(
 
     return optpar
 # END create_optimizer_params
-
 
 
 
