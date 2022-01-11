@@ -27,7 +27,7 @@ class Regularization(nn.Module):
 
     """
 
-    def __init__(self, filter_dims=None, vals=None, normalize=False, **kwargs):
+    def __init__(self, filter_dims=None, vals=None, normalize=False, num_outputs=None, **kwargs):
         """Constructor for Regularization class. This stores all info for regularization, and 
         sets up regularization modules for training, and returns reg_penalty from layer when passed in weights
         
@@ -54,6 +54,9 @@ class Regularization(nn.Module):
         self.vals = {}
         self.reg_modules = nn.ModuleList() 
         self.normalize = normalize
+
+        self.unit_reg = False
+        self.num_outputs = num_outputs
 
         # read user input
         if vals is not None:
@@ -89,9 +92,36 @@ class Regularization(nn.Module):
             if reg_val < 0.0:
                 raise ValueError('`reg_val` must be greater than or equal to zero')
 
-            self.vals[reg_type] = reg_val
-
+            if self.unit_reg:
+                assert self.num_outputs is not None, "UNITREG initialization problems"
+                if isinstance(reg_val, list) or isinstance(reg_val, np.ndarray):
+                    assert len(reg_val) == self.num_outputs, "UNITREG: unmatched size list of reg values"
+                    self.vals[reg_type] = np.array(deepcopy(reg_val), dtype=np.float32)
+                else:
+                    self.vals[reg_type] = np.ones(self.num_outputs, dtype=np.float32)*reg_val
+            else:  # Normal reg val setting
+                self.vals[reg_type] = reg_val
     # END Regularization.set_reg_val
+
+    def unit_reg_convert( self, unit_reg=True, num_outputs=None ):
+        """Can convert reg object to turn on or off unit_reg (default turns it on"""
+
+        if unit_reg == self.unit_reg:
+            print("UNITREG: No conversion necessary")
+            return
+        if unit_reg and (num_outputs is None):
+            assert self.num_outputs is not None, "UNITREG: must set num_ouputs"
+
+        self.unit_reg = unit_reg 
+
+        for reg_type, val in self.vals.items():
+            if not unit_reg:  # turn off unit reg -- convert from list to single number via mean
+                new_val = np.mean(val) 
+            else:
+                new_val = val
+            
+            self.set_reg_val(self, reg_type, reg_val=new_val)
+    # END Regularization.unit_reg_convert
 
     def build_reg_modules(self):
         """Prepares regularization modules in train based on current regularization values"""
@@ -100,10 +130,12 @@ class Regularization(nn.Module):
         
         for reg, val in self.vals.items():
 
-            reg_obj = self.get_reg_class(reg)(reg_type=reg, reg_val=val, input_dims=self.input_dims)
+            reg_obj = self.get_reg_class(reg)(
+                reg_type=reg, reg_val=val, input_dims=self.input_dims, unit_reg=self.unit_reg)
             self.reg_modules.append(reg_obj)
+    # END Regularization.build_reg_modules
 
-    def compute_reg_loss(self, weights):  # this could also be a forward?
+    def compute_reg_loss(self, weights):
         if self.normalize:
             weights = F.normalize(weights, dim=0)
 
@@ -156,7 +188,7 @@ class Regularization(nn.Module):
 class RegModule(nn.Module): 
     """ Base class for regularization modules """
 
-    def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, **kwargs):
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, unit_reg=False, num_dims=0,  **kwargs):
         """Constructor for Reg_module class"""
 
         assert reg_type is not None, 'Need reg_type.'
@@ -166,6 +198,7 @@ class RegModule(nn.Module):
         super().__init__()
 
         self.reg_type = reg_type
+        self.unit_reg = unit_reg
         self.register_buffer( 'val', torch.tensor(reg_val))
         self.input_dims = input_dims
         self.num_dims = num_dims # this is the relevant number of dimensions for some filters -- will be set within functions

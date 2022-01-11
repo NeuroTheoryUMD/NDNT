@@ -117,7 +117,7 @@ class NDNLayer(nn.Module):
             # Does this apply to both weights and biases? Should be separate?
             # How does this compare without explicit constraint? Maybe better, maybe worse...
 
-        self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals)
+        self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals, num_outputs=num_filters )
 
         if num_inh == 0:
             self.ei_mask = None
@@ -253,7 +253,7 @@ class NDNLayer(nn.Module):
             elif nm == name:
                 pp.requires_grad = val
 
-    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=True):
+    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
         """
         Plot the filters in the layer.
         Args:
