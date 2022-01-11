@@ -39,6 +39,7 @@ class ConvLayer(NDNLayer):
         assert (conv_dims is not None) or (filter_dims is not None), "ConvLayer: conv_dims or filter_dims must be specified"
         
         if conv_dims is None:
+            from copy import copy
             conv_dims = copy(filter_dims[1:])
         
         if isinstance(conv_dims, int):
@@ -49,26 +50,28 @@ class ConvLayer(NDNLayer):
                 conv_dims = [copy(conv_dims), copy(conv_dims), input_dims[-1]]
 
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
-        tent_basis = None
+        self.tent_basis = None
         if temporal_tent_spacing is not None and temporal_tent_spacing > 1:
             from NDNT.utils import tent_basis_generate
             num_lags = conv_dims[2]
             tentctrs = list(np.arange(0, num_lags, temporal_tent_spacing))
-            tent_basis = tent_basis_generate(tentctrs)
-            if tent_basis.shape[0] != num_lags:
+            self.tent_basis = tent_basis_generate(tentctrs)
+            if self.tent_basis.shape[0] != num_lags:
                 print('Warning: tent_basis.shape[0] != num_lags')
-                print('tent_basis.shape = ', tent_basis.shape)
+                print('tent_basis.shape = ', self.tent_basis.shape)
                 print('num_lags = ', num_lags)
                 print('Adding zeros or truncating to match')
-                if tent_basis.shape[0] > num_lags:
+                if self.tent_basis.shape[0] > num_lags:
                     print('Truncating')
-                    tent_basis = tent_basis[:num_lags,:]
+                    self.tent_basis = self.tent_basis[:num_lags,:]
                 else:
                     print('Adding zeros')
-                    tent_basis = np.concatenate([tent_basis, np.zeros((num_lags-tent_basis.shape[0], tent_basis.shape[1]))], axis=0)
+                    self.tent_basis = np.concatenate(
+                        [self.tent_basis, np.zeros((num_lags-self.tent_basis.shape[0], self.tent_basis.shape[1]))],
+                        axis=0)
                 
-            tent_basis = tent_basis[:num_lags,:]
-            num_lag_params = tent_basis.shape[1]
+            self.tent_basis = self.tent_basis[:num_lags,:]
+            num_lag_params = self.tent_basis.shape[1]
             print('ConvLayer temporal tent spacing: num_lag_params =', num_lag_params)
             conv_dims[2] = num_lag_params
 
@@ -87,9 +90,9 @@ class ConvLayer(NDNLayer):
         output_dims[1:3] = input_dims[1:3]
         self._output_dims = output_dims
         
-        if tent_basis is not None:
-            self.register_buffer('tent_basis', torch.Tensor(tent_basis.T))
-            filter_dims[-1] = tent_basis.shape[0]
+        if self.tent_basis is not None:
+            self.register_buffer('tent_basis', torch.Tensor(self.tent_basis.T))
+            filter_dims[-1] = self.tent_basis.shape[0]
         else:
             self.tent_basis = None
 
@@ -199,7 +202,7 @@ class ConvLayer(NDNLayer):
     # END [static] ConvLayer.dim_info
 
     @classmethod
-    def layer_dict(cls, **kwargs):
+    def layer_dict(cls, padding='same', filter_dims=None, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -211,11 +214,12 @@ class ConvLayer(NDNLayer):
         Ldict = super().layer_dict(**kwargs)
         # Added arguments
         Ldict['layer_type'] = 'conv'
+        Ldict['filter_dims'] = filter_dims
         Ldict['temporal_tent_spacing'] = 1
         Ldict['output_norm'] = None
         Ldict['stride'] = 1
         Ldict['dilation'] = 1
-        Ldict['padding'] = 'same'
+        Ldict['padding'] = padding
 
         return Ldict
 

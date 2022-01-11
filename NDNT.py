@@ -602,6 +602,12 @@ class NDN(nn.Module):
         assert net_n >= 0, 'No readout network found.'
         return self.networks[net_n].get_readout_locations()
 
+    def passive_readout(self):
+        """This finds the readout layer and applies its passive_readout function"""
+        from NDNT.modules.layers.readouts import ReadoutLayer
+        assert isinstance(self.networks[-1].layers[-1], ReadoutLayer), "NDNT: Last layer is not a ReadoutLayer"
+        self.networks[-1].layers[-1].passive_readout()
+
     def list_parameters(self, ffnet_target=None, layer_target=None):
         if ffnet_target is None:
             ffnet_target = np.arange(len(self.networks), dtype='int32')

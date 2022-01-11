@@ -232,8 +232,22 @@ class ReadoutLayer(NDNLayer):
         """Currently returns center location and sigmas, as list"""
         return self.mu.detach().cpu().numpy().squeeze(), self.sigma.detach().cpu().numpy().squeeze()    
 
+    def passive_readout(self):
+        """This will not fit mu and std, but set them to zero. It will pass identities in,
+        so number of input filters must equal number of readout units"""
+
+        assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
+        # Set parameters for default readout
+        self.sigma.data.fill_(0)
+        self._mu.data.fill_(0)
+        self.weight.data.fill_(0)
+        for nn in range(self.num_filters):
+            self.weight.data[nn,nn] = 1
+
+        self.set_parameters(val=False)
+
     @classmethod
-    def layer_dict(cls):
+    def layer_dict(cls, NLtype='softplus', **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -242,7 +256,7 @@ class ReadoutLayer(NDNLayer):
         -- Other values will be given their defaults
         """
 
-        Ldict = super().layer_dict()
+        Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'readout'
         # Added arguments
         Ldict['batch_sample'] = True
@@ -250,6 +264,8 @@ class ReadoutLayer(NDNLayer):
         Ldict['init_sigma'] = 0.2
         Ldict['gauss_type'] = 'uncorrelated'
         Ldict['align_corners'] = False
+        # Change default -- readouts will usually be softplus
+        Ldict['NLtype'] = NLtype
 
         return Ldict
     # END [classmethod] ReadoutLayer.layer_dict
@@ -350,7 +366,7 @@ class FixationLayer(NDNLayer):
         raise NotImplementedError("initialize is not implemented for ", self.__class__.__name__)
 
     @classmethod
-    def layer_dict(cls):
+    def layer_dict(cls, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -359,7 +375,7 @@ class FixationLayer(NDNLayer):
         -- Other values will be given their defaults
         """
 
-        Ldict = super().layer_dict()
+        Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'fixation'
         # Added arguments
         Ldict['batch_sample'] = True
