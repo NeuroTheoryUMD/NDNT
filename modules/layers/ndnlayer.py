@@ -314,6 +314,13 @@ class NDNLayer(nn.Module):
         -- Other values will be given their defaults
         """
 
+        # Check that input_dims are four-dimensional: otherwise assume filter_dimension missing, and lags
+        if input_dims is not None:
+            if len(input_dims) == 2:
+                input_dims = [1] + input_dims + [1]
+            elif len(input_dims) == 3:
+                input_dims = [1] + input_dims
+
         return {
             'layer_type': 'normal',
             'input_dims': input_dims,
