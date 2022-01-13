@@ -36,12 +36,16 @@ class PoissonLoss_datafilter(nn.Module):
     #     return s 
 
     def set_unit_normalization( self, cell_weighting ):
-        """In this case (this loss function), it takes inputs of the average probability of spike per bin
+        """
+        In this case (this loss function), it takes inputs of the average probability of spike per bin
         and will divide by this, unless zero. This can take other cell_weighting as well, but note that it
-        will divide by the cell weighting"""
+        will divide by the cell weighting. Note cell_weighting can be numpy array: need not be torch-tensor.
+        """
+        import numpy as np  # added as zero-weighting kluge (for np.maximum)
         self.unit_normalization = True
-        self.unit_norms = torch.divide( torch.tensor(1.0), cell_weighting )
-        # Note: this currently doesn't deal with neurons that have no spikes: will lead to problems 
+        # Note: this deals with neurons with no spikes (cell_weighting=0) trivially
+        cell_weighting = np.maximum(cell_weighting, 1e-8)
+        self.unit_norms = torch.tensor( 1.0 / cell_weighting, dtype=torch.float32)
     # END PoissonLoss_datafilter.set_unit_normalization
 
     def forward(self, pred, target, data_filters = None ):        

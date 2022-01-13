@@ -473,19 +473,23 @@ class NDN(nn.Module):
         if data_inds is None:
             data_inds = range(len(dataset))
         
+        # Check if dataset has specified function
+        if hasattr( dataset, 'avrates' ):
+            return dataset.avrates()
+
         # Iterate through dataset to compute average rates
         NC = dataset[0]['robs'].shape[-1]
         Rsum, Tsum = torch.zeros(NC), torch.zeros(NC)
         for tt in data_inds:
             sample = dataset[tt]
             if len(sample['robs'].shape) == 1:  # then one datapoint at a time
-                Tsum += sample['dfs']
-                Rsum += torch.mul(sample['dfs'], sample['robs'])
+                Tsum += sample['dfs'].cpu()
+                Rsum += torch.mul(sample['dfs'], sample['robs']).cpu()
             else: # then each sample contains multiple datapoints and need to sum
-                Tsum += torch.sum(sample['dfs'], axis=0)
-                Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0)
+                Tsum += torch.sum(sample['dfs'], axis=0).cpu()
+                Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0).cpu()
 
-        return torch.divide( Rsum, Tsum.clamp(1))
+        return torch.divide( Rsum, Tsum.clamp(1)).cpu().detach().numpy()
 
     def initialize_biases( self, dataset, data_inds=None, ffnet_target=-1, layer_target=-1 ):
 
@@ -504,7 +508,7 @@ class NDN(nn.Module):
         else:
             biases = np.zeros(len(avRs))
         
-        self.networks[ffnet_target].layers[layer_target].bias.data = biases
+        self.networks[ffnet_target].layers[layer_target].bias.data = torch.tensor(biases, dtype=torch.float32)
     # otherwise not initializing biases, even if desired
 
     def eval_models(self, data, data_inds=None, bits=False, null_adjusted=True, batch_size=1000, num_workers=8):
