@@ -253,7 +253,7 @@ class NDNLayer(nn.Module):
             elif nm == name:
                 pp.requires_grad = val
 
-    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
+    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=None):
         """
         Plot the filters in the layer.
         Args:
@@ -262,11 +262,19 @@ class NDNLayer(nn.Module):
             row_height: int, number of rows to use in plot
             time_reverse: bool, whether to reverse the time dimension
         """
+
+        # Make different defaults for time_reverse depending on 1 vs 2D
+        if time_reverse is None:
+            if self.input_dims[2] == 1:
+                time_reverse = True
+            else:
+                time_reverse = False
+            
         ws = self.get_weights(time_reverse=time_reverse)
-        # check if 1d: otherwise return error for now
+        
         if self.input_dims[2] == 1:
             from NDNT.utils import plot_filters_ST1D
-            plot_filters_ST1D(ws, cmaps=cmaps, num_cols=num_cols, row_height=row_height, time_reverse=time_reverse)
+            plot_filters_ST1D(ws, cmaps=cmaps, num_cols=num_cols, row_height=row_height)
         else:
             if self.input_dims[0] == 1:
                 from NDNT.utils import plot_filters_ST2D

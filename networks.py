@@ -202,7 +202,7 @@ class FFnetwork(nn.Module):
                 layer.reg.build_reg_modules()
             
     def compute_reg_loss(self):
-        rloss = 0
+        rloss = torch.tensor(0.0)
         for layer in self.layers:
             rloss += layer.compute_reg_loss()
         return rloss

@@ -445,6 +445,10 @@ class LBFGSTrainer(Trainer):
 
         else:
             ''' fit one epoch at a time (can still accumulate the grads across epochs, but is much slower. handles datasets that cannot fit in memory'''
+            if self.fullbatch:
+                self.accumulate_grad_batches = len(train_loader)
+                print('Accumulated batches set to %d'%self.accumulate_grad_batches)
+
             # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
             try:            
                 self.fit_loop(self.max_epochs, train_loader, val_loader)
@@ -486,8 +490,6 @@ class LBFGSTrainer(Trainer):
         
     def train_one_epoch(self, train_loader, epoch=0):
         # train for one epoch
-        #if self.fullbatch:
-        #    self.accumulate_grad_batches = len(train_loader)
         
         self.model.train() # set model to training mode
 
@@ -532,7 +534,7 @@ class LBFGSTrainer(Trainer):
                 else:
                     break
 
-            loss/=self.accumulate_grad_batches
+            loss/=self.accumulate_grad_batches  # note this assumes constant batch_size to be fully accurate
             loss.backward()
 
             self.iter += 1
@@ -541,7 +543,7 @@ class LBFGSTrainer(Trainer):
 
         loss = self.optimizer.step(closure)
         print("Epoch %d (%d iter): loss = %02.3f" %(epoch, self.iter, loss.detach().item()))
-        self.optimizer.zero_grad(set_to_none=self.set_to_none) # zero the gradients for the next batch
+        #self.optimizer.zero_grad(set_to_none=self.set_to_none) # zero the gradients for the next batch
         
         if self.use_gpu:
                 torch.cuda.empty_cache()

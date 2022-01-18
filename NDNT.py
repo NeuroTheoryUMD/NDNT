@@ -1,3 +1,4 @@
+from sklearn.utils import shuffle
 import torch
 from torch import nn
 
@@ -194,7 +195,7 @@ class NDN(nn.Module):
         return {'loss': loss, 'val_loss': loss, 'reg_loss': reg_loss}
     
     def compute_reg_loss(self):
-        rloss = 0
+        rloss = torch.tensor(0.0)
         for network in self.networks:
             rloss += network.compute_reg_loss()
         return rloss
@@ -222,13 +223,11 @@ class NDN(nn.Module):
         from NDNT.training import Trainer, EarlyStopping, LBFGSTrainer
         import os
     
-        model = self
-
         #trainers = {'step': Trainer, 'AdamW': Trainer, 'Adam': Trainer, 'sgd': Trainer, 'lbfgs': LBFGSTrainer}
         trainers = {'step': Trainer, 'lbfgs': LBFGSTrainer}
         
         if optimizer is None:  # then specified through optimizer inputs
-            optimizer = self.get_optimizer(optimizer=optimizer_type, **kwargs)
+            optimizer = self.get_optimizer(optimizer_type=optimizer_type, **kwargs)
         
         if early_stopping:
             earlystopper = EarlyStopping( patience=early_stopping_patience, delta= early_stopping_delta )
@@ -259,7 +258,7 @@ class NDN(nn.Module):
             if optimizer_type == 'LBFGS':
                 trainer_type = 'lbfgs'
         
-        trainer = trainers[trainer_type](model=model,
+        trainer = trainers[trainer_type](model=self,
                 optimizer=optimizer,
                 early_stopping=earlystopper,
                 dirpath=os.path.join(save_dir, name),
@@ -330,10 +329,7 @@ class NDN(nn.Module):
             train_ds = Subset(dataset, train_inds)
             val_ds = Subset(dataset, val_inds)
 
-            if full_batch:
-                shuffle_data = False
-            else:
-                shuffle_data = True
+            shuffle_data = True  # no reason not to shuffle -- samples everything over epoch
 
             train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
             valid_dl = DataLoader(val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
@@ -342,7 +338,7 @@ class NDN(nn.Module):
     # END NDN.get_dataloaders
 
     def get_optimizer(self,
-            optimizer='AdamW',
+            optimizer_type='AdamW',
             learning_rate=0.001,
             weight_decay=0.01,
             amsgrad=False,
@@ -355,7 +351,7 @@ class NDN(nn.Module):
             **kwargs):
         
         # Assign optimizer
-        if optimizer=='AdamW':
+        if optimizer_type=='AdamW':
 
             # weight decay only affects certain parameters
             decay = []
@@ -376,12 +372,12 @@ class NDN(nn.Module):
                     betas=betas,
                     amsgrad=amsgrad)
 
-        elif optimizer=='Adam':
+        elif optimizer_type=='Adam':
             optimizer = torch.optim.Adam(self.parameters(),
                     lr=learning_rate,
                     betas=betas)
 
-        elif optimizer=='LBFGS':
+        elif optimizer_type=='LBFGS':
 
             optimizer = torch.optim.LBFGS(
                 self.parameters(), 
@@ -391,7 +387,7 @@ class NDN(nn.Module):
                 line_search_fn=line_search_fn)
 
         else:
-            raise ValueError('optimizer [%s] not supported' %optimizer)
+            raise ValueError('optimizer [%s] not supported' %optimizer_type)
         
         return optimizer
     # END NDN.get_optimizer
@@ -412,6 +408,7 @@ class NDN(nn.Module):
         optimizer=None,  # this can pass in full optimizer (rather than keyword)
         scheduler=None,
         batch_size=None,
+        force_dict_training=False,  # will force dict-based training instead of using data-loaders for LBFGS
         device=None,
         **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
         ):   
@@ -428,6 +425,7 @@ class NDN(nn.Module):
         import time
 
         assert batch_size is not None, "NDN.fit() must be passed batch_size in optimization params."
+        # if batch size > train_inds
 
         if save_dir is None:
             save_dir = self.data_dir
@@ -444,11 +442,11 @@ class NDN(nn.Module):
         # Make reg modules
         self.prepare_regularization()
 
-        # Create dataloaders
+        # Create dataloaders / 
         train_dl, valid_dl = self.get_dataloaders(
             dataset, batch_size=batch_size, train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
-        
-        # get trainer 
+
+        # Get trainer 
         trainer = self.get_trainer(
             version=version,
             optimizer=optimizer,
@@ -462,8 +460,15 @@ class NDN(nn.Module):
             #full_batch=full_batch, 
             **kwargs)
 
+
         t0 = time.time()
-        trainer.fit(self, train_dl, valid_dl, seed=seed)
+        if force_dict_training:
+            from NDNT.training import Trainer, EarlyStopping, LBFGSTrainer
+            assert isinstance(trainer, LBFGSTrainer), "force_dict_training will not work unless using LBFGS." 
+
+            trainer.fit(self, train_dl.dataset[:], valid_dl.dataset[:], seed=seed)
+        else:
+            trainer.fit(self, train_dl, valid_dl, seed=seed)
         t1 = time.time()
 
         print('  Fit complete:', t1-t0, 'sec elapsed')

@@ -32,7 +32,7 @@ def create_optimizer_params(
         tolerance_grad=1e-9,
         history_size=10,
         accumulated_grad_batches=1,
-        verbose=True,
+        verbose=2,
         line_search_fn=None):
 
     # Make optimizer params based on Adam or LBFGS, filling in chosen defaults
@@ -42,7 +42,7 @@ def create_optimizer_params(
         if max_iter is None:
             max_iter = 300
         if max_epochs is None:
-            max_epochs = 5
+            max_epochs = 1
 
         optpar = {
             'optimizer_type': 'LBFGS',
@@ -60,7 +60,7 @@ def create_optimizer_params(
             'tolerance_change': tolerance_change,
             'tolerance_grad': tolerance_grad,
             'accumulated_grad_batches': accumulated_grad_batches,
-            'verbose': True,
+            'verbose': verbose,
             'early_stopping': False}
 
     else: # Assume some sort of adam / sgd with similar params/defaults
@@ -802,3 +802,42 @@ def load_model(checkpoint_path, model_name='', version=None, verbose=True):
         return model
 
     return model
+
+
+## FROM JAKE
+def get_max_samples(dataset, device,
+    history_size=10,
+    nquad=0,
+    num_cells=None,
+    buffer=1.2):
+    """
+    get the maximum number of samples that fit in memory
+    Inputs:
+        dataset: the dataset to get the samples from
+        device: the device to put the samples on
+    Optional:
+        history_size: the history size parameter for LBFGS (scales memory usage)
+        nquad: the number of quadratic kernels for a gqm (adds # parameters for every new quad filter)
+        num_cells: the number of cells in model (n cells * n parameters)
+        buffer: extra memory to keep free (in GB)
+    """
+    if num_cells is None:
+        num_cells = dataset.NC
+    
+    t = torch.cuda.get_device_properties(device).total_memory
+    r = torch.cuda.memory_reserved(device)
+    a = torch.cuda.memory_allocated(device)
+    free = t - (a+r)
+
+    data = dataset[0]
+    # mempersample = data['stim'].element_size() * data['stim'].nelement() + 2*data['robs'].element_size() * data['robs'].nelement()
+    mempersample = 0
+    for cov in list(data.keys()):
+        mempersample += data[cov].element_size() * data[cov].nelement()
+
+    mempercell = mempersample * (nquad+1) * (history_size + 1)
+    buffer_bytes = buffer*1024**3
+
+    maxsamples = int(free - mempercell*num_cells - buffer_bytes) // mempersample
+    print("# samples that can fit on device: {} K".format(maxsamples/1000))
+    return maxsamples

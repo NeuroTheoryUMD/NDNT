@@ -27,6 +27,7 @@ class PoissonLoss_datafilter(nn.Module):
         self.loss = nn.PoissonNLLLoss(log_input=False, reduction='mean')
         self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
         self.unit_normalization = True
+        self.data_filter_adjust = True
         self.register_buffer("unit_norms", None)  # this is explicitly the wrong size
     # END PoissonLoss_datafilter.__init__
 
@@ -56,7 +57,10 @@ class PoissonLoss_datafilter(nn.Module):
         else:
             loss_full = self.lossNR(pred, target)
             # divide by number of valid time points
-            unit_weighting = torch.reciprocal( torch.sum(data_filters, axis=0).clamp(min=1) )
+            if self.data_filter_adjust:
+                unit_weighting = torch.reciprocal( torch.sum(data_filters, axis=0).clamp(min=1) )
+            else:
+                unit_weighting = torch.ones( pred.shape[1], device=data_filters.device) / pred.shape[0]
 
             #unit_weighting = torch.tensor(1.0, device=data_filters.device) / \
             #    torch.maximum(
