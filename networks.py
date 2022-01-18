@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 
+from functools import reduce
 from copy import deepcopy
 
 import NDNT.modules.layers as layers
@@ -202,10 +203,10 @@ class FFnetwork(nn.Module):
                 layer.reg.build_reg_modules()
             
     def compute_reg_loss(self):
-        rloss = torch.tensor(0.0)
+        rloss = []
         for layer in self.layers:
-            rloss += layer.compute_reg_loss()
-        return rloss
+            rloss.append(layer.compute_reg_loss())
+        return reduce(torch.add, rloss)
 
     def list_parameters(self, layer_target=None):
         if layer_target is None:

@@ -1,6 +1,8 @@
 from sklearn.utils import shuffle
 import torch
 from torch import nn
+from functools import reduce
+
 
 import numpy as np # TODO: we can get rid of this and just use torch for math
 
@@ -22,11 +24,11 @@ class NDN(nn.Module):
         ffnet_list = None,
         layer_list = None,  # can just import layer list if consisting of single ffnetwork (simple ffnet)
         external_modules = None,
-        loss_type = 'poisson',  # note poissonT will not use unit_normalization
+        loss_type = 'poisson', 
         ffnet_out = None,
         optimizer_params = None,
         model_name='NDN_model',
-        data_dir='./checkpoints'):
+        working_dir='./checkpoints'):
 
         super().__init__()
         
@@ -44,9 +46,26 @@ class NDN(nn.Module):
             ffnet_out = len(ffnet_list)-1
 
         self.model_name = model_name
-        self.data_dir = data_dir
+        self.working_dir = working_dir
 
-        self.configure_loss(loss_type)
+        # Configure loss
+        if isinstance(loss_type, str):
+            self.loss_type = loss_type
+            if loss_type == 'poisson' or loss_type == 'poissonT':
+                self.loss_module = losses.PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
+            elif loss_type == 'gaussian':
+                print('Gaussian loss_func not implemented yet.')
+                self.loss_module = None
+            else:
+                print('Invalid loss function.')
+                self.loss_module = None
+        else: # assume passed in loss function directly
+            self.loss_type = 'custom'
+            self.loss_module = loss_type
+
+        # module can also be called as a function (since it has a forward)
+        self.loss = self.loss_module
+        self.val_loss = self.loss_module
 
         # Assemble FFnetworks from if passed in network-list -- else can embed model
         networks = self.assemble_ffnetworks(ffnet_list, external_modules)
@@ -68,31 +87,6 @@ class NDN(nn.Module):
             optimizer_params = create_optimizer_params()
         self.opt_params = optimizer_params
     # END NDN.__init__
-
-    def configure_loss(self, loss_type):
-        # Assign loss function (from list)
-        if isinstance(loss_type, str):
-            self.loss_type = loss_type
-            if loss_type == 'poisson' or loss_type == 'poissonT':
-                loss_func = losses.PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
-                if loss_type == 'poissonT':
-                    loss_func.unit_normalization = False
-
-            elif loss_type == 'gaussian':
-                print('Gaussian loss_func not implemented yet.')
-                loss_func = None
-            else:
-                print('Invalid loss function.')
-                loss_func = None
-        else: # assume passed in loss function directly
-            self.loss_type = 'custom'
-            loss_func = loss_type
-            # Loss function defaults to Poisson loss with data filters (requires dfs field in dataset batch)
-
-        # Has both reduced and non-reduced for other eval functions
-        self.loss_module = loss_func
-        self.loss = loss_func
-        self.val_loss = self.loss
 
     def assemble_ffnetworks(self, ffnet_list, external_nets=None):
         """
@@ -133,7 +127,7 @@ class NDN(nn.Module):
                 networks.append( FFnets[net_type](**ffnet_list[mm]) )
 
         return networks
-    # END assemble_ffnetworks
+    # END NDNT.assemble_ffnetworks
 
     def compute_network_outputs(self, Xs):
         """Note this could return net_ins and net_outs, but currently just saving net_outs (no reason for net_ins yet"""
@@ -156,7 +150,7 @@ class NDN(nn.Module):
                 net_ins.append(inputs)
                 net_outs.append( self.networks[ii](inputs) ) 
         return net_ins, net_outs
-    # END compute_network_outputs
+    # END NDNT.compute_network_outputs
 
     def forward(self, Xs):
         """This applies the forwards of each network in sequential order.
@@ -166,10 +160,10 @@ class NDN(nn.Module):
         net_ins, net_outs = self.compute_network_outputs( Xs )
         # For now assume its just one output, given by the first value of self.ffnet_out
         return net_outs[self.ffnet_out[0]]
-    # END Encoder.forward
+    # END NDNT.forward
 
     def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
-        
+     
         y = batch['robs']
         dfs = batch['dfs']
 
@@ -195,10 +189,10 @@ class NDN(nn.Module):
         return {'loss': loss, 'val_loss': loss, 'reg_loss': reg_loss}
     
     def compute_reg_loss(self):
-        rloss = torch.tensor(0.0)
+        rloss = []
         for network in self.networks:
-            rloss += network.compute_reg_loss()
-        return rloss
+            rloss.append(network.compute_reg_loss())
+        return reduce(torch.add, rloss)
     
     def get_trainer(self,
         version=None,
@@ -207,15 +201,11 @@ class NDN(nn.Module):
         optimizer = None,
         scheduler = None,
         device = None,
-        #opt_params = None, 
         optimizer_type='AdamW',
         early_stopping=False,
         early_stopping_patience=5,
         early_stopping_delta=0.0,
         optimize_graph=False,
-        #full_batch=False, 
-        #accumulated_grad_batches=1,
-        #log_activations=True,
         **kwargs):
         """
             Returns a trainer and object splits the training set into "train" and "valid"
@@ -267,10 +257,6 @@ class NDN(nn.Module):
                 scheduler=scheduler,
                 version=version,
                 **kwargs
-                #accumulate_grad_batches=accumulated_grad_batches,
-                #max_epochs=max_epochs,
-                #og_activations=log_activations,
-                #full_batch=full_batch
                 )
 
         return trainer
@@ -425,7 +411,7 @@ class NDN(nn.Module):
         assert batch_size is not None, "NDN.fit() must be passed batch_size in optimization params."
 
         if save_dir is None:
-            save_dir = self.data_dir
+            save_dir = self.working_dir
         
         if name is None:
             name = self.model_name
