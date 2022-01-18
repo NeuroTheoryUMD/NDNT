@@ -668,8 +668,8 @@ class NDN(nn.Module):
         assert ffnet_target < len(self.networks), "ffnet target too large (max = %d)"%len(self.networks)
         self.networks[ffnet_target].set_reg_val( reg_type=reg_type, reg_val=reg_val, layer_target=layer_target )
 
-    def plot_filters(self, cmaps=None, ffnet_target=0, layer_target=0, num_cols=8):
-        self.networks[ffnet_target].plot_filters(layer_target=layer_target, cmaps=cmaps, num_cols=num_cols)
+    def plot_filters(self, ffnet_target=0, **kwargs):
+        self.networks[ffnet_target].plot_filters(**kwargs)
 
     def save_model(self, filename=None, alt_dirname=None):
         """Models will be saved using dill/pickle in the directory above the version

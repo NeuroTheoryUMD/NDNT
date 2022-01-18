@@ -149,6 +149,8 @@ class NDNLayer(nn.Module):
             init.kaiming_uniform_(self.weight, a=param)
         elif weights_initializer == 'zeros':
             init.zeros_(self.weight)
+        elif weights_initializer == 'ones':
+            init.ones_(self.weight)
         elif weights_initializer == 'normal':
             if param is None:
                 mean = 0.0
@@ -253,14 +255,14 @@ class NDNLayer(nn.Module):
             elif nm == name:
                 pp.requires_grad = val
 
-    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=None):
+    def plot_filters( self, time_reverse=None, **kwargs):
         """
         Plot the filters in the layer.
         Args:
-            cmaps: str or colormap, colormap to use for plotting
-            num_cols: int, number of columns to use in plot
-            row_height: int, number of rows to use in plot
-            time_reverse: bool, whether to reverse the time dimension
+            cmaps: str or colormap, colormap to use for plotting (default 'gray')
+            num_cols: int, number of columns to use in plot (default 8)
+            row_height: int, number of rows to use in plot (default 2)
+            time_reverse: bool, whether to reverse the time dimension (default depends on dimension)
         """
 
         # Make different defaults for time_reverse depending on 1 vs 2D
@@ -274,15 +276,15 @@ class NDNLayer(nn.Module):
         
         if self.input_dims[2] == 1:
             from NDNT.utils import plot_filters_ST1D
-            plot_filters_ST1D(ws, cmaps=cmaps, num_cols=num_cols, row_height=row_height)
+            plot_filters_ST1D(ws, **kwargs)
         else:
             if self.input_dims[0] == 1:
                 from NDNT.utils import plot_filters_ST2D
                 print(ws.shape)
-                plot_filters_ST2D(ws)
+                plot_filters_ST2D(ws, **kwargs)
             else:
                 from NDNT.utils import plot_filters_ST3D
-                plot_filters_ST3D(ws)
+                plot_filters_ST3D(ws, **kwargs)
     # END NDNLayer.plot_filters()
 
     @staticmethod

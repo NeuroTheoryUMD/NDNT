@@ -235,8 +235,8 @@ class FFnetwork(nn.Module):
         assert layer_target < len(self.layers), "layer target too large (max = %d)"%len(self.layers)
         self.layers[layer_target].reg.set_reg_val( reg_type=reg_type, reg_val=reg_val )
 
-    def plot_filters(self, layer_target=0, cmaps=None, num_cols=8):
-        self.layers[layer_target].plot_filters(cmaps=cmaps, num_cols=num_cols)
+    def plot_filters(self, layer_target=0, **kwargs):
+        self.layers[layer_target].plot_filters(**kwargs)
 
     @classmethod
     def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', **kwargs):
