@@ -411,10 +411,8 @@ class NDN(nn.Module):
         force_dict_training=False,  # will force dict-based training instead of using data-loaders for LBFGS
         device=None,
         **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
-        ):   
-        #accumulated_grad_batches=None, # 1 default unless overruled by opt_params # does ADAM use this? Can pass in through opt_pars, as with many others
-        #full_batch=False,  
-        #log_activations=None, # True default
+        ):
+
         '''
         This is the main training loop.
         Steps:
@@ -425,7 +423,6 @@ class NDN(nn.Module):
         import time
 
         assert batch_size is not None, "NDN.fit() must be passed batch_size in optimization params."
-        # if batch size > train_inds
 
         if save_dir is None:
             save_dir = self.data_dir
@@ -433,20 +430,32 @@ class NDN(nn.Module):
         if name is None:
             name = self.model_name
 
-        # Precalculate any normalization needed from the data
-        if self.loss_module.unit_normalization: # where should unit normalization go?
-            # compute firing rates given dataset
-            avRs = self.compute_average_responses(dataset) # use whole dataset seems best versus any specific inds
-            self.loss_module.set_unit_normalization(avRs) 
+        # Determine train_inds and val_inds: read from dataset if not specified, or warn
+        if train_inds is None:
+            # check dataset itself
+            if hasattr(dataset, 'train_inds'):
+                if dataset.train_inds is not None:
+                    train_inds = dataset.train_inds
+                if dataset.val_inds is not None:
+                    val_inds = dataset.val_inds
+        else:
+            train_inds = range(len(dataset))
+            print( "Warning: no train_inds specified. Using full dataset passed in.")
 
-        # Make reg modules
+        # Check to see if loss-flags require any initialization using dataset information 
+        if self.loss_module.unit_weighting or (self.loss_module.batch_weighting == 2):
+            if force_dict_training:
+                batch_size = len(train_inds)
+            self.initialize_loss(dataset, batch_size=batch_size, data_inds=train_inds) 
+
+        # Prepare model regularization (will build reg_modules)
         self.prepare_regularization()
 
         # Create dataloaders / 
         train_dl, valid_dl = self.get_dataloaders(
             dataset, batch_size=batch_size, train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
 
-        # Get trainer 
+        # Make trainer 
         trainer = self.get_trainer(
             version=version,
             optimizer=optimizer,
@@ -454,16 +463,11 @@ class NDN(nn.Module):
             save_dir=save_dir,
             name=name,
             device=device,
-            #accumulated_grad_batches=opt_params['accumulated_grad_batches'],
-            #log_activations=opt_params['log_activations'],
-            #opt_params=opt_params,
-            #full_batch=full_batch, 
             **kwargs)
-
 
         t0 = time.time()
         if force_dict_training:
-            from NDNT.training import Trainer, EarlyStopping, LBFGSTrainer
+            from NDNT.training import LBFGSTrainer
             assert isinstance(trainer, LBFGSTrainer), "force_dict_training will not work unless using LBFGS." 
 
             trainer.fit(self, train_dl.dataset[:], valid_dl.dataset[:], seed=seed)
@@ -474,6 +478,39 @@ class NDN(nn.Module):
         print('  Fit complete:', t1-t0, 'sec elapsed')
     # END NDN.train
     
+    def initialize_loss( self, dataset=None, batch_size=None, data_inds=None, batch_weighting=None, unit_weighting=None ):
+        """
+        Interacts with loss_module to set loss flags and/or pass in dataset information
+        Without dataset, it will just set flags 'batch_weighting' [-1, 0,1,2] and 'unit_weighting'
+        With dataset, it will set av_batch_size and unit_weights based on average rate
+        """
+
+        if batch_weighting is None:
+            batch_weighting = self.loss_module.batch_weighting
+        else:
+            assert batch_weighting in [0,1,2,-1], "Initialize loss: invalid batch_weighting value: %d"%batch_weighting
+        if unit_weighting is None:
+            unit_weighting = self.loss_module.unit_weighting
+        
+        unit_weights, av_batch_size = None, None
+        if dataset is not None:
+            assert batch_size is not None, "Initialize loss: need to have batch_size defined with dataset"
+            if data_inds is None:
+                data_inds = range(len(dataset))
+
+            # Compute average batch size
+            T = len(data_inds)
+            num_batches = np.ceil(T/batch_size)
+            av_batch_size = T/num_batches
+
+            # Compute unit weights based on number of spikes in dataset (and/or firing rate) if requested
+            unit_weights = 1.0/np.maximum( self.compute_average_responses(dataset, data_inds=data_inds), 1e-8 )
+
+        self.loss_module.set_loss_weighting( 
+            batch_weighting=batch_weighting, unit_weighting=unit_weighting, 
+            unit_weights=unit_weights, av_batch_size=av_batch_size )
+    # END NDNT.initialize_loss
+
     def compute_average_responses( self, dataset, data_inds=None ):
         if data_inds is None:
             data_inds = range(len(dataset))
@@ -494,7 +531,8 @@ class NDN(nn.Module):
                 Tsum += torch.sum(sample['dfs'], axis=0).cpu()
                 Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0).cpu()
 
-        return torch.divide( Rsum, Tsum.clamp(1)).cpu().detach().numpy()
+        return torch.divide( Rsum, Tsum.clamp(1) ).cpu().detach().numpy()
+    # END NDNT.compute_average_responses
 
     def initialize_biases( self, dataset, data_inds=None, ffnet_target=-1, layer_target=-1 ):
 
