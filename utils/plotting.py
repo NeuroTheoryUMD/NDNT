@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plot_filters_ST1D(ws, cmaps='gray', num_cols=8, row_height=2, filter_scale=False, **kwargs):
+def plot_filters_ST1D(ws, cmaps='gray', num_cols=8, row_height=2, fix_scale=False, **kwargs):
     """function to plot 1-D spatiotemporal filters (so, 2-d images) by passing in weights of multiple filters"""
     num_filters = ws.shape[-1]
     if num_filters < 8:
@@ -16,7 +16,7 @@ def plot_filters_ST1D(ws, cmaps='gray', num_cols=8, row_height=2, filter_scale=F
     m = np.max(abs(ws))
     for cc in range(num_filters):
         ax = plt.subplot(num_rows, num_cols, cc+1)
-        if filter_scale:
+        if fix_scale:
             plt.imshow(ws[:,:,cc].T, cmap=cmaps, aspect='auto', interpolation='none', vmin=-m, vmax=m)
         else:
             plt.imshow(ws[:,:,cc].T, cmap=cmaps, aspect='auto', interpolation='none')

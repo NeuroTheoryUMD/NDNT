@@ -87,8 +87,8 @@ class NDNLayer(nn.Module):
             self.filter_dims = filter_dims
         
         output_dims = [num_filters, 1, 1, 1]
-        self.output_dims = output_dims
-        self.num_outputs = np.prod(self.output_dims)
+        self.output_dims = output_dims  # this automatically sets num_outputs as well
+        #self.num_outputs = np.prod(self.output_dims) # Make this assigned through property
         
         self.norm_type = norm_type
         self.pos_constraint = pos_constraint
@@ -119,16 +119,42 @@ class NDNLayer(nn.Module):
 
         self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals, num_outputs=num_filters )
 
-        if num_inh == 0:
-            self.ei_mask = None
-        else:
-            self.register_buffer('ei_mask', torch.cat( (torch.ones(self.num_filters-num_inh), -torch.ones(num_inh))) )
+        # Now taken care of in model properties
+        self.num_inh = num_inh
+        #if num_inh == 0:
+        #    self.ei_mask = None
+        #else:
+        #    self.register_buffer('ei_mask', torch.cat( (torch.ones(self.num_filters-num_inh), -torch.ones(num_inh))) )
 
         # Set inital weight and bias values
         self.reset_parameters( weights_initializer, bias_initializer )
         if initialize_center:
             self.initialize_gaussian_envelope()
-            
+    # END NDNLayer.__init__
+
+    @property
+    def output_dims(self):
+        return self._output_dims
+
+    @output_dims.setter
+    def output_dims(self, value):
+        self._output_dims = value
+        self.num_outputs = int(np.prod(self._output_dims))
+
+    @property
+    def num_inh(self):
+        return self._num_inh
+
+    @num_inh.setter
+    def num_inh(self, value):
+        assert value >= 0, "num_inh cannot be negative"
+        self._num_inh = value
+        if value == 0:
+            self._ei_mask = None
+        else:
+            self.register_buffer('_ei_mask', 
+                torch.cat( (torch.ones(self.num_filters-self._num_inh), -torch.ones(self._num_inh))) )
+
     def reset_parameters(self, weights_initializer=None, bias_initializer=None, param=None) -> None:
         '''
         Initialize the weights and bias parameters of the layer.
@@ -213,8 +239,8 @@ class NDNLayer(nn.Module):
             x = self.NL(x)
 
         # Constrain output to be signed
-        if self.ei_mask is not None:
-            x = x * self.ei_mask
+        if self._ei_mask is not None:
+            x = x * self._ei_mask
 
         return x 
     # END NDNLayer.forward
@@ -314,7 +340,7 @@ class NDNLayer(nn.Module):
     def layer_dict(cls, 
             input_dims=None, num_filters=None, # necessary parameters
             bias=False, NLtype='lin', norm_type=0,
-            initialize_center=False, # optional parameters
+            initialize_center=False, num_inh=0, pos_constraint=False, # optional parameters
             **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
@@ -337,8 +363,8 @@ class NDNLayer(nn.Module):
             'num_filters': num_filters,
             'NLtype': NLtype,
             'norm_type': norm_type,
-            'pos_constraint': False,
-            'num_inh': 0,
+            'pos_constraint': pos_constraint,
+            'num_inh': num_inh,
             'bias': bias,
             'weights_initializer': 'xavier_uniform',
             'bias_initializer': 'zeros',

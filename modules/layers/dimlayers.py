@@ -55,8 +55,8 @@ class Dim0Layer(NDNLayer):
             x = self.NL(x)
 
         # Constrain output to be signed
-        if self.ei_mask is not None:
-            x = x * self.ei_mask
+        if self._ei_mask is not None:
+            x = x * self._ei_mask
 
         return x 
     # END Dim0Layer.forward
@@ -161,8 +161,8 @@ class ChannelLayer(NDNLayer):
             y = self.NL(y)
 
         # Constrain output to be signed
-        if self.ei_mask is not None:
-            y = y * self.ei_mask
+        if self._ei_mask is not None:
+            y = y * self._ei_mask
 
         return y 
     # END ChannelLayer.forward

@@ -13,8 +13,9 @@ class ConvLayer(NDNLayer):
     Args (required):
         input_dims: tuple or list of ints, (num_channels, height, width, lags)
         num_filters: number of output filters
-        conv_width: width of convolutional kernel (int or list of ints)
+        filter_dims: width of convolutional kernel (int or list of ints)
     Args (optional):
+        padding: 'same' or 'valid' (default 'same')
         weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
         bias_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
         bias: bool, whether to include bias term
@@ -24,7 +25,7 @@ class ConvLayer(NDNLayer):
     def __init__(self,
             input_dims=None,
             num_filters=None,
-            conv_dims=None,
+            #conv_dims=None,
             filter_dims=None,
             temporal_tent_spacing=None,
             output_norm=None,
@@ -36,24 +37,45 @@ class ConvLayer(NDNLayer):
 
         assert input_dims is not None, "ConvLayer: Must specify input_dims"
         assert num_filters is not None, "ConvLayer: Must specify num_filters"
-        assert (conv_dims is not None) or (filter_dims is not None), "ConvLayer: conv_dims or filter_dims must be specified"
-        
-        if conv_dims is None:
-            from copy import copy
-            conv_dims = copy(filter_dims[1:])
-        
-        if isinstance(conv_dims, int):
-            from copy import copy
-            if input_dims[2] == 1:
-                conv_dims = [copy(conv_dims), input_dims[-1]]
-            else:
-                conv_dims = [copy(conv_dims), copy(conv_dims), input_dims[-1]]
+        #assert (conv_dims is not None) or (filter_dims is not None), "ConvLayer: conv_dims or filter_dims must be specified"
+        assert filter_dims is not None, "ConvLayer: conv_dims or filter_dims must be specified"
+        if 'conv_dims' in kwargs:
+            print("No longer using conv_dims. Use filter_dims instead.")
 
+        #if conv_dims is None:
+        #    from copy import copy
+        #    conv_dims = copy(filter_dims[1:])
+        
+        is1D = input_dims[2] == 1
+        # Place filter_dims information in correct place -- maybe overkill, but easy to specify 
+        # spatial width in any number of ways using 'filter_dims'
+        if isinstance(filter_dims, int):  # if pass single number (filter_width)
+            filter_dims = [filter_dims]
+        if len(filter_dims) == 1:
+            if is1D:
+                #conv_dims = [copy(conv_dims), input_dims[-1]]
+                filter_dims = [input_dims[0], filter_dims[0], 1, input_dims[-1]]
+            else:
+                #conv_dims = [copy(conv_dims), copy(conv_dims), input_dims[-1]]
+                filter_dims = [input_dims[0], filter_dims[0], filter_dims[0], input_dims[-1]]
+        elif len(filter_dims) == 2:  # Assume 2-d and passing spatial dims
+            assert not is1D, "ConvLayer: invalid filter_dims"
+            filter_dims = [input_dims[0], filter_dims[0], filter_dims[1], input_dims[-1]]
+        elif len(filter_dims) == 3:  # Assume didn't pass in filter dimension
+            from copy import copy
+            filter_dims = [input_dims[0]] + copy(filter_dims)
+        # otherwise filter_dims is correct
+
+        # Best practice for convolutions would have odd-dimension convolutional filters: 
+        # will need full_padding and slowdown (possibly non-deterministic behavior) otherwise
+        for nn in [1,2]:
+            if filter_dims[nn]%2 != 1: print("ConvDim %d should be odd."%nn) 
+                
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         self.tent_basis = None
         if temporal_tent_spacing is not None and temporal_tent_spacing > 1:
             from NDNT.utils import tent_basis_generate
-            num_lags = conv_dims[2]
+            num_lags = filter_dims[-1] #conv_dims[2]
             tentctrs = list(np.arange(0, num_lags, temporal_tent_spacing))
             self.tent_basis = tent_basis_generate(tentctrs)
             if self.tent_basis.shape[0] != num_lags:
@@ -73,22 +95,24 @@ class ConvLayer(NDNLayer):
             self.tent_basis = self.tent_basis[:num_lags,:]
             num_lag_params = self.tent_basis.shape[1]
             print('ConvLayer temporal tent spacing: num_lag_params =', num_lag_params)
-            conv_dims[2] = num_lag_params
+            #conv_dims[2] = num_lag_params
+            filter_dims[-1] = num_lag_params
 
-        if filter_dims is None:
-            filter_dims = [input_dims[0]] + conv_dims
-        else:            
-            filter_dims[1:] = conv_dims
-
-        super().__init__(input_dims,
-            num_filters,
+        #if filter_dims is None:
+        #    filter_dims = [input_dims[0]] + conv_dims
+        #else:            
+        #    filter_dims[1:] = conv_dims
+        
+        super().__init__(
+            input_dims=input_dims,
+            num_filters=num_filters,
             filter_dims=filter_dims,
             **kwargs,
             )
 
-        output_dims = [num_filters, 1, 1, 1]
-        output_dims[1:3] = input_dims[1:3]
-        self._output_dims = output_dims
+        self.is1D = is1D
+        #self._output_dims = [num_filters, 1, 1, 1]
+        #self._output_dims[1:3] = input_dims[1:3]
         
         if self.tent_basis is not None:
             self.register_buffer('tent_basis', torch.Tensor(self.tent_basis.T))
@@ -96,11 +120,11 @@ class ConvLayer(NDNLayer):
         else:
             self.tent_basis = None
 
-        if input_dims[2] == 1:  # then 1-d spatial
-            filter_dims[2] = 1
-            self.is1D = (self.input_dims[2] == 1)
-        else:
-            self.is1D = False
+        #if input_dims[2] == 1:  # then 1-d spatial
+        #    filter_dims[2] = 1
+        #    self.is1D = (self.input_dims[2] == 1)
+        #else:
+        #    self.is1D = False
 
         self.filter_dims = filter_dims
 
@@ -123,15 +147,19 @@ class ConvLayer(NDNLayer):
         assert self.stride == 1, 'Cannot handle greater strides than 1.'
         assert self.dilation == 1, 'Cannot handle greater dilations than 1.'
 
-        if self.stride > 1:
-            print('Warning: Manual padding not yet implemented when stride > 1')
-            self.padding = (0,0,0,0)
-        else:
-            w = self.filter_dims[1:3] # handle 2D if necessary
-            if padding == 'same':
-                self.padding = (w[0]//2, (w[0]-1+w[0]%2)//2, w[1]//2, (w[1]-1+w[1]%2)//2)
-            elif padding == 'valid':
-                self.padding = (0, 0, 0, 0)
+        self.padding = padding
+
+        # These assignments will be moved to the setter with padding as property and _npads as internal
+        # Define padding as "same" or "valid" and then _npads is the number of each edge
+        #if self.stride > 1:
+            #print('Warning: Manual padding not yet implemented when stride > 1')
+            #self.padding = (0,0,0,0)
+        #else:
+            #w = self.filter_dims[1:3] # handle 2D if necessary
+#            if padding == 'same':
+#                self.padding = (w[0]//2, (w[0]-1+w[0]%2)//2, w[1]//2, (w[1]-1+w[1]%2)//2)
+#            elif padding == 'valid':
+#                self.padding = (0, 0, 0, 0)
 
         # Combine filter and temporal dimensions for conv -- collapses over both
         self.folded_dims = self.input_dims[0]*self.input_dims[3]
@@ -144,7 +172,57 @@ class ConvLayer(NDNLayer):
                 self.output_norm = nn.BatchNorm2d(self.num_filters)
         else:
             self.output_norm = None
+    # END ConvLayer.__init__
 
+    ## This is now defined in NDNLayer so inherited -- applies to all NDNLayer children
+    #@property
+    #def output_dims(self):
+    #    self.num_outputs = int(np.prod(self._output_dims))
+    #    return self._output_dims
+    
+    #@output_dims.setter
+    #def output_dims(self, value):
+    #    self._output_dims = value
+    #    self.num_outputs = int(np.prod(self._output_dims))
+    
+    @property
+    def padding(self):
+        return self._padding
+    
+    @padding.setter
+    def padding(self, value):
+        assert value in ['valid', 'same'], "ConvLayer: incorrect value entered for padding"
+        self._padding = value
+        self._fullpadding = False
+
+        sz = self.filter_dims[1:3] # handle 2D if necessary
+        if self._padding == 'valid':
+            self._npads = (0, 0, 0, 0)
+        else:
+            assert self.stride == 1, "Warning: 'same' padding not yet implemented when stride > 1"
+            self._fullpadding = self.filter_dims[1]%2 == 0
+            if self.is1D:
+                self._npads = (sz[0]//2, (sz[0]-1)//2)
+            else:
+                self._npads = (sz[1]//2, (sz[1]-1)//2, sz[0]//2, (sz[0]-1)//2)  # F.pad wants things backwards dims
+                self._fullpadding = self.fullpadding or (self.filter_dims[2]%2 == 0)
+
+        # Also adjust output dims
+        new_output_dims = [
+            self.num_filters, 
+            self.input_dims[1] - sz[0] + 1 + self._npads[0]+self._npads[1], 
+            1, 1]
+        if not self.is1D:
+            new_output_dims[2] = self.input_dims[2] - sz[1] + 1 + self._npads[2]+self._npads[3]
+        
+        self.output_dims = new_output_dims
+        # This code no longer
+        # if isinstance(value, int):
+        #    npad = [value, value, value, value]
+        #else:
+        #    npad = [value[i*2]+value[i*2+1] for i in range(len(value)//2)]
+        # handle spatial padding here, time is integrated out in conv base layer
+        
     @staticmethod
     def dim_info(
         input_dims=None, num_filters=None, conv_dims=None, 
@@ -222,31 +300,6 @@ class ConvLayer(NDNLayer):
         Ldict['padding'] = padding
 
         return Ldict
-
-    @property
-    def output_dims(self):
-        self.num_outputs = int(np.prod(self._output_dims))
-        return self._output_dims
-    
-    @output_dims.setter
-    def output_dims(self, value):
-        self._output_dims = value
-        self.num_outputs = int(np.prod(self._output_dims))
-    
-    @property
-    def padding(self):
-        return self._padding
-    
-    @padding.setter
-    def padding(self, value):
-        self._padding = value
-        if isinstance(value, int):
-            npad = [value, value, value, value]
-        else:
-            npad = [value[i*2]+value[i*2+1] for i in range(len(value)//2)]
-        # handle spatial padding here, time is integrated out in conv base layer
-        self.output_dims = [self.num_filters] + [self.input_dims[i+1] - self.filter_dims[i+1] + 1 + npad[-i-1] for i in range(2)]
-        self.output_dims += [1]
     
     def preprocess_weights(self):
         w = super().preprocess_weights()
@@ -263,28 +316,47 @@ class ConvLayer(NDNLayer):
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)
         # puts output_dims first, as required for conv
-
+        
         # Collapse over irrelevant dims for dim-specific convs
         if self.is1D:
             s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) )
-            if self.padding:
-                s = F.pad(s, self.padding, "constant", 0)
-            y = F.conv1d(
-                s,
-                w.view([-1, self.folded_dims, self.filter_dims[1]]), 
-                bias=self.bias,
-                stride=self.stride, dilation=self.dilation)
+            #if self.padding:
+            #s = F.pad(s, self._npads, "constant", 0)
+
+            if self._fullpadding:
+                #s = F.pad(s, self._npads, "constant", 0)
+                y = F.conv1d(
+                    F.pad(s, self._npads, "constant", 0),
+                    w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                    bias=self.bias,
+                    stride=self.stride, dilation=self.dilation)
+            else:
+                y = F.conv1d(
+                    s,
+                    w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                    bias=self.bias,
+                    padding=self._npads[0],
+                    stride=self.stride, dilation=self.dilation)
         else:
             s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
-            if self.padding:
-                s = F.pad(s, self.padding, "constant", 0)
 
-            y = F.conv2d(
-                s, # we do our own padding
-                w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
-                bias=self.bias,
-                stride=self.stride,
-                dilation=self.dilation)
+            if self._fullpadding:
+                s = F.pad(s, self._npads, "constant", 0)
+                y = F.conv2d(
+                    s, # we do our own padding
+                    w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
+                    bias=self.bias,
+                    stride=self.stride,
+                    dilation=self.dilation)
+            else:
+                # functional pads since padding is simple
+                y = F.conv2d(
+                    s, 
+                    w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
+                    padding=(self._npads[2], self._npads[0]),
+                    bias=self.bias,
+                    stride=self.stride,
+                    dilation=self.dilation)
 
         if self.output_norm is not None:
             y = self.output_norm(y)
@@ -292,9 +364,12 @@ class ConvLayer(NDNLayer):
         # Nonlinearity
         if self.NL is not None:
             y = self.NL(y)
-            
-        if self.ei_mask is not None:
-            y = y * self.ei_mask[None,:,None,None]
+
+        if self._ei_mask is not None:
+            if self.is1D:
+                y = y * self._ei_mask[None, :, None]
+            else:
+                y = y * self._ei_mask[None, :, None, None]
             # y = torch.einsum('bchw, c -> bchw* self.ei_mask
             # w = torch.einsum('nctw,tz->nczw', w, self.tent_basis)
 
@@ -430,7 +505,7 @@ class TconvLayer(ConvLayer):
             y = self.NL(y)
         
         if self.ei_mask is not None:
-            y = y * self.ei_mask[None,:,None,None,None]
+            y = y * self._ei_mask[None,:,None,None,None]
         
         y = y.reshape((-1, self.num_outputs))
 
@@ -558,7 +633,7 @@ class STconvLayer(TconvLayer):
             y = self.NL(y)
         
         if self.ei_mask is not None:
-            y = y * self.ei_mask[None,:,None,None,None]
+            y = y * self._ei_mask[None,:,None,None,None]
         
         y = y.reshape((-1, self.num_outputs))
 
