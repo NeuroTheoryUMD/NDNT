@@ -248,14 +248,17 @@ class NDNLayer(nn.Module):
     def compute_reg_loss(self):
         return self.reg.compute_reg_loss(self.preprocess_weights())
 
-    def get_weights(self, to_reshape=True, time_reverse=False):
+    def get_weights(self, to_reshape=True, time_reverse=False, num_inh=0):
+        """num-inh can take into account previous layer inhibition weights"""
         ws = self.preprocess_weights().detach().cpu().numpy()
         num_filts = ws.shape[-1]
-        if time_reverse:
+        if time_reverse or (num_inh>0):
             ws_tmp = np.reshape(ws, self.filter_dims + [num_filts])
             num_lags = self.filter_dims[3]
-            if num_lags > 1:
+            if time_reverse and (num_lags > 1):
                 ws_tmp = ws_tmp[:, :, :, range(num_lags-1, -1, -1), :] # time reversal here
+            if num_inh > 0:
+                ws_tmp[range(-num_inh, 0), ...] *= -1
             ws = ws_tmp.reshape((-1, num_filts))
         if to_reshape:
             return ws.reshape(self.filter_dims + [num_filts]).squeeze()

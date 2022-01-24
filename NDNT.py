@@ -622,8 +622,10 @@ class NDN(nn.Module):
 
         return LLneuron.detach().cpu().numpy()
 
-    def get_weights(self, ffnet_target=0, layer_target=0, to_reshape=True, time_reverse=False):
-        return self.networks[ffnet_target].layers[layer_target].get_weights(to_reshape, time_reverse=time_reverse)
+    def get_weights(self, ffnet_target=0, **kwargs):
+        """passed down to layer call, with optional arguments conveyed"""
+        assert ffnet_target < len(self.networks), "Invalid ffnet_target %d"%ffnet_target
+        return self.networks[ffnet_target].get_weights(**kwargs)
 
     def get_readout_locations(self):
         """This currently retuns list of readout locations and sigmas -- set in readout network"""

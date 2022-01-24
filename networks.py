@@ -238,6 +238,11 @@ class FFnetwork(nn.Module):
     def plot_filters(self, layer_target=0, **kwargs):
         self.layers[layer_target].plot_filters(**kwargs)
 
+    def get_weights(self, layer_target=0, **kwargs):
+        """passed down to layer call, with optional arguments conveyed"""
+        assert layer_target < len(self.layers), "Invalid layer_target %d"%layer_target
+        return self.layers[layer_target].get_weights(**kwargs)
+
     @classmethod
     def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', **kwargs):
         return {'layer_list': deepcopy(layer_list), 'xstim_n':xstim_n, 'ffnet_n':ffnet_n, 'ffnet_type': ffnet_type }
