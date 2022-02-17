@@ -270,9 +270,13 @@ class NDN(nn.Module):
             is_fixation=False,
             full_batch=False,
             data_seed=None,
+            device=None,
             **kwargs):
 
         from torch.utils.data import DataLoader, random_split, Subset
+
+        covariates = list(dataset[0].keys())
+        print('Dataset covariates:', covariates)
 
         if train_inds is None or val_inds is None:
             # check dataset itself
@@ -319,7 +323,7 @@ class NDN(nn.Module):
 
             train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
             valid_dl = DataLoader(val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
-                
+            
         return train_dl, valid_dl
     # END NDN.get_dataloaders
 
@@ -462,6 +466,75 @@ class NDN(nn.Module):
         t1 = time.time()
 
         print('  Fit complete:', t1-t0, 'sec elapsed')
+    # END NDN.fit
+
+    def fit_dl(self,
+        train_ds, val_ds, 
+        seed=None, # this currently seed for data AND optimization
+        save_dir:str=None,
+        version:int=None,
+        name:str=None,
+        optimizer=None,  # this can pass in full optimizer (rather than keyword)
+        scheduler=None,
+        batch_size=None,
+        num_workers=1,
+        force_dict_training=False,  # will force dict-based training instead of using data-loaders for LBFGS
+        device=None,
+        **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
+        ):
+
+        '''
+        This is the main training loop.
+        Steps:
+            1. Get a trainer and dataloaders
+            2. Prepare regularizers
+            3. Run the main fit loop from the trainer, checkpoint, and save model
+        '''
+        import time
+
+        assert batch_size is not None, "NDN.fit() must be passed batch_size in optimization params."
+
+        if save_dir is None:
+            save_dir = self.working_dir
+        
+        if name is None:
+            name = self.model_name
+
+        # Check to see if loss-flags require any initialization using dataset information 
+        if self.loss_module.unit_weighting or (self.loss_module.batch_weighting == 2):
+            if force_dict_training:
+                batch_size = len(train_ds)
+            self.initialize_loss(train_ds, batch_size=batch_size) 
+
+        # Prepare model regularization (will build reg_modules)
+        self.prepare_regularization()
+
+        # Create dataloaders 
+        from torch.utils.data import DataLoader
+        train_dl = DataLoader( train_ds, batch_size=batch_size, num_workers=num_workers) 
+        valid_dl = DataLoader( val_ds, batch_size=batch_size, num_workers=num_workers) 
+
+        # Make trainer 
+        trainer = self.get_trainer(
+            version=version,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            save_dir=save_dir,
+            name=name,
+            device=device,
+            **kwargs)
+
+        t0 = time.time()
+        if force_dict_training:
+            from NDNT.training import LBFGSTrainer
+            assert isinstance(trainer, LBFGSTrainer), "force_dict_training will not work unless using LBFGS." 
+
+            trainer.fit(self, train_dl.dataset[:], valid_dl.dataset[:], seed=seed)
+        else:
+            trainer.fit(self, train_dl, valid_dl, seed=seed)
+        t1 = time.time()
+
+        print('  Fit complete:', t1-t0, 'sec elapsed')
     # END NDN.train
     
     def initialize_loss( self, dataset=None, batch_size=None, data_inds=None, batch_weighting=None, unit_weighting=None ):
@@ -555,7 +628,8 @@ class NDN(nn.Module):
         if isinstance(data, dict): 
             # Then assume that this is just to evaluate a sample: keep original here
             assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
-            m0 = self.cpu()
+            dev0 = data['robs'].device
+            m0 = self.to(dev0)
             yhat = m0(data)
             y = data['robs']
             dfs = data['dfs']

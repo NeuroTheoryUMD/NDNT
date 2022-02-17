@@ -177,16 +177,20 @@ def monocular_data_import( datadir, exptn, time_shift=1, num_lags=20):
     filename += str(ee) + '.mat'         
     matdata = sio.loadmat( datadir+filename )
 
-    sus = matdata['goodSUs'][:,0] - 1  # switch from matlab indexing
+    sus = np.squeeze(matdata['goodSUs']) - 1  # switch from matlab indexing
+    mus = np.squeeze(matdata['goodMUs']) - 1
+
     #print('SUs:', sus)
     NC = len(sus)
     layers = matdata['layers'][0,:]
     block_list = matdata['block_inds'] # note matlab indexing
     stim_all = NDNutils.shift_mat_zpad(matdata['stimulus'], time_shift, 0)
     NTtot, NX = stim_all.shape
-    DFs_all = deepcopy(matdata['data_filters'][:,sus])
-    Robs_all = deepcopy(matdata['binned_SU'][:,sus])
-    
+    DFs = deepcopy(matdata['data_filters'][:,sus])
+    Robs = deepcopy(matdata['binned_SU'][:,sus])
+    RobsMU = deepcopy(matdata['binned_MUA'][:, mus])
+    DFsMU = deepcopy(matdata['data_filters_MUA'][:,mus])
+
     # Break up into train and test blocks
     # Assemble train and test indices based on BIlist
     NBL = block_list.shape[0]
@@ -201,18 +205,22 @@ def monocular_data_import( datadir, exptn, time_shift=1, num_lags=20):
             (used_inds, 
             np.arange(block_list[nn,0]-1+num_lags, block_list[nn,1], dtype='int')),
             axis=0)
-        DFs_all[np.arange(block_list[nn,0]-1, block_list[nn,0]+num_lags, dtype='int'), :] = 0.0
+        DFs[np.arange(block_list[nn,0]-1, block_list[nn,0]+num_lags, dtype='int'), :] = 0.0
+        DFsMU[np.arange(block_list[nn,0]-1, block_list[nn,0]+num_lags, dtype='int'), :] = 0.0
     
     #Ui, Xi = NDNutils.generate_xv_folds( len(used_inds) )
     #Rinds, TEinds = used_inds[Ui].astype(int), used_inds[Xi].astype(int)
 
     Eadd_info = {
-        'cortical_layer':layers, 
+        'expt_name': matdata['cur_expt'][0],
+        'cortical_layer': layers, 
         'used_inds': used_inds, 
-        'block_list': block_list}
+        'block_list': block_list,
+        'sus': sus.astype(int), 
+        'mus': mus.astype(int)}
         #'TRinds':TRinds, 'TEinds': TEinds, 
         #'TRblocks': Ub, 'TEblocks': Xb}
-    return stim_all, Robs_all, DFs_all, Eadd_info
+    return stim_all, Robs, DFs, RobsMU, DFsMU, Eadd_info
 
 
 ###### GENERAL UTILITIES NOT SPECIFIC TO NDN ######

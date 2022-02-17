@@ -27,7 +27,7 @@ class Regularization(nn.Module):
 
     """
 
-    def __init__(self, filter_dims=None, vals=None, normalize=False, num_outputs=None, **kwargs):
+    def __init__(self, filter_dims=None, vals=None, normalize=False, num_outputs=None, folded_lags=False, **kwargs):
         """Constructor for Regularization class. This stores all info for regularization, and 
         sets up regularization modules for training, and returns reg_penalty from layer when passed in weights
         
@@ -56,6 +56,7 @@ class Regularization(nn.Module):
         self.normalize = normalize
 
         self.unit_reg = False
+        self.folded_lags = folded_lags
         self.num_outputs = num_outputs
 
         # read user input
@@ -129,9 +130,10 @@ class Regularization(nn.Module):
         self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
         
         for reg, val in self.vals.items():
-
+            print(self, reg, val)
             reg_obj = self.get_reg_class(reg)(
-                reg_type=reg, reg_val=val, input_dims=self.input_dims, unit_reg=self.unit_reg)
+                reg_type=reg, reg_val=val, 
+                input_dims=self.input_dims, folded_lags=self.folded_lags, unit_reg=self.unit_reg)
             self.reg_modules.append(reg_obj)
     # END Regularization.build_reg_modules
 
@@ -188,7 +190,7 @@ class Regularization(nn.Module):
 class RegModule(nn.Module): 
     """ Base class for regularization modules """
 
-    def __init__(self, reg_type=None, reg_val=None, input_dims=None, unit_reg=False, num_dims=0,  **kwargs):
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, unit_reg=False, num_dims=0, folded_lags=False, **kwargs):
         """Constructor for Reg_module class"""
 
         assert reg_type is not None, 'Need reg_type.'
@@ -202,6 +204,7 @@ class RegModule(nn.Module):
         self.register_buffer( 'val', torch.tensor(reg_val))
         self.input_dims = input_dims
         self.num_dims = num_dims # this is the relevant number of dimensions for some filters -- will be set within functions
+        self.folded_lags = folded_lags
 
     def forward(self, weights):
         rpen = self.compute_reg_penalty(weights)
@@ -411,14 +414,21 @@ class ConvReg(RegModule):
         Note that all convolutions are implicitly 'valid' so no boundary conditions"""
         
         weight_dims = self.input_dims + [weights.shape[1]]
-        w = weights.reshape(weight_dims)
+        if self.folded_lags:
+            w = weights.reshape((weight_dims[0], weight_dims[3], weight_dims[1], weight_dims[2]))            
+        else:
+            w = weights.reshape(weight_dims)
         # puts in [C, W, H, T, num_filters]: to reorder depending on reg type
         # default reg_dims
         if self.reg_type == 'd2t':
             w = w.permute(4,0,1,2,3) # needs temporal dimension last so only convolved
             #reg_dims = [weight_dims[3]]
         elif self.reg_type == 'd2xt':
-            w = w.permute(4,0,1,2,3) 
+            if self.folded_lags:
+                print('FL')
+                w = w.permute(4,0,2,3,1) # weights correspding to lag are up front
+            else:
+                w = w.permute(4,0,1,2,3) 
             # Reg-dims will depend on whether space is one- or two-dimensional
             #if weight_dims[2] > 1:
             #    reg_dims = [weight_dims[1], weight_dims[2], weight_dims[3]]

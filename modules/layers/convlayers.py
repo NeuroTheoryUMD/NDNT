@@ -32,6 +32,7 @@ class ConvLayer(NDNLayer):
             stride=None,
             dilation=1,
             padding='same',
+            folded_lags=False,
             **kwargs,
             ):
 
@@ -280,7 +281,7 @@ class ConvLayer(NDNLayer):
     # END [static] ConvLayer.dim_info
 
     @classmethod
-    def layer_dict(cls, padding='same', filter_dims=None, **kwargs):
+    def layer_dict(cls, padding='same', filter_dims=None, folded_lags=False, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -298,6 +299,7 @@ class ConvLayer(NDNLayer):
         Ldict['stride'] = 1
         Ldict['dilation'] = 1
         Ldict['padding'] = padding
+        Ldict['folded_lags'] = folded_lags
 
         return Ldict
     
