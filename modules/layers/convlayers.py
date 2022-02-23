@@ -39,10 +39,11 @@ class ConvLayer(NDNLayer):
         assert input_dims is not None, "ConvLayer: Must specify input_dims"
         assert num_filters is not None, "ConvLayer: Must specify num_filters"
         #assert (conv_dims is not None) or (filter_dims is not None), "ConvLayer: conv_dims or filter_dims must be specified"
-        assert filter_dims is not None, "ConvLayer: conv_dims or filter_dims must be specified"
         if 'conv_dims' in kwargs:
             print("No longer using conv_dims. Use filter_dims instead.")
 
+        assert filter_dims is not None, "ConvLayer: filter_dims must be specified"
+        
         #if conv_dims is None:
         #    from copy import copy
         #    conv_dims = copy(filter_dims[1:])
@@ -69,8 +70,8 @@ class ConvLayer(NDNLayer):
 
         # Best practice for convolutions would have odd-dimension convolutional filters: 
         # will need full_padding and slowdown (possibly non-deterministic behavior) otherwise
-        for nn in [1,2]:
-            if filter_dims[nn]%2 != 1: print("ConvDim %d should be odd."%nn) 
+        for ii in [1,2]:
+            if filter_dims[ii]%2 != 1: print("ConvDim %d should be odd."%ii) 
                 
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         self.tent_basis = None
@@ -148,7 +149,9 @@ class ConvLayer(NDNLayer):
         assert self.stride == 1, 'Cannot handle greater strides than 1.'
         assert self.dilation == 1, 'Cannot handle greater dilations than 1.'
 
+        self.fullpadding = None # Jake: I have no idea what this is, but Convlayer won't initialize without it
         self.padding = padding
+        
 
         # These assignments will be moved to the setter with padding as property and _npads as internal
         # Define padding as "same" or "valid" and then _npads is the number of each edge
@@ -266,8 +269,8 @@ class ConvLayer(NDNLayer):
         # check padding to figure out output dims
         output_dims = [num_filters, input_dims[1], input_dims[2], 1]  # this is for 'same'
         if padding == 'valid': # adjust for valid padding -- and need to check
-            for nn in [1,2]:
-                output_dims[nn] += -2*((filter_dims[nn]-1)//2)
+            for ii in [1,2]:
+                output_dims[ii] += -2*((filter_dims[ii]-1)//2)
 
         weight_shape = tuple([np.prod(filter_dims), num_filters])  # likewise
         num_outputs = np.prod(output_dims)
