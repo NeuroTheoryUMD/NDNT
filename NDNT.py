@@ -1,4 +1,4 @@
-from sklearn.utils import shuffle
+# from sklearn.utils import shuffle
 import torch
 from torch import nn
 from functools import reduce
