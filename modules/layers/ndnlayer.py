@@ -73,6 +73,7 @@ class NDNLayer(nn.Module):
 
         assert input_dims is not None, "NDNLayer: Must specify input_dims"
         assert num_filters is not None, "NDNLayer: Must specify num_filters"
+        assert len(num_filters) > 0, "NDNLayer: num_filters is incorrectly specified."
 
         # if len(kwargs) > 0:
         #     print("NDNLayer: unknown kwargs:", kwargs)
@@ -263,7 +264,11 @@ class NDNLayer(nn.Module):
         if to_reshape:
             return ws.reshape(self.filter_dims + [num_filts]).squeeze()
         else:
-            return ws.squeeze()
+            ws = ws.squeeze()
+            if len(ws.shape) == 1:
+                # Add singleton dimension corresponding to number of filters
+                ws = ws[:, None]
+            return ws
 
     def list_parameters(self):
         for nm, pp in self.named_parameters(recurse=False):
@@ -309,7 +314,6 @@ class NDNLayer(nn.Module):
         else:
             if self.input_dims[0] == 1:
                 from NDNT.utils import plot_filters_ST2D
-                print(ws.shape)
                 plot_filters_ST2D(ws, **kwargs)
             else:
                 from NDNT.utils import plot_filters_ST3D

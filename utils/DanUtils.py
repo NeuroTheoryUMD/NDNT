@@ -238,6 +238,60 @@ def filename_num2str( n, num_digits=2 ):
     return s
 
 
+def display_matrix( x, prec=3, spacing=4, number_rows=False, number_cols=False ):
+    a, b = x.shape
+    s = "  %" + str(spacing+prec) + "." + str(prec) + "f"
+    if number_cols:
+        if number_rows:
+            print( "    ", end='')
+        for mm in range(b):
+            print( " "*(spacing+prec-2)+ "[%2d]"%mm, end='' )
+        print('')
+    for nn in range(a):
+        if number_rows:
+            print( "[%2d]"%nn, end='' )
+        for mm in range(b):
+            print( s%x[nn, mm], end='')
+        print('')
+
+
+def matlab_export(filename, variable_list):
+    """Export list of variables to .mat file"""
+
+    import scipy.io as sio
+    if not isinstance(variable_list, list):
+        variable_list = [variable_list]
+
+    matdata = {}
+    for nn in range(len(variable_list)):
+        assert not isinstance(variable_list[nn], list), 'Cant do a list of lists.'
+        if nn < 10:
+            key_name = 'v0' + str(nn)
+        else:
+            key_name = 'v' + str(nn)
+        matdata[key_name] = variable_list[nn]
+
+    sio.savemat(filename, matdata)
+
+
+def save_python_data( filename, data ):
+    with open( filename, 'wb') as f:
+        np.save(f, data)
+    print( 'Saved data to', filename )
+
+
+def load_python_data( filename, show_keys=False ):
+
+    with open( filename, 'rb') as f:
+        data = np.load(f, allow_pickle=True)
+    print( 'Loaded data from', filename )
+    if len(data.shape) == 0:
+        data = data.flat[0]  # to rescue dictionaries
+    if (type(data) is dict) and show_keys:
+        print(data.keys())
+    return data
+
+
 def fold_sample( num_items, folds=5, random_gen=False, which_fold=None):
     """Divide fold sample deterministically or randomly distributed over number of items. More options
     can be added, but his captures the basics."""
@@ -255,3 +309,51 @@ def fold_sample( num_items, folds=5, random_gen=False, which_fold=None):
         val_items = np.arange(offset, num_items, folds, dtype='int64')
         rem_items = np.delete(np.arange(num_items, dtype='int64'), val_items)
     return val_items, rem_items
+
+
+def design_matrix_drift( NT, anchors, zero_left=True, zero_right=False, const_right=False, to_plot=False):
+    """Produce a design matrix based on continuous data (s) and anchor points for a tent_basis.
+    Here s is a continuous variable (e.g., a stimulus) that is function of time -- single dimension --
+    and this will generate apply a tent basis set to s with a basis variable for each anchor point. 
+    The end anchor points will be one-sided, but these can be dropped by changing "zero_left" and/or
+    "zero_right" into "True".
+
+    Inputs: 
+        NT: length of design matrix
+        anchors: list or array of anchor points for tent-basis set
+        zero_left, zero_right: boolean whether to drop the edge bases (default for both is False)
+    Outputs:
+        X: design matrix that will be NT x the number of anchors left after zeroing out left and right
+    """
+    anchors = list(anchors)
+    if anchors[0] > 0:
+        anchors = [0] + anchors
+    if anchors[-1] < NT:
+        anchors = anchors + [NT]
+    NA = len(anchors)
+
+    X = np.zeros([NT, NA])
+    for aa in range(NA):
+        if aa > 0:
+            dx = anchors[aa]-anchors[aa-1]
+            X[range(anchors[aa-1], anchors[aa]), aa] = np.arange(dx)/dx
+        if aa < NA-1:
+            dx = anchors[aa+1]-anchors[aa]
+            X[range(anchors[aa], anchors[aa+1]), aa] = 1-np.arange(dx)/dx
+
+    if zero_left:
+        X = X[:, 1:]
+
+    if const_right:
+        zero_right = True
+
+    if zero_right:
+        X = X[:, :-1]
+        if const_right:
+            X[range(anchors[-2], anchors[-1]), -1] = 1.0
+
+    if to_plot:
+        plt.imshow(X.T, aspect='auto', interpolation='none')
+        plt.show()
+
+    return X
