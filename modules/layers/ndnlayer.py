@@ -73,7 +73,7 @@ class NDNLayer(nn.Module):
 
         assert input_dims is not None, "NDNLayer: Must specify input_dims"
         assert num_filters is not None, "NDNLayer: Must specify num_filters"
-        assert len(num_filters) > 0, "NDNLayer: num_filters is incorrectly specified."
+        #assert len(num_filters) > 0, "NDNLayer: num_filters is incorrectly specified."
 
         # if len(kwargs) > 0:
         #     print("NDNLayer: unknown kwargs:", kwargs)
