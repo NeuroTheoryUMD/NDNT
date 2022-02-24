@@ -149,9 +149,7 @@ class ConvLayer(NDNLayer):
         assert self.stride == 1, 'Cannot handle greater strides than 1.'
         assert self.dilation == 1, 'Cannot handle greater dilations than 1.'
 
-        self.fullpadding = None # Jake: I have no idea what this is, but Convlayer won't initialize without it
-        self.padding = padding
-        
+        self.padding = padding        
 
         # These assignments will be moved to the setter with padding as property and _npads as internal
         # Define padding as "same" or "valid" and then _npads is the number of each edge
@@ -209,7 +207,7 @@ class ConvLayer(NDNLayer):
                 self._npads = (sz[0]//2, (sz[0]-1)//2)
             else:
                 self._npads = (sz[1]//2, (sz[1]-1)//2, sz[0]//2, (sz[0]-1)//2)  # F.pad wants things backwards dims
-                self._fullpadding = self.fullpadding or (self.filter_dims[2]%2 == 0)
+                self._fullpadding = self._fullpadding or (self.filter_dims[2]%2 == 0)
 
         # Also adjust output dims
         new_output_dims = [
