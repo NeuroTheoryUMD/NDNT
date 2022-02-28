@@ -130,7 +130,7 @@ class Regularization(nn.Module):
         self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
         
         for reg, val in self.vals.items():
-            print(self, reg, val)
+            #print(self, reg, val)
             reg_obj = self.get_reg_class(reg)(
                 reg_type=reg, reg_val=val, 
                 input_dims=self.input_dims, folded_lags=self.folded_lags, unit_reg=self.unit_reg)

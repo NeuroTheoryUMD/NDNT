@@ -251,6 +251,7 @@ class NDNLayer(nn.Module):
 
     def get_weights(self, to_reshape=True, time_reverse=False, num_inh=0):
         """num-inh can take into account previous layer inhibition weights"""
+        
         ws = self.preprocess_weights().detach().cpu().numpy()
         num_filts = ws.shape[-1]
         if time_reverse or (num_inh>0):
@@ -262,13 +263,14 @@ class NDNLayer(nn.Module):
                 ws_tmp[range(-num_inh, 0), ...] *= -1
             ws = ws_tmp.reshape((-1, num_filts))
         if to_reshape:
-            return ws.reshape(self.filter_dims + [num_filts]).squeeze()
+            ws = ws.reshape(self.filter_dims + [num_filts]).squeeze()
         else:
             ws = ws.squeeze()
-            if len(ws.shape) == 1:
-                # Add singleton dimension corresponding to number of filters
-                ws = ws[:, None]
-            return ws
+
+        if num_filts == 1:
+            # Add singleton dimension corresponding to number of filters
+            ws = ws[..., None]
+        return ws
 
     def list_parameters(self):
         for nm, pp in self.named_parameters(recurse=False):

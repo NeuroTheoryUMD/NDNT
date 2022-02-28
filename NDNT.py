@@ -823,6 +823,11 @@ class NDN(nn.Module):
         handle.remove()
         return activations
 
+    @property
+    def device( self ):
+        return next(self.parameters()).device
+        # just for checking -- but not definitive/great to do in general, apparently
+    
     @classmethod
     def load_model(cls, checkpoint_path=None, model_name=None, version=None):
         '''
