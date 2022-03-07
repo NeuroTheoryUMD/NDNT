@@ -154,10 +154,9 @@ class FFnetwork(nn.Module):
                 elif self.network_type == 'add': # add inputs
                     x = torch.add( x, inputs[mm] )
                 elif self.network_type == 'mult': # multiply: (input1) x (1+input2)
-                    x = torch.mult( x, torch.add(inputs[mm], 1.0) )
+                    x = torch.multiply( x, torch.add(inputs[mm], 1.0) )
         else:
             x = inputs
-        
         return x
 
     def forward(self, inputs):
@@ -233,7 +232,7 @@ class FFnetwork(nn.Module):
         if layer_target is None:
             layer_target = 0
         assert layer_target < len(self.layers), "layer target too large (max = %d)"%len(self.layers)
-        self.layers[layer_target].reg.set_reg_val( reg_type=reg_type, reg_val=reg_val )
+        self.layers[layer_target].set_reg_val( reg_type=reg_type, reg_val=reg_val )
 
     def plot_filters(self, layer_target=0, **kwargs):
         self.layers[layer_target].plot_filters(**kwargs)

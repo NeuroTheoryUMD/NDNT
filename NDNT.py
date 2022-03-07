@@ -276,7 +276,7 @@ class NDN(nn.Module):
         from torch.utils.data import DataLoader, random_split, Subset
 
         covariates = list(dataset[0].keys())
-        print('Dataset covariates:', covariates)
+        #print('Dataset covariates:', covariates)
 
         if train_inds is None or val_inds is None:
             # check dataset itself

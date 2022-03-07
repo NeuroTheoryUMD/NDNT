@@ -172,7 +172,8 @@ class NDNLayer(nn.Module):
 
         if weights_initializer == 'uniform':
             if param is None:
-                param = 5**0.5
+                #param = 5**0.5
+                param = 1.0/self.num_filters
             init.kaiming_uniform_(self.weight, a=param)
         elif weights_initializer == 'zeros':
             init.zeros_(self.weight)
@@ -290,6 +291,9 @@ class NDNLayer(nn.Module):
                 pp.requires_grad = val
             elif nm == name:
                 pp.requires_grad = val
+
+    def set_reg_val( self, reg_type, reg_val=None):
+        self.reg.set_reg_val( reg_type=reg_type, reg_val=reg_val )
 
     def plot_filters( self, time_reverse=None, **kwargs):
         """

@@ -130,7 +130,6 @@ class Regularization(nn.Module):
         self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
         
         for reg, val in self.vals.items():
-            #print(self, reg, val)
             reg_obj = self.get_reg_class(reg)(
                 reg_type=reg, reg_val=val, 
                 input_dims=self.input_dims, folded_lags=self.folded_lags, unit_reg=self.unit_reg)
@@ -190,7 +189,7 @@ class Regularization(nn.Module):
 class RegModule(nn.Module): 
     """ Base class for regularization modules """
 
-    def __init__(self, reg_type=None, reg_val=None, input_dims=None, unit_reg=False, num_dims=0, folded_lags=False, **kwargs):
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, unit_reg=False, folded_lags=False, **kwargs):
         """Constructor for Reg_module class"""
 
         assert reg_type is not None, 'Need reg_type.'
@@ -231,20 +230,24 @@ class LocalityReg(RegModule):
             
             # glocal
             w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
-            wx = w.sum(dim=(0,2,3)) # sum over y and t
-            wy = w.sum(dim=(0,1,3)) # sum over x and t
+            wx = w.sum(dim=(0,2,3)) # sum over y and t (note this works for singular dim y too, i.e., 1d)
 
             penx = torch.einsum('xn,xw->wn', wx, self.localx_pen)
             penx = torch.einsum('xn,xn->n', penx, wx)
 
-            if self.same_dims:
-                peny = torch.einsum('yn,yw->wn', wy, self.localx_pen)
-                peny = torch.einsum('yn,yn->n', peny, wy)
-            else:    
-                peny = torch.einsum('yn,yw->wn', wy, self.localy_pen)
-                peny = torch.einsum('yn,yn->n', peny, wy)
+            if self.num_dims == 1:
+                rpen = penx
+            else:
+                wy = w.sum(dim=(0,1,3)) # sum over x and t
+        
+                if self.same_dims:
+                    peny = torch.einsum('yn,yw->wn', wy, self.localx_pen)
+                    peny = torch.einsum('yn,yn->n', peny, wy)
+                else:    
+                    peny = torch.einsum('yn,yw->wn', wy, self.localy_pen)
+                    peny = torch.einsum('yn,yn->n', peny, wy)
 
-            rpen = penx + peny
+                rpen = penx + peny
 
         elif self.reg_type == 'glocalt':
             
@@ -263,14 +266,17 @@ class LocalityReg(RegModule):
             penx = torch.einsum('cxytn,xw->wn', w, self.localx_pen)
             penx = torch.einsum('xn,cxytn->n', penx, w)
 
-            if self.same_dims:
-                peny = torch.einsum('cxytn,yw->wn', w, self.localx_pen)
-                peny = torch.einsum('yn,cxytn->n', peny, w)
-            else:    
-                peny = torch.einsum('cxytn,yw->wn', w, self.localy_pen)
-                peny = torch.einsum('yn,cxytn->n', peny, w)
+            if self.num_dims == 1:
+                rpen = penx
+            else:
+                if self.same_dims:
+                    peny = torch.einsum('cxytn,yw->wn', w, self.localx_pen)
+                    peny = torch.einsum('yn,cxytn->n', peny, w)
+                else:    
+                    peny = torch.einsum('cxytn,yw->wn', w, self.localy_pen)
+                    peny = torch.einsum('yn,cxytn->n', peny, w)
 
-            rpen = penx + peny
+                rpen = penx + peny
         
         elif self.reg_type == 'localt':
             
