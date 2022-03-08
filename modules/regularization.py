@@ -58,7 +58,7 @@ class Regularization(nn.Module):
         self.unit_reg = False
         self.folded_lags = folded_lags
         self.num_outputs = num_outputs
-
+        self.boundary_conditions = None
         # read user input
         if vals is not None:
             for reg_type, reg_val in vals.items():
@@ -77,6 +77,7 @@ class Regularization(nn.Module):
         Returns:
             bool: True if `reg_type` has not been previously set
             
+        Note: can also pass in a dictionary with boundary condition information addressed by reg_type
         Raises:
             ValueError: If `reg_type` is not a valid regularization type
             ValueError: If `reg_val` is less than 0.0            
@@ -84,7 +85,12 @@ class Regularization(nn.Module):
 
         # check inputs
         if reg_type not in self.get_reg_class():
-            raise ValueError('Invalid regularization type ''%s''' % reg_type)
+            if reg_type in ['bc', 'bcs', 'BC', 'BCs']:
+                assert isinstance(reg_val, dict), "Regularization: boundary conditions must be a dictionary."
+                self.boundary_conditions = deepcopy(reg_val)  # set potential boundary conditions
+                return
+            else:
+                raise ValueError('Invalid regularization type ''%s''' % reg_type)
 
         if reg_val is None:  # then eliminate reg_type
             if reg_type in self.vals:
@@ -130,9 +136,16 @@ class Regularization(nn.Module):
         self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
         
         for reg, val in self.vals.items():
+            # check for boundary conditions
+            BC = 1 # default padding for boundary conditions
+            if self.boundary_conditions is not None:
+                if reg in self.boundary_conditions:
+                    BC = self.boundary_conditions[reg]
+                    print('  Setting boundary conditions for', reg, '=', BC)
+
             reg_obj = self.get_reg_class(reg)(
                 reg_type=reg, reg_val=val, 
-                input_dims=self.input_dims, folded_lags=self.folded_lags, unit_reg=self.unit_reg)
+                input_dims=self.input_dims, folded_lags=self.folded_lags, unit_reg=self.unit_reg, bc_val=BC)
             self.reg_modules.append(reg_obj)
     # END Regularization.build_reg_modules
 
