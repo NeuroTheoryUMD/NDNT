@@ -34,7 +34,10 @@ class Regularization(nn.Module):
         Args:
             input_dims (list of ints): dimension of input size (for building reg mats)
             vals (dict, optional): key-value pairs specifying value for each type of regularization 
-
+            
+            Note: to pass in boundary_condition information, use a dict in vals with the values corresponding to
+            particular regularization, e,g., 'BCs':{'d2t':1, 'd2x':0}
+            
         Raises:
             TypeError: If `input_dims` is not specified
             TypeError: If `num_outputs` is not specified
