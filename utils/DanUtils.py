@@ -4,6 +4,17 @@ from copy import deepcopy
 import NDNT.utils.NDNutils as NDNutils
 import matplotlib.pyplot as plt
 
+def imagesc( img, cmap=None, balanced=True, aspect='auto' ):
+    if balanced:
+        imin = -np.max(abs(img))
+        imax = np.max(abs(img))
+    else:
+        imin = np.min(img)
+        imax = np.max(img)
+    
+    plt.imshow( img, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
+
+
 def binocular_data_import( datadir, expt_num ):
     """Usage: stim, Robs, DFs, used_inds, Eadd_info = binocular_data_import( datadir, expt_num )
 

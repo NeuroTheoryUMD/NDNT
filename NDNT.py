@@ -465,7 +465,12 @@ class NDN(nn.Module):
             trainer.fit(self, train_dl, valid_dl, seed=seed)
         t1 = time.time()
 
-        print('  Fit complete:', t1-t0, 'sec elapsed')
+        if 'verbose' in kwargs.keys():
+            if kwargs['verbose'] > 0:
+                print('  Fit complete:', t1-t0, 'sec elapsed')
+        else:  # default behavior
+            print('  Fit complete:', t1-t0, 'sec elapsed')
+
     # END NDN.fit
 
     def fit_dl(self,

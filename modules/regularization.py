@@ -144,7 +144,7 @@ class Regularization(nn.Module):
             if self.boundary_conditions is not None:
                 if reg in self.boundary_conditions:
                     BC = self.boundary_conditions[reg]
-                    print('  Setting boundary conditions for', reg, '=', BC)
+                    #print('  Setting boundary conditions for', reg, '=', BC)
 
             reg_obj = self.get_reg_class(reg)(
                 reg_type=reg, reg_val=val, 
