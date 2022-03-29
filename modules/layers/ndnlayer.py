@@ -200,6 +200,11 @@ class NDNLayer(nn.Module):
         else:
             print('weights initializer not defined')
 
+        if self.pos_constraint:
+            self.weight.data = abs(self.weight)
+        if self.norm_type == 1:
+            self.weight.data = F.normalize( self.weight.data, dim=0 ) / self.weight_scale   
+
         if bias_initializer == 'zeros':
             init.zeros_(self.bias)
         elif bias_initializer == 'uniform':

@@ -153,7 +153,8 @@ class Regularization(nn.Module):
     # END Regularization.build_reg_modules
 
     def compute_reg_loss(self, weights):
-        if self.normalize:
+        # I don't think this flag is yet used anywhere -- weights are passed in normalized, if relevant
+        if self.normalize: 
             weights = F.normalize(weights, dim=0)
 
         rloss = 0
@@ -223,7 +224,7 @@ class RegModule(nn.Module):
 
     def forward(self, weights):
         rpen = self.compute_reg_penalty(weights)
-        return self.val * rpen * 1e4
+        return self.val * rpen #* 1e4
 
 class LocalityReg(RegModule):
     """ Regularization to penalize locality separably for each dimension"""
