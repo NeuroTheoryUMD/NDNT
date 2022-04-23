@@ -135,6 +135,7 @@ class ReadoutLayer(NDNLayer):
             if self.gauss_type != 'full':
                 self.sigma.clamp(min=0)  # sigma/variance is always a positive quantity
                 #s = self.sigma**2
+                s = self.sigma
 
         grid_shape = (batch_size,) + self.grid_shape[1:]
                 
