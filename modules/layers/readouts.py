@@ -18,6 +18,7 @@ class ReadoutLayer(NDNLayer):
             init_sigma=0.2,
             gauss_type: str='uncorrelated', # 'isotropic', 'uncorrelated', or 'full'
             align_corners=False,
+            mode='nearest',  # 'bilinear' is the normal default
             **kwargs):
 
         assert input_dims is not None, "ReadoutLayer: Must specify input_dims"
@@ -49,7 +50,8 @@ class ReadoutLayer(NDNLayer):
 
         # self.flatten = nn.Flatten()
         self.batch_sample = batch_sample
-            
+        self.sample_mode = mode
+
         self.init_mu_range = init_mu_range
         self.init_sigma = init_sigma
 
@@ -84,7 +86,8 @@ class ReadoutLayer(NDNLayer):
     def features(self):
 
         if self.pos_constraint:
-            feat = F.relu(self.weight)
+            #feat = F.relu(self.weight)
+            feat = F.square(self.weight)
         else:
             feat = self.weight
         
@@ -131,6 +134,7 @@ class ReadoutLayer(NDNLayer):
             self.mu.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
             if self.gauss_type != 'full':
                 self.sigma.clamp(min=0)  # sigma/variance is always a positive quantity
+                #s = self.sigma**2
 
         grid_shape = (batch_size,) + self.grid_shape[1:]
                 
@@ -143,10 +147,13 @@ class ReadoutLayer(NDNLayer):
         if self.num_space_dims == 1:
             # this is dan's 1-d kluge code -- necessary because grid_sampler has to have last dimension of 2. maybe problem....
             grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
-            grid2d[:,:,:,0] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
+            #grid2d[:,:,:,0] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
+            ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
+            grid2d[:,:,:,1] = (norm * s + self.mu).clamp(-1,1).squeeze(-1)
             return grid2d
             #return (norm * self.sigma + self.mu).clamp(-1,1) # this needs second dimension
         else:
+            # note I'm squaring for 1-d
             if self.gauss_type != 'full':
                 return (norm * self.sigma + self.mu).clamp(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
             else:
@@ -206,7 +213,8 @@ class ReadoutLayer(NDNLayer):
             # shifter is run outside the readout forward
             grid = grid + shift[:, None, None, :]
 
-        y = F.grid_sample(x, grid, align_corners=self.align_corners)
+        y = F.grid_sample(x, grid, mode=self.sample_mode, align_corners=self.align_corners, padding_mode='border')
+        # note I switched this from the default 'zeros' so that it wont try to go past the border
 
         y = (y.squeeze(-1) * feat).sum(1).view(N, outdims)
 
