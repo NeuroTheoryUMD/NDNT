@@ -549,7 +549,7 @@ class Tikhanov(RegModule):
 
         super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, bc_val=bc_val, **kwargs)
         
-        _valid_reg_types = ['local', 'glocal', 'max', 'maxfilt']
+        _valid_reg_types = ['local', 'glocal', 'max', 'max_filt']
         assert reg_type in _valid_reg_types, "{} is not a valid Tikhanov regularization type".format(reg_type)
         
         # the "input_dims" are ordered differently for matrix implementations,

@@ -238,6 +238,7 @@ def monocular_data_import( datadir, exptn, time_shift=1, num_lags=20):
 def subplot_setup(num_rows, num_cols, row_height=2, fighandle=False):
     fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
     fig.set_size_inches(16, row_height*num_rows)
+    fig.tight_layout()
     if fighandle is True:
         return fig
     
