@@ -196,6 +196,7 @@ class Trainer:
             # train one epoch
             out = self.train_one_epoch(train_loader, self.epoch)
             self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], self.epoch)
+            train_loss = out['train_loss']
 
             if self.log_activations:
                 for name in self.logged_parameters:
@@ -232,6 +233,9 @@ class Trainer:
                 self.val_loss_min = out['val_loss']
                 self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
             
+            if self.verbose==1:
+                print("Epoch %d: train loss %.4f val loss %.4f" %(self.epoch, train_loss, out['val_loss']))
+                
             # scheduler if scheduler steps at epoch level
             if self.scheduler:
                 if self.step_scheduler_after == "epoch":
@@ -259,7 +263,7 @@ class Trainer:
         self.model.eval()
         runningloss = 0
         nsteps = len(val_loader)
-        if self.verbose > 0:
+        if self.verbose > 1:
             pbar = tqdm(val_loader, total=nsteps, bar_format=None)
             pbar.set_description("Validating ver=%d" %self.version)
         else:
@@ -280,7 +284,7 @@ class Trainer:
 
                 runningloss += out['val_loss'].item()
 
-                if self.verbose > 0:
+                if self.verbose > 1:
                     pbar.set_postfix({'val_loss': runningloss/(batch_idx+1)})
 
         return {'val_loss': runningloss/nsteps}
@@ -293,7 +297,7 @@ class Trainer:
         self.model.train() # set model to training mode
 
         runningloss = 0
-        if self.verbose > 0:
+        if self.verbose == 2:
             pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
             pbar.set_description("Epoch %i" %epoch)
         else:
@@ -308,7 +312,7 @@ class Trainer:
                 torch.cuda.empty_cache()
 
             runningloss += out['train_loss']
-            if self.verbose > 0:
+            if self.verbose > 1:
                 # update progress bar
                 pbar.set_postfix({'train_loss': runningloss/(batch_idx + 1)})
 
@@ -392,7 +396,10 @@ class Trainer:
                 hook.remove()
 
         # save model
-        torch.save(self.model, os.path.join(self.dirpath, 'model.pt'))
+        try:
+            torch.save(self.model, os.path.join(self.dirpath, 'model.pt'))
+        except:
+            torch.save({'state_dict': self.model.state_dict()}, os.path.join(self.dirpath, 'model.pt'))
 
         # log final value of loss along with hyperparameters
         defopts = dict()
@@ -530,7 +537,7 @@ class LBFGSTrainer(Trainer):
                         pbar.set_postfix({'train_loss': loss.detach().item()/(batch_idx + 1),
                             'fevals': self.optimizer.state_dict()['state'][0]['func_evals'],
                             'n_iter': self.optimizer.state_dict()['state'][0]['n_iter']})
-                            
+
                 else:
                     break
 
