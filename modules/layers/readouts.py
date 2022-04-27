@@ -76,8 +76,11 @@ class ReadoutLayer(NDNLayer):
             raise ValueError(f'gauss_type "{self.gauss_type}" not known')
 
         # initialize means and spreads
-        self._mu = Parameter(torch.Tensor(*self.grid_shape))  # mean location of gaussian for each neuron
-        self.sigma = Parameter(torch.Tensor(*self.sigma_shape))  # standard deviation for gaussian for each neuron
+        #self._mu = Parameter(torch.Tensor(*self.grid_shape))  # mean location of gaussian for each neuron
+        #self.sigma = Parameter(torch.Tensor(*self.sigma_shape))  # standard deviation for gaussian for each neuron
+        map_size = (self.num_filters, self.num_space_dims)
+        self._mu = Parameter(torch.Tensor(*map_size))
+        self.sigma = Parameter(torch.Tensor(*map_size))
 
         self.initialize_spatial_mapping()
     # END ReadoutLayer.__init__
@@ -109,7 +112,8 @@ class ReadoutLayer(NDNLayer):
         # if self.gauss_type != 'full':
         #     self.sigma.data.fill_(self.init_sigma)
         # else:
-        self.sigma.data.uniform_(0, self.init_sigma)
+        #self.sigma.data.uniform_(0, self.init_sigma)
+        self.sigma.data.fill_(self.init_sigma)
         
         #self.weight.data.fill_(1 / self.input_dims[0])
 
@@ -134,8 +138,8 @@ class ReadoutLayer(NDNLayer):
             self.mu.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
             if self.gauss_type != 'full':
                 self.sigma.clamp(min=0)  # sigma/variance is always a positive quantity
-                #s = self.sigma**2
                 s = self.sigma
+                #s = self.sigma**2
 
         grid_shape = (batch_size,) + self.grid_shape[1:]
                 
@@ -150,15 +154,19 @@ class ReadoutLayer(NDNLayer):
             grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
             #grid2d[:,:,:,0] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
             ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
-            grid2d[:,:,:,1] = (norm * s + self.mu).clamp(-1,1).squeeze(-1)
+            print(norm.shape, s[None,:, None, None].shape, self.mu[None, :, None, None].shape)
+            print(grid2d.shape)
+            grid2d[:,:,:,1] = (norm * s[None, :, None, None] + self.mu[None, :, None, None]).clamp(-1,1).squeeze(-1)
             return grid2d
             #return (norm * self.sigma + self.mu).clamp(-1,1) # this needs second dimension
         else:
             # note I'm squaring for 1-d
             if self.gauss_type != 'full':
-                return (norm * self.sigma + self.mu).clamp(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
+                # grid locations in feature space sampled randomly around the mean self.mu
+                #return (norm * self.sigma + self.mu).clamp(-1,1) 
+                return (norm * self.sigma[None, :, None, :] + self.mu[None, :, None, :]).clamp(-1,1) 
             else:
-                return (torch.einsum('ancd,bnid->bnic', self.sigma, norm) + self.mu).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
+                return (torch.einsum('ancd,bnid->bnic', self.sigma[None, :, None, :], norm) + self.mu[None, :, None, :]).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
 
     def passive_readout(self):
         """This will not fit mu and std, but set them to zero. It will pass identities in,
