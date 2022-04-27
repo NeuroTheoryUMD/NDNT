@@ -99,7 +99,7 @@ class Regularization(nn.Module):
             if reg_type in self.vals:
                 del self.vals[reg_type]
         else:  # add or modify reg_val
-            if reg_val < 0.0:
+            if np.any(reg_val < 0.0):
                 raise ValueError('`reg_val` must be greater than or equal to zero')
 
             if self.unit_reg:
@@ -182,6 +182,7 @@ class Regularization(nn.Module):
                         'l2': InlineReg,
                         'norm2': InlineReg,
                         'orth': InlineReg,
+                        'bi_t': InlineReg,
                         'glocalx': LocalityReg,
                         'glocalt': LocalityReg,
                         'localx': LocalityReg,
@@ -224,7 +225,9 @@ class RegModule(nn.Module):
 
     def forward(self, weights):
         rpen = self.compute_reg_penalty(weights)
-        return self.val * rpen #* 1e4
+        rpen = self.val * rpen
+        
+        return rpen.mean()
 
 class LocalityReg(RegModule):
     """ Regularization to penalize locality separably for each dimension"""
@@ -302,8 +305,8 @@ class LocalityReg(RegModule):
 
             rpen = torch.einsum('cxytn,tw->wn', w, self.localt_pen)
             rpen = torch.einsum('tn,cxytn->n', rpen, w)
-
-        return rpen.mean()
+        
+        return rpen
     # END LocalityReg.compute_reg_penalty
 
     def build_reg_mats(self):
@@ -396,23 +399,30 @@ class DiagonalReg(RegModule):
 class InlineReg(RegModule):
     """ Regularization module for inline penalties"""
     def __init__(self, reg_type=None, reg_val=None, input_dims=None, **kwargs):
-        assert reg_type in ['l1', 'l2', 'norm2', 'orth'], "{} is not a valid Inline Regularization type".format(reg_type)
+        assert reg_type in ['l1', 'l2', 'norm2', 'orth', 'bi_t'], "{} is not a valid Inline Regularization type".format(reg_type)
         super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, **kwargs)
 
     def compute_reg_penalty(self, weights):
+        
         """Calculate regularization penalty for various reg types"""
         if self.reg_type == 'l1':
-            reg_pen = torch.mean(torch.abs(weights))
+            reg_pen = torch.mean(torch.abs(weights), dim=0)
 
         elif self.reg_type == 'l2':
-            reg_pen = torch.mean(torch.square(weights))
+            reg_pen = torch.mean(torch.square(weights), dim=0)
         
         elif self.reg_type == 'norm2':  # [custom] convex (I think) soft-normalization regularization
-            reg_pen = torch.square( torch.mean(torch.square(weights))-1 )
+            reg_pen = torch.square( torch.mean(torch.square(weights), dim=0)-1 )
 
         elif self.reg_type == 'orth':  # [custom] orthogonal regularization
             w = (weights.T @ weights).abs()
             reg_pen = w.sum() - w.trace()
+        elif self.reg_type == 'bi_t':
+            w = weights.reshape(self.input_dims + [-1])
+            n = w.shape[-1]
+            w = w.sum(dim=3)**2
+            w = w.reshape(-1, n)
+            reg_pen = torch.mean(w, dim=0)
         else:
             reg_pen = 0.0
 
@@ -435,8 +445,8 @@ class ConvReg(RegModule):
         this can be done more (or less) elaborately in the future. The challenge here is that the dimension of the weight
         vector (1-D, 2-D, 3-D) determines what sort of Laplacian matrix, and convolution, to do
         Note that all convolutions are implicitly 'valid' so no boundary conditions"""
-        
-        weight_dims = self.input_dims + [weights.shape[1]]
+        num_filters = weights.shape[1]
+        weight_dims = self.input_dims + [num_filters]
         if self.folded_lags:
             w = weights.reshape((weight_dims[0], weight_dims[3], weight_dims[1], weight_dims[2]))            
         else:
@@ -464,18 +474,25 @@ class ConvReg(RegModule):
         # Apply boundary conditions dependent on default values (that can be set by hand):
         if self.num_dims == 1:
             # prepare for 1-d convolve
-            rpen = torch.mean(F.conv1d( 
+            rpen = F.conv1d( 
                 w.reshape( [-1, 1] + self.reg_dims[:1] ),  # [batch_dim, all non-conv dims, conv_dim]
-                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
+                self.rmat, padding=self.BC ).pow(2) #/ weight_dims[-1]
+
         elif self.num_dims == 2:
-            rpen = torch.mean(F.conv2d( 
+            rpen = F.conv2d( 
                 w.reshape( [-1, 1] + self.reg_dims[:2] ), 
-                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
+                self.rmat, padding=self.BC ).pow(2) #/ weight_dims[-1]
+            
+
         elif self.num_dims == 3:
-            rpen = torch.mean(F.conv3d( 
+            rpen = F.conv3d( 
                 w.reshape( [-1,1] + self.reg_dims),
-                self.rmat, padding=self.BC ).pow(2) ) #/ weight_dims[-1]
+                self.rmat, padding=self.BC ).pow(2) #/ weight_dims[-1]
         
+        # average over all dimensions except the filter dimension
+        rpen = rpen.reshape(num_filters, -1)
+        rpen = rpen.mean(dim=1)
+
         return rpen
     
     def _make_laplacian( self, reg_type ):
@@ -549,8 +566,8 @@ class Tikhanov(RegModule):
         """Calculate regularization penalty for Tikhanov reg types"""
 
         w2 = torch.square(weights)
-        reg_pen = torch.trace(
-                torch.matmul( w2.T, torch.matmul(self.rmat, w2) ))
+        reg_pen = torch.matmul( w2.T, torch.matmul(self.rmat, w2) )
+        reg_pen = torch.diagonal(reg_pen, 0) # sum later (replaced call to torch.trace)
 
         return reg_pen
 
