@@ -197,6 +197,8 @@ class Trainer:
             out = self.train_one_epoch(train_loader, self.epoch)
             self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], self.epoch)
             train_loss = out['train_loss']
+            if np.isnan(train_loss):
+                break
 
             if self.log_activations:
                 for name in self.logged_parameters:
@@ -311,12 +313,14 @@ class Trainer:
             if self.use_gpu:
                 torch.cuda.empty_cache()
 
+            if np.isnan(out['train_loss']):
+                break
             runningloss += out['train_loss']
             if self.verbose > 1:
                 # update progress bar
                 pbar.set_postfix({'train_loss': runningloss/(batch_idx + 1)})
 
-        return {'train_loss': runningloss/self.nbatch} # should this be an aggregate out?
+        return {'train_loss': runningloss/(batch_idx + 1)} # should this be an aggregate out?
 
 
     def train_one_step(self, data, batch_idx=None):
@@ -335,7 +339,10 @@ class Trainer:
         self.n_iter += 1
         self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
         self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
-        self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
+        try:
+            self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
+        except:
+            pass
 
         loss = out['loss']
         # with torch.set_grad_enabled(True):
@@ -447,6 +454,8 @@ class LBFGSTrainer(Trainer):
                     out = self.model.validation_step(val_loader)
                 else:
                     out = self.validate_one_epoch(val_loader)
+                    if np.isnan(out['val_loss']):
+                        return
                 self.val_loss_min = out['val_loss']
                 self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
 
@@ -479,6 +488,8 @@ class LBFGSTrainer(Trainer):
 
             out = self.model.training_step(train_data)
             loss = out['loss']
+            if np.isnan(loss.item()):
+                return loss
             loss.backward()
             
             # torch.cuda.empty_cache()
@@ -526,6 +537,8 @@ class LBFGSTrainer(Trainer):
                                 data[dsub] = data[dsub].to(self.device)
 
                     out = self.model.training_step(data)
+                    if torch.isnan(out['loss']):
+                        break
                     loss += out['loss']
                     self.n_iter += 1
                     self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
