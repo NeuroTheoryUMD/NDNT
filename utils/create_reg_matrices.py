@@ -237,6 +237,12 @@ def create_maxpenalty_matrix(input_dims, reg_type):
     num_pix = input_dims[1] * input_dims[2]
     dims_prod = num_filt * num_pix
 
+    # note this is ignoring time dimension -- passed in with dims combined
+    # throw a warning for now: might need a weights reshape to combine time/filts
+    if len(input_dims) > 3:
+        if input_dims[3] > 1:
+            print("  MAX reg warning: temporal dimensions are currently kluged and may be in wrong place.")
+    
     rmat = np.zeros([dims_prod, dims_prod], dtype=np.float32)
     if reg_type == 'max':
         # Simply subtract the diagonal from all-ones
@@ -244,11 +250,13 @@ def create_maxpenalty_matrix(input_dims, reg_type):
 
     elif reg_type == 'max_filt':
         ek = np.ones([num_filt, num_filt], dtype=np.float32) - np.eye(num_filt, dtype=np.float32)
-        rmat = np.kron(np.eye(num_pix), ek)
+        #rmat = np.kron(np.eye(num_pix), ek)
+        rmat = np.kron(ek, np.eye(num_pix, dtype=np.float32))
 
     elif reg_type == 'max_space':
         ex = np.ones([num_pix, num_pix]) - np.eye(num_pix)
-        rmat = np.kron(ex, np.eye(num_filt, dtype=np.float32))
+        #rmat = np.kron(ex, np.eye(num_filt, dtype=np.float32))
+        rmat = np.kron(np.eye(num_filt), ex)
 
     elif reg_type == 'center':
         for i in range(dims_prod):

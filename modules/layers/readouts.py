@@ -18,7 +18,7 @@ class ReadoutLayer(NDNLayer):
             init_sigma=0.2,
             gauss_type: str='uncorrelated', # 'isotropic', 'uncorrelated', or 'full'
             align_corners=False,
-            mode='nearest',  # 'bilinear' is the normal default
+            mode='bilinear',  # 'nearest' is also possible
             **kwargs):
 
         assert input_dims is not None, "ReadoutLayer: Must specify input_dims"
@@ -141,7 +141,7 @@ class ReadoutLayer(NDNLayer):
                 s = self.sigma
                 #s = self.sigma**2
 
-        grid_shape = (batch_size,) + self.grid_shape[1:]
+        grid_shape = (batch_size,) + self.grid_shape[1:3]
                 
         sample = self.training if sample is None else sample
         if sample:
@@ -154,9 +154,7 @@ class ReadoutLayer(NDNLayer):
             grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
             #grid2d[:,:,:,0] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
             ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
-            print(norm.shape, s[None,:, None, None].shape, self.mu[None, :, None, None].shape)
-            print(grid2d.shape)
-            grid2d[:,:,:,1] = (norm * s[None, :, None, None] + self.mu[None, :, None, None]).clamp(-1,1).squeeze(-1)
+            grid2d[:,:,:,1] = (norm * s[None, :] + self.mu[None, :]).clamp(-1,1)
             return grid2d
             #return (norm * self.sigma + self.mu).clamp(-1,1) # this needs second dimension
         else:
@@ -167,6 +165,7 @@ class ReadoutLayer(NDNLayer):
                 return (norm * self.sigma[None, :, None, :] + self.mu[None, :, None, :]).clamp(-1,1) 
             else:
                 return (torch.einsum('ancd,bnid->bnic', self.sigma[None, :, None, :], norm) + self.mu[None, :, None, :]).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
+    # END ReadoutLayer.sample_grid() 
 
     def passive_readout(self):
         """This will not fit mu and std, but set them to zero. It will pass identities in,
@@ -281,6 +280,7 @@ class ReadoutLayer(NDNLayer):
         Ldict['init_sigma'] = 0.2
         Ldict['gauss_type'] = 'uncorrelated'
         Ldict['align_corners'] = False
+        Ldict['mode'] = 'bilinear'  # also 'nearest'
         # Change default -- readouts will usually be softplus
         Ldict['NLtype'] = NLtype
 
