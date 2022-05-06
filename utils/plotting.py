@@ -125,3 +125,23 @@ def plot_filters_ST3D(ws, sort=False, **kwargs):
             plt.subplot(sx,sy,jj*(nchan+1)+2+nn)
             plt.imshow( ws[nn, :, :, bestlags[nn], cc], interpolation=None, vmin=-m, vmax=m )
             plt.axis("off")
+
+
+## Additional display-type plots
+def plot_scatter( xs, ys, clr='g' ):
+    assert len(xs) == len(ys), 'data dont match'
+    for nn in range(len(xs)):
+        plt.plot([xs[nn]], [ys[nn]], clr+'o', fillstyle='full')
+        if clr != 'k':
+            plt.plot([xs[nn]], [ys[nn]], 'ko', fillstyle='none')
+    #plt.show()
+    
+
+def plot_internal_weights(ws, num_inh=None):
+    from copy import deepcopy
+    ws_play = deepcopy(ws)
+    num_dim = ws.shape[0]
+    if num_inh is not None:
+        ws_play[range(num_dim-num_inh, num_dim), :] *= -1
+    m = np.max(abs(ws_play))
+    plt.imshow(ws_play, cmap='bwr', vmin=-m, vmax=m)

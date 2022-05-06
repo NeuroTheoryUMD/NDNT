@@ -369,3 +369,21 @@ def design_matrix_drift( NT, anchors, zero_left=True, zero_right=False, const_ri
         plt.show()
 
     return X
+
+
+def max_multiD(k):
+    num_dims = len(k.shape)
+    if num_dims == 2:
+        a,b = k.shape
+        bbest = np.argmax( np.max(k, axis=0) )
+        abest = np.argmax( k[:,bbest] )
+        return [abest, bbest] 
+    elif num_dims == 3:
+        a,b,c = k.shape
+        cbest = np.argmax( np.max(np.reshape(k, [a*b, c]), axis=0) )
+        bbest = np.argmax( np.max(k[:,:,cbest], axis=0) )
+        abest = np.argmax( k[:,bbest, cbest] )
+        return [abest, bbest, cbest]
+    else:
+        print('havent figured out how to do this number of dimensions yet.')
+        

@@ -138,8 +138,6 @@ class ReadoutLayer(NDNLayer):
             self.mu.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
             if self.gauss_type != 'full':
                 self.sigma.clamp(min=0)  # sigma/variance is always a positive quantity
-                s = self.sigma
-                #s = self.sigma**2
 
         grid_shape = (batch_size,) + self.grid_shape[1:3]
                 
@@ -154,15 +152,14 @@ class ReadoutLayer(NDNLayer):
             grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
             #grid2d[:,:,:,0] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
             ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
-            grid2d[:,:,:,1] = (norm * s[None, :] + self.mu[None, :]).clamp(-1,1)
+            grid2d[:,:,:,1] = (norm * self.sigma[None, :] + self.mu[None, :]).clamp(-1,1)
             return grid2d
             #return (norm * self.sigma + self.mu).clamp(-1,1) # this needs second dimension
         else:
-            # note I'm squaring for 1-d
             if self.gauss_type != 'full':
                 # grid locations in feature space sampled randomly around the mean self.mu
                 #return (norm * self.sigma + self.mu).clamp(-1,1) 
-                return (norm * self.sigma[None, :, None, :] + self.mu[None, :, None, :]).clamp(-1,1) 
+                return (norm[:,:,:,None] * self.sigma[None, :, None, :] + self.mu[None, :, None, :]).clamp(-1,1) 
             else:
                 return (torch.einsum('ancd,bnid->bnic', self.sigma[None, :, None, :], norm) + self.mu[None, :, None, :]).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
     # END ReadoutLayer.sample_grid() 
