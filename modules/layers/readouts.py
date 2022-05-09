@@ -67,20 +67,21 @@ class ReadoutLayer(NDNLayer):
         # position grid shape
         self.grid_shape = (1, self.num_filters, 1, self.num_space_dims)
         if self.gauss_type == 'full':
-            self.sigma_shape = (1, self.num_filters, 2, 2)
+            #self.sigma_shape = (1, self.num_filters, 2, 2)
+            self.sigma_shape = (self.num_filters, 2)
         elif self.gauss_type == 'uncorrelated':
-            self.sigma_shape = (1, self.num_filters, 1, 2)
+            #self.sigma_shape = (1, self.num_filters, 1, 2)
+            self.sigma_shape = (self.num_filters, 2)
         elif self.gauss_type == 'isotropic':
-            self.sigma_shape = (1, self.num_filters, 1, 1)
+            #self.sigma_shape = (1, self.num_filters, 1, 1)
+            self.sigma_shape = (self.num_filters, 1)
         else:
             raise ValueError(f'gauss_type "{self.gauss_type}" not known')
 
         # initialize means and spreads
-        #self._mu = Parameter(torch.Tensor(*self.grid_shape))  # mean location of gaussian for each neuron
-        #self.sigma = Parameter(torch.Tensor(*self.sigma_shape))  # standard deviation for gaussian for each neuron
         map_size = (self.num_filters, self.num_space_dims)
         self._mu = Parameter(torch.Tensor(*map_size))
-        self.sigma = Parameter(torch.Tensor(*map_size))
+        self.sigma = Parameter(torch.Tensor(*self.sigma_shape))
 
         self.initialize_spatial_mapping()
     # END ReadoutLayer.__init__
@@ -158,7 +159,7 @@ class ReadoutLayer(NDNLayer):
         else:
             if self.gauss_type != 'full':
                 # grid locations in feature space sampled randomly around the mean self.mu
-                #return (norm * self.sigma + self.mu).clamp(-1,1) 
+                #return (norm * self.sigma + self.mu).clamp(-1,1)
                 return (norm[:,:,:,None] * self.sigma[None, :, None, :] + self.mu[None, :, None, :]).clamp(-1,1) 
             else:
                 return (torch.einsum('ancd,bnid->bnic', self.sigma[None, :, None, :], norm) + self.mu[None, :, None, :]).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
@@ -293,12 +294,12 @@ class FixationLayer(NDNLayer):
             input_dims=None,
             num_filters=None,
             filter_dims=None, 
-            batch_sample=True,
-            init_mu_range=0.1,
-            init_sigma=0.5,
+            batch_sample=False,
+            #init_mu_range=0.1,
+            init_sigma=0.3,
             single_sigma=False,
-            gauss_type: str='uncorrelated', # 'isotropic', 'uncorrelated', or 'full'
-            align_corners=False,
+            #gauss_type: str='uncorrelated', # 'isotropic', 'uncorrelated', or 'full'
+            #align_corners=False,
             bias=False,
             NLtype='lin',
             **kwargs):
@@ -353,12 +354,12 @@ class FixationLayer(NDNLayer):
         # use indexing: x is just a list of weight indices
 
         #y = F.tanh(self.weight[x,:]) #* self.spatial_mults  # deprecated?
-        y = torch.tanh(self.weight[x,:]) 
+        y = torch.tanh(self.weight[x-1,:])   # fix_n
 
         if self.single_sigma:
             s = self.sigmas**2 
         else:
-            s = self.sigmas[x]**2
+            s = self.sigmas[x-1]**2
 
         # this will be batch-size x num_spatial dims (corresponding to mean loc)        
         if self.sample:  # can turn off sampling, even with training
