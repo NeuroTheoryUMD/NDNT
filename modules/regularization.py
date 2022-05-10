@@ -559,7 +559,7 @@ class Tikhanov(RegModule):
             input_dims[1], input_dims[2]]  # spatial 
 
         # Make appropriate reg_matrix as buffer (non-fit parameter)
-        reg_tensor = self._build_reg_mats( reg_type)
+        reg_tensor = self._build_reg_mats( reg_type )
         self.register_buffer( 'rmat', reg_tensor)
     
     def compute_reg_penalty(self, weights):

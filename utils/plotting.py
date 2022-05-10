@@ -57,12 +57,14 @@ def plot_filters_ST2D(ws, sort=False, **kwargs):
     for cc,jj in zip(cinds, range(nfilt)):
         plt.subplot(sx,sy,jj*2+1)
         wtmp = np.squeeze(w[:, :, cc])
+        m = np.max(abs(wtmp))
         bestlag = np.argmax(np.std(wtmp, axis=0))
-        plt.imshow(np.reshape(wtmp[:,bestlag], (sz[0], sz[1])), interpolation=None )
+        plt.imshow(np.reshape(wtmp[:,bestlag], (sz[0], sz[1])), interpolation=None, vmin=-m, vmax=m )
         wmax = np.argmax(wtmp[:, bestlag])
         wmin = np.argmin(wtmp[:, bestlag])
         plt.axis("off")
-
+        plt.title(str(cc))
+        
         plt.subplot(sx,sy,jj*2+2)
         if ei_mask[cc]>0:
             plt.plot(wtmp[wmax,:], 'b-')

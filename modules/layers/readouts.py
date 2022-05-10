@@ -91,7 +91,7 @@ class ReadoutLayer(NDNLayer):
 
         if self.pos_constraint:
             #feat = F.relu(self.weight)
-            feat = F.square(self.weight)
+            feat = self.weight**2
         else:
             feat = self.weight
         
@@ -307,7 +307,8 @@ class FixationLayer(NDNLayer):
         #self.num_fixations = layer_params['input_dims'][0]
         assert np.prod(input_dims[1:]) == 1, 'something wrong with fix-layer input_dims'
         filter_dims = deepcopy(input_dims)
-        assert num_filters in [1,2], 'incorrect num_filters in fix-layer'
+        assert num_filters in [1,2], "FIX LAYER: num_filters must be set to spatial dimensionality"
+        assert not bias, "FIX LAYER: cannot have bias term"
         bias = False
 
         super().__init__(input_dims=input_dims,
@@ -336,7 +337,7 @@ class FixationLayer(NDNLayer):
         self.sigmas.data.fill_(self.init_sigma)
         self.weight.data.fill_(0.0)
         
-        self.sample = False
+        self.sample = True
     # END FixationLayer.__init__
 
     def forward(self, x, shift=None):
@@ -354,12 +355,13 @@ class FixationLayer(NDNLayer):
         # use indexing: x is just a list of weight indices
 
         #y = F.tanh(self.weight[x,:]) #* self.spatial_mults  # deprecated?
-        y = torch.tanh(self.weight[x-1,:])   # fix_n
+        y = torch.tanh(self.weight[x,:])   # fix_n
+        #y[x == 0] = 0  # Zero out shift for time points with no associated fixation
 
         if self.single_sigma:
             s = self.sigmas**2 
         else:
-            s = self.sigmas[x-1]**2
+            s = self.sigmas[x]**2
 
         # this will be batch-size x num_spatial dims (corresponding to mean loc)        
         if self.sample:  # can turn off sampling, even with training
