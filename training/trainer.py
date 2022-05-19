@@ -93,6 +93,7 @@ class Trainer:
         self.max_epochs = max_epochs
         self.n_iter = 0
         self.val_loss_min = np.Inf
+
         
         # scheduler defaults
         self.step_scheduler_after = scheduler_after # this is the only option for now
@@ -447,17 +448,19 @@ class LBFGSTrainer(Trainer):
         if isinstance(train_loader, dict):
             ''' fit entire dataset at once'''
             self.fit_data_dict(train_loader)
-            if val_loader is not None:
-                if isinstance(val_loader, dict):
-                    for dsub in val_loader:
-                        val_loader[dsub] = val_loader[dsub].to(self.device)
-                    out = self.model.validation_step(val_loader)
-                else:
-                    out = self.validate_one_epoch(val_loader)
-                    if np.isnan(out['val_loss']):
-                        return
-                self.val_loss_min = out['val_loss']
-                self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
+            if val_loader is None:
+                val_loader = train_loader
+                
+            if isinstance(val_loader, dict):
+                for dsub in val_loader:
+                    val_loader[dsub] = val_loader[dsub].to(self.device)
+                out = self.model.validation_step(val_loader)
+            else:
+                out = self.validate_one_epoch(val_loader)
+                if np.isnan(out['val_loss']):
+                    return
+            self.val_loss_min = out['val_loss'].item()
+            self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
 
         else:
             ''' fit one epoch at a time (can still accumulate the grads across epochs, but is much slower. handles datasets that cannot fit in memory'''
