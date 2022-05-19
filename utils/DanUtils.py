@@ -4,14 +4,17 @@ from copy import deepcopy
 import NDNT.utils.NDNutils as NDNutils
 import matplotlib.pyplot as plt
 
-def imagesc( img, cmap=None, balanced=True, aspect='auto' ):
+def imagesc( img, cmap=None, balanced=True, aspect='auto', max=None ):
     if balanced:
         imin = -np.max(abs(img))
         imax = np.max(abs(img))
     else:
         imin = np.min(img)
         imax = np.max(img)
-    
+
+    if max is not None:
+        imin = -max
+        imax = max
     plt.imshow( img, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
 
 

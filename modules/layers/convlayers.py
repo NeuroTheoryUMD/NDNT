@@ -355,7 +355,7 @@ class ConvLayer(NDNLayer):
                 # functional pads since padding is simple
                 y = F.conv2d(
                     s, 
-                    w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
+                    w.reshape([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
                     padding=(self._npads[2], self._npads[0]),
                     bias=self.bias,
                     stride=self.stride,

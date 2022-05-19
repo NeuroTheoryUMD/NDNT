@@ -661,10 +661,13 @@ class NDN(nn.Module):
                 LLneuron = LLraw / np.maximum(obscnt,1) # note making positive
 
                 if null_adjusted:
-                    predcnt = torch.sum(
-                        torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
-                    rbar = np.divide(predcnt, Ts)
-                    LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
+                    #predcnt = torch.sum(
+                    #    torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
+                    #rbar = np.divide(predcnt, Ts)
+                    #LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
+                    rbar = np.divide(obscnt, Ts)
+                    LLnulls = np.log(rbar)-1
+
                     LLneuron = -LLneuron - LLnulls             
 
             return LLneuron  # end of the old method
