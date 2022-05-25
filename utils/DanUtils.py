@@ -247,7 +247,10 @@ def subplot_setup(num_rows, num_cols, row_height=2, fighandle=False):
     
 
 def filename_num2str( n, num_digits=2 ):
-    num_places = int(np.ceil(np.log10(n)+0.001))
+    if n == 0:
+        num_places = 1
+    else:
+        num_places = int(np.ceil(np.log10(n)+0.001))
     place_shift = int(np.maximum(num_digits-num_places, 0))
     s = '0'*place_shift + str(n%(10**num_digits))[:]
     return s
@@ -343,8 +346,8 @@ def design_matrix_drift( NT, anchors, zero_left=True, zero_right=False, const_ri
     anchors = list(anchors)
     if anchors[0] > 0:
         anchors = [0] + anchors
-    if anchors[-1] < NT:
-        anchors = anchors + [NT]
+    #if anchors[-1] < NT:
+    #    anchors = anchors + [NT]
     NA = len(anchors)
 
     X = np.zeros([NT, NA])
@@ -360,12 +363,10 @@ def design_matrix_drift( NT, anchors, zero_left=True, zero_right=False, const_ri
         X = X[:, 1:]
 
     if const_right:
-        zero_right = True
+        X[range(anchors[-1], NT), -1] = 1.0
 
     if zero_right:
         X = X[:, :-1]
-        if const_right:
-            X[range(anchors[-2], anchors[-1]), -1] = 1.0
 
     if to_plot:
         plt.imshow(X.T, aspect='auto', interpolation='none')
