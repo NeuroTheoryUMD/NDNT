@@ -27,7 +27,7 @@ class NDN(nn.Module):
         loss_type = 'poisson', 
         ffnet_out = None,
         optimizer_params = None,
-        model_name='NDN_model',
+        model_name=None,
         working_dir='./checkpoints'):
 
         super().__init__()
@@ -45,7 +45,6 @@ class NDN(nn.Module):
         if (ffnet_out is None) or (ffnet_out == -1):
             ffnet_out = len(ffnet_list)-1
 
-        self.model_name = model_name
         self.working_dir = working_dir
 
         # Configure loss
@@ -81,7 +80,13 @@ class NDN(nn.Module):
         # Assemble ffnetworks
         self.networks = networks
         self.ffnet_out = ffnet_out
-        
+
+        # Set model_name if unspecified
+        if model_name is None:
+            self.model_name = self.model_string()
+        else:
+            self.model_name = model_name
+
         # Assign optimizer params
         if optimizer_params is None:
             optimizer_params = create_optimizer_params()
@@ -394,7 +399,7 @@ class NDN(nn.Module):
         seed=None, # this currently seed for data AND optimization
         save_dir:str=None,
         version:int=None,
-        name:str=None,
+        #name:str=None,
         optimizer=None,  # this can pass in full optimizer (rather than keyword)
         scheduler=None,
         batch_size=None,
@@ -417,8 +422,8 @@ class NDN(nn.Module):
         if save_dir is None:
             save_dir = self.working_dir
         
-        if name is None:
-            name = self.model_name
+        # Should be set ahead of time
+        name = self.model_name
 
         # Determine train_inds and val_inds: read from dataset if not specified, or warn
         if train_inds is None:
@@ -441,6 +446,9 @@ class NDN(nn.Module):
         # Prepare model regularization (will build reg_modules)
         self.prepare_regularization()
 
+        if 'verbose' in kwargs:
+            if kwargs['verbose'] > 0:
+                print( 'Model:', self.model_name)
         # Create dataloaders / 
         train_dl, valid_dl = self.get_dataloaders(
             dataset, batch_size=batch_size, train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
@@ -482,7 +490,7 @@ class NDN(nn.Module):
         optimizer=None,  # this can pass in full optimizer (rather than keyword)
         scheduler=None,
         batch_size=None,
-        num_workers=1,
+        num_workers=0,
         force_dict_training=False,  # will force dict-based training instead of using data-loaders for LBFGS
         device=None,
         **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
@@ -858,3 +866,31 @@ class NDN(nn.Module):
         model = load(checkpoint_path, model_name, version)
         
         return model
+
+    def model_string( self ):
+        """Automated way to name model"""
+        from NDNT.utils import filename_num2str
+
+        label_chart = {
+            'NDNLayer': 'N',
+            'ConvLayer': 'C', 
+            'TconvLayer': 'Ct',
+            'STconvLayer': 'Cs',
+            'ReadoutLayer':'R',
+            'FixationLayer': 'F', 
+            'Dim0Layer': 'D',
+            'ChannelLayer': 'A'}
+
+        Noutputs = np.prod(self.networks[-1].layers[-1].output_dims)
+        name = 'M' + filename_num2str(Noutputs, num_digits=3)
+        for ii in range(len(self.networks)):
+            name += '_'
+            for jj in range(len(self.networks[ii].layers)):
+                t = "%s"%type(self.networks[ii].layers[jj])
+                p, q = t.rfind('.'), t.rfind("'")
+                Ltype = t[(p+1):q]
+                if Ltype in label_chart:
+                    name += label_chart[Ltype]
+                else:
+                    name += 'X'
+        return name

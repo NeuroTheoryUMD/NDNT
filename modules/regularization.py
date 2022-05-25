@@ -157,7 +157,7 @@ class Regularization(nn.Module):
         if self.normalize: 
             weights = F.normalize(weights, dim=0)
 
-        rloss = torch.tensor(0, dtype=torch.float32)
+        rloss = torch.tensor(0, dtype=torch.float32, device=weights.device)
         for regmod in self.reg_modules:
             rloss += regmod( weights )
 
