@@ -14,7 +14,7 @@ def create_optimizer_params(
         batch_size=1000,
         max_iter=None,
         max_epochs=None,
-        num_workers=1,
+        num_workers=0,
         num_gpus=1,
         optimize_graph = True,
         log_activations = False,
@@ -32,7 +32,6 @@ def create_optimizer_params(
         tolerance_grad=1e-9,
         history_size=10,
         accumulated_grad_batches=1,
-        verbose=2,
         line_search_fn=None):
 
     # Make optimizer params based on Adam or LBFGS, filling in chosen defaults
@@ -60,7 +59,6 @@ def create_optimizer_params(
             'tolerance_change': tolerance_change,
             'tolerance_grad': tolerance_grad,
             'accumulated_grad_batches': accumulated_grad_batches,
-            'verbose': verbose,
             'early_stopping': False}
 
     else: # Assume some sort of adam / sgd with similar params/defaults

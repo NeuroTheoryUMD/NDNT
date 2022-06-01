@@ -84,6 +84,7 @@ class ReadoutLayer(NDNLayer):
         self.sigma = Parameter(torch.Tensor(*self.sigma_shape))
 
         self.initialize_spatial_mapping()
+        self.sample = True
     # END ReadoutLayer.__init__
 
     @property
@@ -178,7 +179,7 @@ class ReadoutLayer(NDNLayer):
             self.weight.data[nn,nn] = 1
 
         self.set_parameters(val=False)
-        
+        self.sample = False
 
     def forward(self, x, shift=None):
         """
@@ -210,10 +211,10 @@ class ReadoutLayer(NDNLayer):
 
         if self.batch_sample:
             # sample the grid_locations separately per sample per batch
-            grid = self.sample_grid(batch_size=N, sample=self.training)  # sample determines sampling from Gaussian
+            grid = self.sample_grid(batch_size=N, sample=self.sample)  # sample determines sampling from Gaussian
         else:
             # use one sampled grid_locations for all sample in the batch
-            grid = self.sample_grid(batch_size=1, sample=self.training).expand(N, outdims, 1, self.num_space.dims)
+            grid = self.sample_grid(batch_size=1, sample=self.sample).expand(N, outdims, 1, self.num_space.dims)
         
         if shift is not None:
             # shifter is run outside the readout forward
