@@ -32,6 +32,7 @@ def create_optimizer_params(
         tolerance_grad=1e-9,
         history_size=10,
         accumulated_grad_batches=1,
+        device=None,
         line_search_fn=None):
 
     # Make optimizer params based on Adam or LBFGS, filling in chosen defaults
@@ -59,6 +60,7 @@ def create_optimizer_params(
             'tolerance_change': tolerance_change,
             'tolerance_grad': tolerance_grad,
             'accumulated_grad_batches': accumulated_grad_batches,
+            'device': device,
             'early_stopping': False}
 
     else: # Assume some sort of adam / sgd with similar params/defaults
@@ -89,6 +91,7 @@ def create_optimizer_params(
             'progress_bar_refresh': progress_bar_refresh,
             'accumulated_grad_batches': accumulated_grad_batches,
             'log_activations': log_activations, 
+            'device': device,
             'optimize_graph': optimize_graph} 
 
     return optpar
