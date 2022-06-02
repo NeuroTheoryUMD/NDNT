@@ -154,7 +154,7 @@ class ReadoutLayer(NDNLayer):
             grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
             #grid2d[:,:,:,0] = (norm * self.sigma + self.mu).clamp(-1,1).squeeze(-1)
             ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
-            grid2d[:,:,:,1] = (norm * self.sigma[None, :] + self.mu[None, :]).clamp(-1,1)
+            grid2d[:,:,:,1] = (norm * self.sigma[None, None, None, :] + self.mu[None, None, None, :]).clamp(-1,1)
             return grid2d
             #return (norm * self.sigma + self.mu).clamp(-1,1) # this needs second dimension
         else:

@@ -6,7 +6,8 @@ from functools import reduce
 
 import numpy as np # TODO: we can get rid of this and just use torch for math
 
-import NDNT.metrics.poisson_loss as losses
+import NDNT.metrics.poisson_loss as plosses
+import NDNT.metrics.mse_loss as glosses
 from NDNT.utils import create_optimizer_params
 
 import NDNT.networks as NDNnetworks
@@ -51,10 +52,9 @@ class NDN(nn.Module):
         if isinstance(loss_type, str):
             self.loss_type = loss_type
             if loss_type == 'poisson' or loss_type == 'poissonT':
-                self.loss_module = losses.PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
-            elif loss_type == 'gaussian':
-                print('Gaussian loss_func not implemented yet.')
-                self.loss_module = None
+                self.loss_module = plosses.PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
+            elif loss_type in ['gaussian', 'mse']:
+                self.loss_module = glosses.MseLoss_datafilter()
             else:
                 print('Invalid loss function.')
                 self.loss_module = None
