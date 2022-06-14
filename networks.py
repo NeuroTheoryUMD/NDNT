@@ -127,14 +127,19 @@ class FFnetwork(nn.Module):
                     num_cat_filters = input_dims_list[0][0]
                 else:
                     if input_dims_list[ii][1:] != input_dims_list[0][1:]:
-                        valid_input_dims = False
-                        print("FFnet: invalid concatenation %d:"%ii, input_dims_list[ii][1:], input_dims_list[0][1:] )
-                    else:
-                        if ffnet_type == 'normal': # then inputs will be concatenated along 'filter' dimension
-                            num_cat_filters += input_dims_list[ii][0]
-                        else:  # these are combined and input to first layer has same size as one input
-                            assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for' + ffnet_type + 'ffnetwork'
-                        
+                        if ffnet_type == 'add':
+                            for jj in range(2):
+                                if (input_dims_list[ii][jj+1] > 1) | (input_dims_list[0][jj+1] == 1):
+                                    valid_input_dims = False
+                        else:
+                            valid_input_dims = False
+                    assert valid_input_dims, print("FFnet: invalid concatenation %d:"%ii, input_dims_list[ii][1:], input_dims_list[0][1:] )
+
+                    if ffnet_type == 'normal': # then inputs will be concatenated along 'filter' dimension
+                        num_cat_filters += input_dims_list[ii][0]
+                    else:  # these are combined and input to first layer has same size as one input
+                        assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for' + ffnet_type + 'ffnetwork'
+                    
             self.input_dims = [num_cat_filters] + input_dims_list[0][1:]
         
         self.input_dims_list = deepcopy(input_dims_list)
@@ -147,14 +152,19 @@ class FFnetwork(nn.Module):
         """
         # Combine network inputs (if relevant)
         if isinstance(inputs, list):
-            x = inputs[0]
-            for mm in range(1, len(inputs)):
-                if self.network_type == 'normal': # concatentate inputs
-                    x = torch.cat( (x, inputs[mm]), 1 )
-                elif self.network_type == 'add': # add inputs
-                    x = torch.add( x, inputs[mm] )
-                elif self.network_type == 'mult': # multiply: (input1) x (1+input2)
-                    x = torch.multiply( x, torch.add(inputs[mm], 1.0) )
+            if len(inputs) == 1:
+                x = inputs[0]
+            else:
+                x = inputs[0].view([-1]+self.input_dims_list[0])  # this will allow for broadcasting
+                nt = inputs[0].shape[0]
+                for mm in range(1, len(inputs)):
+                    if self.network_type == 'normal': # concatentate inputs
+                        x = torch.cat( (x, inputs[mm].view([-1]+self.input_dims_list[mm])), 1 )
+                    elif self.network_type == 'add': # add inputs
+                        x = torch.add( x, inputs[mm].view([-1]+self.input_dims_list[mm]) )
+                    elif self.network_type == 'mult': # multiply: (input1) x (1+input2)
+                        x = torch.multiply( x, torch.add(inputs[mm].view([-1]+self.input_dims_list[mm]), 1.0) )
+                x = x.view([nt, -1])
         else:
             x = inputs
         return x
@@ -172,7 +182,8 @@ class FFnetwork(nn.Module):
             out.append(x)
         
         return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
-    
+    # END FFnetwork.forward
+
     def __reg_setup_ffnet(self, reg_params=None):
         # Set all default values to none
         num_layers = len(self.layer_list)

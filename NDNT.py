@@ -65,6 +65,7 @@ class NDN(nn.Module):
         # module can also be called as a function (since it has a forward)
         self.loss = self.loss_module
         self.val_loss = self.loss_module
+        self.trainer = None  # to stash last trainer used in fitting
 
         # Assemble FFnetworks from if passed in network-list -- else can embed model
         networks = self.assemble_ffnetworks(ffnet_list, external_modules)
@@ -143,8 +144,8 @@ class NDN(nn.Module):
         for ii in range(len(self.networks)):
             if self.networks[ii].ffnets_in is None:
                 # then getting external input
-                net_outs.append( self.networks[ii]( [Xs[self.networks[ii].xstim_n]] ) )
                 net_ins.append( [Xs[self.networks[ii].xstim_n]] )
+                net_outs.append( self.networks[ii]( net_ins[-1] ) )
             else:
                 in_nets = self.networks[ii].ffnets_in
                 # Assemble network inputs in list, which will be used by FFnetwork
@@ -473,6 +474,8 @@ class NDN(nn.Module):
             trainer.fit(self, train_dl, valid_dl, seed=seed)
         t1 = time.time()
 
+        self.trainer = trainer
+
         if 'verbose' in kwargs.keys():
             if kwargs['verbose'] > 0:
                 print('  Fit complete:', t1-t0, 'sec elapsed')
@@ -548,7 +551,8 @@ class NDN(nn.Module):
         t1 = time.time()
 
         print('  Fit complete:', t1-t0, 'sec elapsed')
-    # END NDN.train
+        self.trainer = trainer
+    # END NDN.fit_dl
     
     def initialize_loss( self, dataset=None, batch_size=None, data_inds=None, batch_weighting=None, unit_weighting=None ):
         """

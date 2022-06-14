@@ -292,9 +292,9 @@ class FixationLayer(NDNLayer):
     FixationLayer for fixation 
     """
     def __init__(self,
-            input_dims=None,
-            num_filters=None,
-            filter_dims=None, 
+            num_fixations=None, 
+            num_spatial_dims=2,
+            #input_dims=None,  # this has to be set to [1,1,1,1] by default
             batch_sample=False,
             #init_mu_range=0.1,
             init_sigma=0.3,
@@ -306,34 +306,33 @@ class FixationLayer(NDNLayer):
             **kwargs):
         """layer weights become the shift for each fixation, sigma is constant over each dimension"""
         #self.num_fixations = layer_params['input_dims'][0]
-        assert np.prod(input_dims[1:]) == 1, 'something wrong with fix-layer input_dims'
-        filter_dims = deepcopy(input_dims)
-        assert num_filters in [1,2], "FIX LAYER: num_filters must be set to spatial dimensionality"
+        #assert np.prod(input_dims[1:]) == 1, 'something wrong with fix-layer input_dims'
+        assert num_fixations is not None, "FIX LAYER: Must set number of fixations"
+        assert num_spatial_dims in [1,2], "FIX LAYER: num_space must be set to spatial dimensionality (1 or 2)"
         assert not bias, "FIX LAYER: cannot have bias term"
         bias = False
 
-        super().__init__(input_dims=input_dims,
-            num_filters=num_filters,
-            filter_dims=filter_dims,
-            NLtype=NLtype,
+        super().__init__(
+            num_filters = num_spatial_dims,
+            filter_dims = [num_fixations, 1, 1, 1],
+            NLtype = NLtype,
             bias=bias,
             **kwargs)
 
-        assert filter_dims[3] == 1, 'Cant handle temporal filter dims here, yet.'
-
         # Determine whether one- or two-dimensional readout
-        self.num_space_dims = num_filters
-        
+        self.num_spatial_dims = num_spatial_dims
+        self.num_fixations = num_fixations
+
         self.batch_sample = batch_sample
         self.init_sigma = init_sigma
         self.single_sigma = single_sigma
         
         # shared sigmas across all fixations
         if self.single_sigma:
-            self.sigmas = Parameter(torch.Tensor(self.num_space_dims)) 
+            self.sigmas = Parameter(torch.Tensor(self.num_spatial_dims)) 
         else:
             # individual sigmas for each fixation 
-            self.sigmas = Parameter(torch.Tensor(self.filter_dims[0],1))  
+            self.sigmas = Parameter(torch.Tensor(self.num_fixations,1))  
         
         self.sigmas.data.fill_(self.init_sigma)
         self.weight.data.fill_(0.0)
@@ -349,30 +348,39 @@ class FixationLayer(NDNLayer):
         # with torch.no_grad():
         # self.weight.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
         # self.sigmas.clamp(min=0)  # sigma/variance is always a positive quantity
-
+        
         N = x.shape[0]  # batch size
         # If using X-matrix to extract relevant weights
         # y = (x@self.weight) 
         # use indexing: x is just a list of weight indices
+        
+        # In case x gets passed in with trivial second dim (squeeze)
+        if len(x.shape)> 1:
+            print('  WARNING: fixations should not have second dimension -- squeeze it')
+            x = x.squeeze()-1
 
-        #y = F.tanh(self.weight[x,:]) #* self.spatial_mults  # deprecated?
-        y = torch.tanh(self.weight[x,:])   # fix_n
-        #y[x == 0] = 0  # Zero out shift for time points with no associated fixation
+        # Actual fixations labeled 1-NFIX
+        # Will make by default fixation label '0' lead to no shift
+        shift_array = F.pad(self.weight, (0,0,1,0))
+        y = torch.tanh(shift_array[x,:])   # fix_n
 
         if self.single_sigma:
-            s = self.sigmas**2 
+            #s = self.sigmas**2
+            s = self.sigmas 
         else:
-            s = self.sigmas[x]**2
+            #s = self.sigmas[x]**2
+            sigma_array = F.pad(self.sigmas, (0,0,1,0))
+            s = sigma_array[x]
 
         # this will be batch-size x num_spatial dims (corresponding to mean loc)        
         if self.sample:  # can turn off sampling, even with training
             if self.training:
                 # add sigma-like noise around mean locations
                 if self.batch_sample:
-                    sample_shape = (1,) + (self.num_space_dims,)
+                    sample_shape = (1,) + (self.num_spatial_dims,)
                     gaus_sample = y.new(*sample_shape).normal_().repeat(N,1)
                 else:
-                    sample_shape = (N,) + (self.num_space_dims,)
+                    sample_shape = (N,) + (self.num_spatial_dims,)
                     gaus_sample = y.new(*sample_shape).normal_()
                 
                 y = (gaus_sample * s + y).clamp(-1,1)
@@ -384,7 +392,7 @@ class FixationLayer(NDNLayer):
         raise NotImplementedError("initialize is not implemented for ", self.__class__.__name__)
 
     @classmethod
-    def layer_dict(cls, **kwargs):
+    def layer_dict(cls, num_fixations=None, num_spatial_dims=2, init_sigma=0.25, input_dims=None, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -392,16 +400,23 @@ class FixationLayer(NDNLayer):
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
         """
-
+        if input_dims is not None:
+            assert np.prod(input_dims) == 1, "FIX DICT: Set filter_dims to #fixations and leave input_dims alone"
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'fixation'
+        # delete standard layer info for purposes of constructor
+        del Ldict['input_dims']
+        del Ldict['num_filters']
+        del Ldict['bias']
         # Added arguments
         Ldict['batch_sample'] = True
         Ldict['init_mu_range'] = 0.1
-        Ldict['init_sigma'] = 0.5
+        Ldict['init_sigma'] = init_sigma
         Ldict['single_sigma'] = False
         Ldict['gauss_type'] = 'uncorrelated'
         Ldict['align_corners'] = False
-
+        Ldict['num_fixations'] = num_fixations
+        Ldict['num_spatial_dims'] = 2
+        Ldict['input_dims'] = [1,1,1,1]
         return Ldict
     # END [classmethod] FixatonLayer.layer_dict

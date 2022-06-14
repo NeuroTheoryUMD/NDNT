@@ -28,8 +28,8 @@ def create_optimizer_params(
         betas=[0.9, 0.999],
         # L-BFGS specific
         full_batch=True,
-        tolerance_change=1e-5,
-        tolerance_grad=1e-9,
+        tolerance_change=1e-8,
+        tolerance_grad=1e-10,
         history_size=10,
         accumulated_grad_batches=1,
         device=None,
@@ -50,6 +50,7 @@ def create_optimizer_params(
             'batch_size': batch_size,
             'max_iter': max_iter,
             'max_epochs': max_epochs,
+            #'max_eval': max_iter*2, # automatically defaults to 1.25xmax_iter, so easier to not set
             'progress_bar_refresh': progress_bar_refresh,
             'log_activations': log_activations, 
             'optimize_graph': optimize_graph,
