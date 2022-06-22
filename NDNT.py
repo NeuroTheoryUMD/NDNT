@@ -16,6 +16,7 @@ FFnets = {
     'normal': NDNnetworks.FFnetwork,
     'add': NDNnetworks.FFnetwork,  # just controls how inputs are concatenated
     'mult': NDNnetworks.FFnetwork, # just controls how inputs are concatenated
+    'scaffold': NDNnetworks.ScaffoldNetwork, # forward concatenates all layers (default: convolutional)
     'readout': NDNnetworks.ReadoutNetwork
 }
 
@@ -122,7 +123,7 @@ class NDN(nn.Module):
                 input_dims_list = []
                 for ii in range(len(nets_in)):
                     assert nets_in[ii] < mm, "FFnet%d (%d): input networks must come earlier"%(mm, ii)
-                    input_dims_list.append(networks[nets_in[ii]].layers[-1].output_dims)
+                    input_dims_list.append(networks[nets_in[ii]].output_dims)
                 ffnet_list[mm]['input_dims_list'] = input_dims_list
         
             # Create corresponding FFnetwork
@@ -434,9 +435,9 @@ class NDN(nn.Module):
                     train_inds = dataset.train_inds
                 if dataset.val_inds is not None:
                     val_inds = dataset.val_inds
-        else:
-            train_inds = range(len(dataset))
-            print( "Warning: no train_inds specified. Using full dataset passed in.")
+            else:
+                train_inds = range(len(dataset))
+                print( "Warning: no train_inds specified. Using full dataset passed in.")
 
         # Check to see if loss-flags require any initialization using dataset information 
         if self.loss_module.unit_weighting or (self.loss_module.batch_weighting == 2):

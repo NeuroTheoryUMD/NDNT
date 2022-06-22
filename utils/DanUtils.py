@@ -19,7 +19,13 @@ def ss( num_rows=1, num_cols=1, row_height=2.5, fighandle=False):
     subplot_setup(num_rows, num_cols, row_height=row_height, fighandle=fighandle)
 
 
-def imagesc( img, cmap=None, balanced=True, aspect='auto', max=None ):
+def imagesc( img, cmap=None, balanced=None, aspect='auto', max=None, colrow=True ):
+    if balanced is None:
+        # Make defaults depending on img
+        if np.sign(np.max(img)) == np.sign(np.min(img)):
+            balanced = False
+        else:
+            balanced = True
     if balanced:
         imin = -np.max(abs(img))
         imax = np.max(abs(img))
@@ -30,7 +36,12 @@ def imagesc( img, cmap=None, balanced=True, aspect='auto', max=None ):
     if max is not None:
         imin = -max
         imax = max
-    plt.imshow( img, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
+
+    if colrow:  # then plot with first axis horizontal, second axis vertical
+        plt.imshow( img.T, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
+    else:  # this is like imshow: row, column
+        plt.imshow( img, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
+# END imagesc
 
 
 def filename_num2str( n, num_digits=2 ):
@@ -166,15 +177,15 @@ def max_multiD(k):
     num_dims = len(k.shape)
     if num_dims == 2:
         a,b = k.shape
-        bbest = np.argmax( np.max(k, axis=0) )
-        abest = np.argmax( k[:,bbest] )
-        return [abest, bbest] 
+        d1best = np.argmax( np.max(k, axis=0) )
+        d0best = np.argmax( k[:, d1best] )
+        return [d0best, d1best] 
     elif num_dims == 3:
         a,b,c = k.shape
-        cbest = np.argmax( np.max(np.reshape(k, [a*b, c]), axis=0) )
-        bbest = np.argmax( np.max(k[:,:,cbest], axis=0) )
-        abest = np.argmax( k[:,bbest, cbest] )
-        return [abest, bbest, cbest]
+        d2best = np.argmax( np.max(np.reshape(k, [a*b, c]), axis=0) )
+        d1best = np.argmax( np.max(k[:,:, d2best], axis=0) )
+        d0best = np.argmax( k[:,d1best, d2best] )
+        return [d0best, d1best, d2best]
     else:
         print('havent figured out how to do this number of dimensions yet.')
 

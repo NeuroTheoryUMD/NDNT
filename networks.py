@@ -21,7 +21,7 @@ LayerTypes = {
     # 'external': layers.ExternalLayer,    
 }
 
-_valid_ffnet_types = ['normal', 'add', 'mult', 'readout']
+_valid_ffnet_types = ['normal', 'add', 'mult', 'readout', 'scaffold']
       
 class FFnetwork(nn.Module):
 
@@ -82,6 +82,9 @@ class FFnetwork(nn.Module):
                     self.layer_list[ll]['input_dims'] = self.layers[ll-1].output_dims
             Ltype = self.layer_list[ll]['layer_type']
             self.layers.append( LayerTypes[Ltype](**self.layer_list[ll]) )
+
+        # output dims determined by last layer
+        self.output_dims = self.layers[-1].output_dims
 
         # Make scaffold output if requested
         if scaffold_levels is None:
@@ -179,9 +182,10 @@ class FFnetwork(nn.Module):
 
         for layer in self.layers:
             x = layer(x)
-            out.append(x)
-        
-        return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
+            #out.append(x)
+
+        return x
+        #return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
     # END FFnetwork.forward
 
     def __reg_setup_ffnet(self, reg_params=None):
@@ -257,6 +261,69 @@ class FFnetwork(nn.Module):
     def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', **kwargs):
         return {'layer_list': deepcopy(layer_list), 'xstim_n':xstim_n, 'ffnet_n':ffnet_n, 'ffnet_type': ffnet_type }
     # END FFnetwork class
+
+
+class ScaffoldNetwork(FFnetwork):
+    """Concatenates output of all layers together in filter dimension, preserving spatial dims  """
+
+    def __repr__(self):
+        s = super().__repr__()
+        # Add information about module to print out
+        s += self.__class__.__name__
+        return s
+
+    def __init__(self, scaffold_levels=None, **kwargs):
+        """
+        This essentially used the constructor for Point1DGaussian, with dicationary input.
+        Currently there is no extra code required at the network level. I think the constructor
+        can be left off entirely, but leaving in in case want to add something.
+        """
+        super().__init__(**kwargs)
+        self.network_type = 'scaffold'
+
+        num_layers = len(self.layers)
+        if scaffold_levels is None:
+            self.scaffold_levels = np.arange(num_layers)
+        else:
+            if isinstance(scaffold_levels, list):
+                scaffold_levels = np.array(scaffold_levels, dtype=np.int64)
+            self.scaffold_levels = scaffold_levels 
+        # Determine output dimensions
+        assert self.layers[self.scaffold_levels[0]].output_dims[3] == 1, "Scaffold: cannot currently handle lag dimensions"
+        self.spatial_dims = self.layers[self.scaffold_levels[0]].output_dims[1:3]
+        self.filter_count = np.zeros(len(self.scaffold_levels))
+        self.filter_count[0] = self.layers[self.scaffold_levels[0]].output_dims[0]
+
+        for ii in range(1, len(self.scaffold_levels)):
+            assert self.layers[self.scaffold_levels[ii]].output_dims[1:3] == self.spatial_dims, "Spatial dims problem layer %d"%self.scaffold_levels[ii] 
+            assert self.layers[self.scaffold_levels[ii]].output_dims[3] == 1, "Scaffold: cannot currently handle lag dimensions"
+            self.filter_count[ii] = self.layers[self.scaffold_levels[ii]].output_dims[0]
+        
+        # Construct output dimensions
+        self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [1]
+    # END ScaffoldNetwork.__init__
+
+    def forward(self, inputs):
+        if self.layers is None:
+            raise ValueError("Scaffold: no layers defined.")
+        
+        out = [] # returned 
+        x = self.preprocess_input(inputs)
+
+        for layer in self.layers:
+            x = layer(x)
+            out.append(x)
+        
+        return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
+
+    # END ScaffoldNetwork.forward()
+
+    @classmethod
+    def ffnet_dict( cls, scaffold_levels=None, **kwargs):
+        ffnet_dict = super().ffnet_dict(**kwargs)
+        ffnet_dict['ffnet_type'] = 'scaffold'
+        ffnet_dict['scaffold_levels'] = scaffold_levels
+        return ffnet_dict
 
 
 class ReadoutNetwork(FFnetwork):
