@@ -780,7 +780,7 @@ class NDN(nn.Module):
             fn = './checkpoints/'
         else:
             fn = alt_dirname
-            if alt_dirname != '/':
+            if alt_dirname[-1] != '/':
                 fn += '/'
         if filename is None:
             fn += self.model_name + '.pkl'
