@@ -19,7 +19,8 @@ def ss( num_rows=1, num_cols=1, row_height=2.5, fighandle=False):
     subplot_setup(num_rows, num_cols, row_height=row_height, fighandle=fighandle)
 
 
-def imagesc( img, cmap=None, balanced=None, aspect='auto', max=None, colrow=True ):
+def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True ):
+    """Modifications of plt.imshow that choose reasonable defaults"""
     if balanced is None:
         # Make defaults depending on img
         if np.sign(np.max(img)) == np.sign(np.min(img)):
@@ -37,11 +38,37 @@ def imagesc( img, cmap=None, balanced=None, aspect='auto', max=None, colrow=True
         imin = -max
         imax = max
 
+    if aspect is None:
+        if img.shape[0] == img.shape[1]:
+            aspect = 1
+        else:
+            aspect = 'auto'
+
     if colrow:  # then plot with first axis horizontal, second axis vertical
         plt.imshow( img.T, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
     else:  # this is like imshow: row, column
         plt.imshow( img, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
 # END imagesc
+
+
+def find_peaks( x, clearance=10, n_peaks=6, thresh=13.0 ):
+    """Find maximum of peaks and then get rid of other points around it for plus/minus some amount"""
+    y = deepcopy(x)
+    rem = np.arange(len(x))
+    pks, amps = [], []
+    for counter in range(n_peaks):
+        #plt.plot(y,clrs[counter])
+        a = rem[np.argmax(y[rem])]
+        if y[a] >= thresh:
+            pks.append(a)
+            amps.append(y[a])
+        rem = np.setdiff1d(rem, np.arange(a-clearance, a+clearance+1), assume_unique=True )
+        
+    pks = np.array(pks, dtype=np.int64)
+    amps = np.array(amps, dtype=np.float32)
+
+    return pks, amps
+# END find_peaks
 
 
 def filename_num2str( n, num_digits=2 ):
