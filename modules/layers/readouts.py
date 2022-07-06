@@ -80,7 +80,7 @@ class ReadoutLayer(NDNLayer):
 
         # initialize means and spreads
         map_size = (self.num_filters, self.num_space_dims)
-        self._mu = Parameter(torch.Tensor(*map_size))
+        self.mu = Parameter(torch.Tensor(*map_size))
         self.sigma = Parameter(torch.Tensor(*self.sigma_shape))
 
         self.initialize_spatial_mapping()
@@ -102,15 +102,15 @@ class ReadoutLayer(NDNLayer):
     def grid(self):
         return self.sample_grid(batch_size=1, sample=False)
 
-    @property
-    def mu(self):
-        return self._mu
+    #@property
+    #def mu(self):
+    #    return self.mu
 
     def initialize_spatial_mapping(self):
         """
         Initializes the mean, and sigma of the Gaussian readout 
         """
-        self._mu.data.uniform_(-self.init_mu_range, self.init_mu_range)  # random initializations uniformly spread....
+        self.mu.data.uniform_(-self.init_mu_range, self.init_mu_range)  # random initializations uniformly spread....
         # if self.gauss_type != 'full':
         #     self.sigma.data.fill_(self.init_sigma)
         # else:
@@ -173,7 +173,7 @@ class ReadoutLayer(NDNLayer):
         assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
         # Set parameters for default readout
         self.sigma.data.fill_(0)
-        self._mu.data.fill_(0)
+        self.mu.data.fill_(0)
         self.weight.data.fill_(0)
         for nn in range(self.num_filters):
             self.weight.data[nn,nn] = 1
@@ -241,7 +241,7 @@ class ReadoutLayer(NDNLayer):
         NC, num_dim = locs.shape
         assert num_dim == self.num_space_dims, 'Incorrect number of spatial dimensions'
         assert NC == self.num_filters, 'Incorrect number of neuron positions.'
-        self._mu = deepcopy(locs)
+        self.mu = deepcopy(locs)
 
     def get_readout_locations(self):
         """Currently returns center location and sigmas, as list"""
@@ -254,7 +254,7 @@ class ReadoutLayer(NDNLayer):
         assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
         # Set parameters for default readout
         self.sigma.data.fill_(0)
-        self._mu.data.fill_(0)
+        self.mu.data.fill_(0)
         self.weight.data.fill_(0)
         for nn in range(self.num_filters):
             self.weight.data[nn,nn] = 1

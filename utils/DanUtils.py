@@ -150,10 +150,10 @@ def grid2pixel( x, L=60, force_int=False, enforce_bounds=True ):
         if p < 0:
             p = 0    
     if force_int:
-        if isinstance(x, np.array):
-            return p.astype(np.int64)
+        if isinstance(x, np.ndarray):
+            return np.round(p).astype(np.int64)
         else:
-            return int(p)
+            return int(np.round(p))
     else:
         return p
 

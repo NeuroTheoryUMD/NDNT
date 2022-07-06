@@ -719,6 +719,92 @@ class NDN(nn.Module):
 
         return LLneuron.detach().cpu().numpy()
 
+
+    def generate_predictions( self, data, data_inds=None, batch_size=1000, num_workers=0, **kwargs ):
+        '''
+        Note that data will be assumed to be a dataset, and data_inds will have to be specified batches
+        from dataset.__get_item__()
+        '''
+        
+        # Switch into evalulation mode
+        self.eval()
+
+        if isinstance(data, dict): 
+            # Then assume that this is just to evaluate a sample: keep original here
+            assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
+            dev0 = data['robs'].device
+            m0 = self.to(dev0)
+            yhat = m0(data)
+            y = data['robs']
+            dfs = data['dfs']
+
+            if 'poisson' in m0.loss_type:
+                loss = m0.loss_module.lossNR
+            else:
+                print("This loss-type is not supported for eval_models.")
+                loss = None
+
+            with torch.no_grad():
+                LLraw = torch.sum( 
+                    torch.multiply( 
+                        dfs, 
+                        loss(yhat, y)),
+                        axis=0).detach().cpu().numpy()
+                obscnt = torch.sum(
+                    torch.multiply(dfs, y), axis=0).detach().cpu().numpy()
+                
+                Ts = np.maximum(torch.sum(dfs, axis=0).detach().cpu().numpy(), 1)
+
+                LLneuron = LLraw / np.maximum(obscnt,1) # note making positive
+
+                if null_adjusted:
+                    #predcnt = torch.sum(
+                    #    torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
+                    #rbar = np.divide(predcnt, Ts)
+                    #LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
+                    rbar = np.divide(obscnt, Ts)
+                    LLnulls = np.log(rbar)-1
+
+                    LLneuron = -LLneuron - LLnulls             
+
+            return LLneuron  # end of the old method
+
+        else:
+            # This will be the 'modern' eval_models using already-defined self.loss_module
+            # In this case, assume data is dataset
+            if data_inds is None:
+                data_inds = list(range(len(data)))
+
+            data_dl, _ = self.get_dataloaders(data, batch_size=batch_size, num_workers=num_workers, train_inds=data_inds, val_inds=data_inds)
+
+            LLsum, Tsum, Rsum = 0, 0, 0
+            from tqdm import tqdm
+            d = next(self.parameters()).device  # device the model is on
+            for data_sample in tqdm(data_dl, desc='Eval models'):
+                # data_sample = data[tt]
+                for dsub in data_sample.keys():
+                    if data_sample[dsub].device != d:
+                        data_sample[dsub] = data_sample[dsub].to(d)
+                with torch.no_grad():
+                    pred = self(data_sample)
+                    LLsum += self.loss_module.unit_loss( 
+                        pred, data_sample['robs'], data_filters=data_sample['dfs'], temporal_normalize=False)
+                    Tsum += torch.sum(data_sample['dfs'], axis=0)
+                    Rsum += torch.sum(torch.mul(data_sample['dfs'], data_sample['robs']), axis=0)
+            LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
+
+            # Null-adjust
+            if null_adjusted:
+                rbar = torch.divide(Rsum, Tsum.clamp(1))
+                LLnulls = torch.log(rbar)-1
+                LLneuron = -LLneuron - LLnulls 
+        if bits:
+            LLneuron/=np.log(2)
+
+        return LLneuron.detach().cpu().numpy()
+
+
+
     def get_weights(self, ffnet_target=0, **kwargs):
         """passed down to layer call, with optional arguments conveyed"""
         assert ffnet_target < len(self.networks), "Invalid ffnet_target %d"%ffnet_target
