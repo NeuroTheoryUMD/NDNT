@@ -719,7 +719,7 @@ class NDN(nn.Module):
 
         return LLneuron.detach().cpu().numpy()
 
-
+    ### NOTE THIS FUNCTION IS NOT DONE YET -- it would ideally step through all relevant batches like eval_model 
     def generate_predictions( self, data, data_inds=None, batch_size=1000, num_workers=0, **kwargs ):
         '''
         Note that data will be assumed to be a dataset, and data_inds will have to be specified batches
@@ -753,21 +753,7 @@ class NDN(nn.Module):
                 obscnt = torch.sum(
                     torch.multiply(dfs, y), axis=0).detach().cpu().numpy()
                 
-                Ts = np.maximum(torch.sum(dfs, axis=0).detach().cpu().numpy(), 1)
-
-                LLneuron = LLraw / np.maximum(obscnt,1) # note making positive
-
-                if null_adjusted:
-                    #predcnt = torch.sum(
-                    #    torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
-                    #rbar = np.divide(predcnt, Ts)
-                    #LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
-                    rbar = np.divide(obscnt, Ts)
-                    LLnulls = np.log(rbar)-1
-
-                    LLneuron = -LLneuron - LLnulls             
-
-            return LLneuron  # end of the old method
+            return pred  # end of the old method
 
         else:
             # This will be the 'modern' eval_models using already-defined self.loss_module
