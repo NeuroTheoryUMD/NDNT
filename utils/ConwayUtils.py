@@ -255,8 +255,8 @@ def saccade_detect( ets, blinks=None, min_sac_interval=100, T=4000):
     else:
         tr_blinks = []
     for trT in np.arange(ets.shape[0]//T):
-        dsacc = utils.dsacc_compute( ets[ts+T*trT,:], sm=24, sac_gap=64, drift_filter=500 ) 
-        pks, amps = utils.find_peaks(dsacc, thresh=1.0, clearance=min_sac_interval) 
+        dsacc = dsacc_compute( ets[ts+T*trT,:], sm=24, sac_gap=64, drift_filter=500 ) 
+        pks, amps = DU.find_peaks(dsacc, thresh=1.0, clearance=min_sac_interval) 
         # Note low threshold, so can winnow after see distributions
         a = np.argsort(pks)
         pk_ts = pks[a]+ trT*T
@@ -289,18 +289,5 @@ def trial_saccade_display( tr, ets, sacc_ts, sacc_amps=None ):
     for ii in range(len(a)):
         plt.plot(np.ones(2)*ts[ii]*0.001, ys,'r--')
     plt.xlim([0, 4])
-    plt.ylim(ys)
-    plt.show()
-
-    a = np.where((sacc_ts >= tr*4000) & (sacc_ts < (tr+1)*4000))[0]
-    ts = sacc_ts[a]-tr*4000
-    if sacc_amps is not None:
-        print('Amplitudes:', np.sqrt(sacc_amps[a]))    
-    DU.subplot_setup( 1, 1, row_height=3.0 )
-    plt.plot(ets[tr*4000+np.arange(4000),0], 'g' )
-    plt.plot(ets[tr*4000+np.arange(4000),1], 'c' )
-    ys = plt.ylim()
-    for ii in range(len(a)):
-        plt.plot(np.ones(2)*ts[ii], ys,'k')
     plt.ylim(ys)
     plt.show()
