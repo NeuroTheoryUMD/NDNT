@@ -132,7 +132,8 @@ class FFnetwork(nn.Module):
                     if input_dims_list[ii][1:] != input_dims_list[0][1:]:
                         if ffnet_type == 'add':
                             for jj in range(2):
-                                if (input_dims_list[ii][jj+1] > 1) | (input_dims_list[0][jj+1] == 1):
+                                #if (input_dims_list[ii][jj+1] > 1) | (input_dims_list[0][jj+1] == 1):
+                                if (input_dims_list[ii][jj+1] > 1) & (input_dims_list[0][jj+1] > 1):
                                     valid_input_dims = False
                         else:
                             valid_input_dims = False
