@@ -186,7 +186,37 @@ class ConvLayer(NDNLayer):
     #def output_dims(self, value):
     #    self._output_dims = value
     #    self.num_outputs = int(np.prod(self._output_dims))
-    
+
+    def batchnorm_convert( self ):
+        """Converts layer with batch_norm to have the same output without batch_norm. This involves
+        adjusting the weights and adding offsets"""
+
+        from copy import deepcopy
+
+        assert self.output_norm is not None, "Layer does not have batch norm"
+        assert self.norm_type == 1, "Layer should have norm type 1"
+
+        W = self.preprocess_weights()
+        newW = deepcopy(W.data)
+        newB = deepcopy(self.bias.data)
+        for ii in range(self.num_filters):
+            gamma = self.output_norm.weight[ii].clone().detach()
+            beta = self.output_norm.bias[ii].clone().detach()
+            E_x =  self.output_norm.running_mean[ii].clone().detach()
+            Var_x =  self.output_norm.running_var[ii].clone().detach()
+            
+            newW.data[:, ii] = gamma/torch.sqrt(Var_x+1e-5)*W[:, ii]
+            newB.data[ii] = beta - E_x*(gamma/torch.sqrt(Var_x+1e-5))
+
+        #create new layer
+        #layer = deepcopy(self)
+        self.norm_type = 0
+        self.output_norm = None
+        #self.reset_parameters()
+        self.weight.data = newW
+        self.bias.data = newB
+    # END self.batchnorm       
+
     @property
     def padding(self):
         return self._padding
