@@ -63,6 +63,15 @@ def firingrate_datafilter( fr, Lmedian=10, Lhole=30, FRcut=1.0, frac_reject=0.1,
             #print('eliminating', 1-dom)
             df[chunks[1-dom]] = 0
     
+    # Eliminate any small islands of validity (less than Lhole)
+    a = np.where(df == 0)[0]  # where there are zeros
+    if len(a) > 0:
+        b = np.diff(a) # the length of islands (subtracting 1: 0 is no island)
+        c = np.where((b > 1) & (b < Lhole))[0]  # the index of the islands that are the wrong size
+        # a[c] is the location of the invalid islands, b[c] is the size of these islands (but first point is zero before) 
+        for ii in range(len(c)):
+            df[a[c[ii]]+np.arange(b[c[ii]])] = 0
+
     # Final reject criteria: large fraction of mean firing rates in trial well above median poisson limit
     m = np.median(fr[df > 0])
     #stability_ratio = len(np.where(Ntrack[df > 0,cc] > m+np.sqrt(m))[0])/np.sum(df > 0)
@@ -95,6 +104,27 @@ def DFexpand( dfs, NT=None, BLsize=240 ):
     if NT > BLsize*NBL:
         Xdfs[BLsize*NBL:, :] = Xdfs[BLsize*NBL-1, :]
     return Xdfs
+
+########## RF MANIPULATION #################
+def RFstd_evaluate( kstd, sm=3 ):
+    from NDNT.modules.layers.convlayers import ConvLayer
+    from utils.DanUtils import max_multiD
+    import torch
+
+    NX = kstd.shape[0]
+    L1 = sm*6+1
+    g = np.zeros([L1,L1])
+    for xx in range(L1):
+        for yy in range(L1):
+            g[xx,yy] = np.exp(-((xx-L1/2)**2 + (yy-L1/2)**2)/(2*sm**2))
+    smooth_par = ConvLayer.layer_dict( 
+        input_dims=[1,NX,NX,1], num_filters=1, bias=False, filter_dims=L1, padding='same', NLtype='lin')
+    smoother = ConvLayer(**smooth_par)
+    smoother.weight.data = torch.tensor(g, dtype=torch.float32).reshape([-1,1])
+    smoothed_k = smoother(torch.tensor(np.reshape(kstd,[-1,1])))[0,:].reshape([NX,NX]).detach().numpy()
+    x, y = max_multiD( smoothed_k )
+    SNR = smoothed_k[x,y] / np.mean(smoothed_k)
+    return x,y, SNR
 
 
 ######### UTILITIES TO DEAL WITH EYE TRACKING SIGNALS #########

@@ -215,7 +215,7 @@ class NDN(nn.Module):
         optimize_graph=False,
         **kwargs):
         """
-            Returns a trainer and object splits the training set into "train" and "valid"
+            Returns a trainer object
         """
         from NDNT.training import Trainer, EarlyStopping, LBFGSTrainer
         import os
@@ -406,6 +406,7 @@ class NDN(nn.Module):
         scheduler=None,
         batch_size=None,
         force_dict_training=False,  # will force dict-based training instead of using data-loaders for LBFGS
+        reuse_trainer=False,
         device=None,
         **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
         ):
@@ -439,10 +440,11 @@ class NDN(nn.Module):
                 train_inds = range(len(dataset))
                 print( "Warning: no train_inds specified. Using full dataset passed in.")
 
+        if force_dict_training:
+            batch_size = len(train_inds)
+
         # Check to see if loss-flags require any initialization using dataset information 
         if self.loss_module.unit_weighting or (self.loss_module.batch_weighting == 2):
-            if force_dict_training:
-                batch_size = len(train_inds)
             self.initialize_loss(dataset, batch_size=batch_size, data_inds=train_inds) 
 
         # Prepare model regularization (will build reg_modules)
@@ -456,14 +458,18 @@ class NDN(nn.Module):
             dataset, batch_size=batch_size, train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
 
         # Make trainer 
-        trainer = self.get_trainer(
-            version=version,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            save_dir=save_dir,
-            name=name,
-            device=device,
-            **kwargs)
+        if reuse_trainer & (self.trainer is not None):
+            trainer = self.trainer
+            print("  Reusing existing trainer")
+        else:
+            trainer = self.get_trainer(
+                version=version,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                save_dir=save_dir,
+                name=name,
+                device=device,
+                **kwargs)
 
         t0 = time.time()
         if force_dict_training:

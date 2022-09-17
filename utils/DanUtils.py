@@ -14,8 +14,10 @@ def subplot_setup(num_rows, num_cols, row_height=2, fighandle=False):
         return fig
 
 
-def ss( num_rows=1, num_cols=1, row_height=2.5, fighandle=False):
+def ss( num_rows=1, num_cols=1, row_height=2.5, rh=None, fighandle=False):
     # Short-hand for subplot_setup with useful defaults for quick usage
+    if rh is not None:
+        row_height=rh  # really to just save a bit of typing
     subplot_setup(num_rows, num_cols, row_height=row_height, fighandle=fighandle)
 
 
