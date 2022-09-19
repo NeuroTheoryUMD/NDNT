@@ -438,7 +438,9 @@ class NDN(nn.Module):
                     val_inds = dataset.val_inds
             else:
                 train_inds = range(len(dataset))
-                print( "Warning: no train_inds specified. Using full dataset passed in.")
+                if 'verbose' in kwargs.keys():
+                    if kwargs['verbose'] > 0:
+                        print( "Warning: no train_inds specified. Using full dataset passed in.")
 
         if force_dict_training:
             batch_size = len(train_inds)
