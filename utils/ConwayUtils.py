@@ -108,7 +108,7 @@ def DFexpand( dfs, NT=None, BLsize=240 ):
 ########## RF MANIPULATION #################
 def RFstd_evaluate( kstd, sm=3 ):
     from NDNT.modules.layers.convlayers import ConvLayer
-    from utils.DanUtils import max_multiD
+    from NDNT.utils.DanUtils import max_multiD
     import torch
 
     NX = kstd.shape[0]
@@ -144,7 +144,7 @@ def trial_offset_calc( EtraceHR, trN, to_plot=False ):
     return offset
 
 
-def slow_drift_correct( ETin, tau=120000, to_plot=True):
+def slow_drift_correct( ETin, tau=120000, to_plot=True, average_ends=True):
     """Correct for slow drift in offset of eye traces by subtracting an extremely smoothed mean signal"""
     T, nsig = ETin.shape
     meansig = np.zeros(ETin.shape)
@@ -157,15 +157,20 @@ def slow_drift_correct( ETin, tau=120000, to_plot=True):
         meansig[:,ii] = np.convolve(ETin[:,ii], smkern, mode='same')
     
     # Accept average over edges (that 'same' padding does incorrectly): simply average over smaller windows
-    cumsumfront, cumsumback = deepcopy(ETin[0, :]),  deepcopy(ETin[-1, :])
-    for tt in range(tau//2):  
-        meansig[tt] = cumsumfront / (2*tt+1)
-        meansig[-tt] = cumsumback / (2*tt+1)
-        cumsumfront += ETin[2*tt+1, :] + ETin[2*tt+2, :]
-        cumsumback += ETin[-2*tt-2, :] + ETin[-2*tt-3, :]
-        # Note that this is incredibly slow:  did cumulative sum instead, but this was the same
-        #meansig[tt, :] = np.mean(ETin[:2*tt+1, :], axis=0)
-        #meansig[-tt, :] = np.mean(ETin[-2*tt-1:, :], axis=0)
+    if average_ends:
+        for ii in range(nsig):
+            meansig[:tau//2, ii] = np.mean(meansig[:tau//2, ii])
+            meansig[-tau//2-2:, ii] = np.mean(meansig[-tau//2:, ii])
+    else:
+        cumsumfront, cumsumback = deepcopy(ETin[0, :]),  deepcopy(ETin[-1, :])
+        for tt in range(tau//2):  
+            meansig[tt] = cumsumfront / (2*tt+1)
+            meansig[-tt] = cumsumback / (2*tt+1)
+            cumsumfront += ETin[2*tt+1, :] + ETin[2*tt+2, :]
+            cumsumback += ETin[-2*tt-2, :] + ETin[-2*tt-3, :]
+            # Note that this is incredibly slow:  did cumulative sum instead, but this was the same
+            #meansig[tt, :] = np.mean(ETin[:2*tt+1, :], axis=0)
+            #meansig[-tt, :] = np.mean(ETin[-2*tt-1:, :], axis=0)
 
     if to_plot:
         DU.ss(nsig,1)
@@ -185,7 +190,14 @@ def blink_process( ETin, blink_pad=50, verbose=True, blink_thresh=40):
     Works for EyeScan and Eyelink, although default set for EyeLink"""
     ETout = deepcopy(ETin)
     
-    a = np.where((abs(ETin[:,0]) > blink_thresh) | (abs(ETin[:,1]) > blink_thresh))[0]
+    if ETin.shape[1] > 2:
+        # then binocular
+        a = np.where(
+            (abs(ETin[:,0]) > blink_thresh) | (abs(ETin[:,1]) > blink_thresh) | \
+            (abs(ETin[:,2]) > blink_thresh) | (abs(ETin[:,3]) > blink_thresh))[0]
+    else:
+        a = np.where((abs(ETin[:,0]) > blink_thresh) | (abs(ETin[:,1]) > blink_thresh))[0]
+
     b = np.where(np.diff(a) > 10)[0]
     b = np.append(b, len(a)-1)
     blinks = []
@@ -196,8 +208,8 @@ def blink_process( ETin, blink_pad=50, verbose=True, blink_thresh=40):
         arng = np.arange( blink_start, blink_end )
         blinks.append([blink_start, blink_end])
         #avs = np.mean(ETraw[arng[0]-np.arange(5),:],axis=0)
-        ETout[arng,0] = 0
-        ETout[arng,1] = 0
+        ETout[arng,:] = 0
+        #ETout[arng,1] = 0
         tstart = b[ii]+1
     if verbose:
         print( "  %d blinks detected and zeroed"%len(blinks) )
@@ -228,7 +240,11 @@ def ETtrial_filter( ets0, box_size=300, end_smoothing=0, med_filt = 0 ):
 
 
 def dsacc_compute( ets, sm=24, sac_gap=64, to_plot=False, drift_filter=500 ):
-    # Set drift-filter = None to turn off: 500 seems pretty optimal
+    """ 
+    drift-filter = None to turn off: 500 seems pretty optimal
+    trial_edge: ignore saccades on edges of trial, effectively in units of ms
+    """
+
     assert sm%2==0, "smoothing (sm) must be multiple of 2"
     assert sac_gap%4==0, "sac_gap (sm) must be multiple of 4"
     # Subtract running average
@@ -237,35 +253,48 @@ def dsacc_compute( ets, sm=24, sac_gap=64, to_plot=False, drift_filter=500 ):
         g = ETtrial_filter(ets, box_size=drift_filter)
     else:
         g = deepcopy(ets)
-    x0 = g[:,0]
-    y0 = g[:,1]
-    x1 = deepcopy(x0)
-    y1 = deepcopy(y0)
-    for tt in range(T):
-        x1[tt] = np.mean(x0[range(np.maximum(0,tt-sm//2), np.minimum(T-1,tt+sm//2))])
-        y1[tt] = np.mean(y0[range(np.maximum(0,tt-sm//2), np.minimum(T-1,tt+sm//2))])
 
-    dx = x1[sac_gap//2:T]-x1[:T-sac_gap//2]
-    dy = y1[sac_gap//2:T]-y1[:T-sac_gap//2]
-
+    #nsig = g.shape[1]
     dsacc = np.zeros(T)
-    dsacc[range(sac_gap//4, T-sac_gap//4)] = dx**2+dy**2
+
+    xs = deepcopy(g)
+    for tt in range(T):
+        xs[tt, :] = np.mean(g[range(np.maximum(0,tt-sm//2), np.minimum(T-1,tt+sm//2)), :], axis=0)
+    
+    #dxs = xs[sac_gap//2:T, :]-xs[:T-sac_gap//2, :]
+
+    for ii in range(g.shape[1]):
+        x0 = g[:, ii]
+        #y0 = g[:,1]
+        x1 = deepcopy(x0)
+        #y1 = deepcopy(y0)
+        for tt in range(T):
+            x1[tt] = np.mean(x0[range(np.maximum(0,tt-sm//2), np.minimum(T-1,tt+sm//2))])
+            #y1[tt] = np.mean(y0[range(np.maximum(0,tt-sm//2), np.minimum(T-1,tt+sm//2))])
+
+        dx = x1[sac_gap//2:T]-x1[:T-sac_gap//2]
+        #dy = y1[sac_gap//2:T]-y1[:T-sac_gap//2]
+        #dsacc[range(sac_gap//4, T-sac_gap//4)] = dx**2+dy**2
+        dsacc[range(sac_gap//4, T-sac_gap//4)] += dx**2
     
     if to_plot:
+        if g.shape[1] > 2:
+            print("This needs to be updated to deal with binocular eye tracking")
         DU.ss(5,1)
         plt.subplot(511)
-        plt.plot(x0,'g')
+        plt.plot(g[:, 0],'g')
         plt.plot(x1,'k')
         plt.subplot(512)
         plt.plot(x1,'g')
         plt.plot(np.arange(sac_gap,T),x1[:-sac_gap],'r')
         plt.plot(np.arange(sac_gap//4, T-sac_gap//4), dx**2,'k')
         plt.subplot(513)
-        plt.plot(y0,'c')
-        plt.plot(y1,'k')
+        plt.plot(g[:, 1],'c')
+        #plt.plot(y1,'k')
         plt.subplot(514)
-        plt.plot(y1,'g')
-        plt.plot(np.arange(sac_gap, T),y1[:-sac_gap],'r')
+        #plt.plot(y1,'g')
+        plt.plot(g[:, 1],'g')
+        plt.plot(np.arange(sac_gap, T), g[:-sac_gap, 1],'r')
         plt.plot(np.arange(sac_gap//4, T-sac_gap//4), dy**2,'k')
         plt.subplot(515)
         plt.plot(dsacc,'k')
@@ -277,7 +306,7 @@ def dsacc_compute( ets, sm=24, sac_gap=64, to_plot=False, drift_filter=500 ):
     return dsacc
 
 
-def saccade_detect( ets, blinks=None, min_sac_interval=100, T=4000):
+def saccade_detect( ets, blinks=None, min_sac_interval=100, T=4000, trial_edge=80):
     ts = np.arange(T)
     Camps, Csacs = [], []
     if blinks is not None:
@@ -287,6 +316,12 @@ def saccade_detect( ets, blinks=None, min_sac_interval=100, T=4000):
     for trT in np.arange(ets.shape[0]//T):
         dsacc = dsacc_compute( ets[ts+T*trT,:], sm=24, sac_gap=64, drift_filter=500 ) 
         pks, amps = DU.find_peaks(dsacc, thresh=1.0, clearance=min_sac_interval) 
+
+        # Eliminate saccades on trial edges
+        a = np.where((pks >= trial_edge) & (pks < T-trial_edge))[0]
+        pks = pks[a]
+        amps = amps[a]
+        
         # Note low threshold, so can winnow after see distributions
         a = np.argsort(pks)
         pk_ts = pks[a]+ trT*T
@@ -311,13 +346,14 @@ def trial_saccade_display( tr, ets, sacc_ts, sacc_amps=None ):
     a = np.where((sacc_ts >= tr*4000) & (sacc_ts < (tr+1)*4000))[0]
     ts = sacc_ts[a]-tr*4000
     if sacc_amps is not None:
-        print('Amplitudes:', np.sqrt(sacc_amps[a]))    
-    DU.ss()
-    plt.plot(np.arange(4000)*0.001, ets[tr*4000+np.arange(4000),0], 'g' )
-    plt.plot(np.arange(4000)*0.001, ets[tr*4000+np.arange(4000),1], 'c' )
-    ys = plt.ylim()
-    for ii in range(len(a)):
-        plt.plot(np.ones(2)*ts[ii]*0.001, ys,'r--')
-    plt.xlim([0, 4])
-    plt.ylim(ys)
-    plt.show()
+        print('Amplitudes:', np.sqrt(sacc_amps[a]))
+    for ii in range(ets.shape[1]//2):
+        DU.ss()
+        plt.plot(np.arange(4000)*0.001, ets[tr*4000+np.arange(4000),2*ii], 'g' )
+        plt.plot(np.arange(4000)*0.001, ets[tr*4000+np.arange(4000),2*ii+1], 'c' )
+        ys = plt.ylim()
+        for ii in range(len(a)):
+            plt.plot(np.ones(2)*ts[ii]*0.001, ys,'r--')
+        plt.xlim([0, 4])
+        plt.ylim(ys)
+        plt.show()

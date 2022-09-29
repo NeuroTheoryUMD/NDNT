@@ -21,7 +21,7 @@ def ss( num_rows=1, num_cols=1, row_height=2.5, rh=None, fighandle=False):
     subplot_setup(num_rows, num_cols, row_height=row_height, fighandle=fighandle)
 
 
-def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True ):
+def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, axis_labels=True ):
     """Modifications of plt.imshow that choose reasonable defaults"""
     if balanced is None:
         # Make defaults depending on img
@@ -50,6 +50,10 @@ def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True )
         plt.imshow( img.T, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
     else:  # this is like imshow: row, column
         plt.imshow( img, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
+    if not axis_labels:
+        figgy = plt.gca()
+        figgy.axes.xaxis.set_ticklabels([])
+        figgy.axes.yaxis.set_ticklabels([])
 # END imagesc
 
 
