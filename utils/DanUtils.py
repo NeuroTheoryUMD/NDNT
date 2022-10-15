@@ -141,29 +141,6 @@ def load_python_data( filename, show_keys=False ):
     return data
 
 
-### UTILITIES FOR grid_sample (align_corners=False) and other interpolation
-def pixel2grid( p, L=60 ):
-    """Pixels are starting with number 0 up to L-1, converted to range of -1 to 1"""
-    x = (2*p+1)/L - 1
-    return x
-
-
-def grid2pixel( x, L=60, force_int=False, enforce_bounds=True ):
-    p = (L*(x+1)-1)/2
-    if enforce_bounds:
-        if p > L-1:
-            p = L-1
-        if p < 0:
-            p = 0    
-    if force_int:
-        if isinstance(x, np.ndarray):
-            return np.round(p).astype(np.int64)
-        else:
-            return int(np.round(p))
-    else:
-        return p
-
-
 def fold_sample( num_items, folds=5, random_gen=False, which_fold=None):
     """Divide fold sample deterministically or randomly distributed over number of items. More options
     can be added, but his captures the basics."""

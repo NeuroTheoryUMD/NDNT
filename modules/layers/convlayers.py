@@ -167,11 +167,16 @@ class ConvLayer(NDNLayer):
         self.folded_dims = self.input_dims[0]*self.input_dims[3]
 
         # check if output normalization is specified
-        if output_norm == 'batch':
-            if self.is1D:
-                self.output_norm = nn.BatchNorm1d(self.num_filters)
+        if output_norm in ['batch', 'batchX']:
+            if output_norm == 'batchX':
+                affine = False
             else:
-                self.output_norm = nn.BatchNorm2d(self.num_filters)
+                affine = True
+            if self.is1D:
+                self.output_norm = nn.BatchNorm1d(self.num_filters, affine=affine)
+            else:
+                self.output_norm = nn.BatchNorm2d(self.num_filters, affine=affine)
+                #self.output_norm = nn.BatchNorm2d(self.folded_dims, affine=False)
         else:
             self.output_norm = None
     # END ConvLayer.__init__
@@ -200,8 +205,12 @@ class ConvLayer(NDNLayer):
         newW = deepcopy(W.data)
         newB = deepcopy(self.bias.data)
         for ii in range(self.num_filters):
-            gamma = self.output_norm.weight[ii].clone().detach()
-            beta = self.output_norm.bias[ii].clone().detach()
+            if self.output_norm.affine:
+                gamma = self.output_norm.weight[ii].clone().detach()
+                beta = self.output_norm.bias[ii].clone().detach()
+            else:
+                gamma = 1.0
+                beta = 0.0
             E_x =  self.output_norm.running_mean[ii].clone().detach()
             Var_x =  self.output_norm.running_var[ii].clone().detach()
             
@@ -346,7 +355,10 @@ class ConvLayer(NDNLayer):
 
     def forward(self, x):
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
+
+
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)
         # puts output_dims first, as required for conv
         
@@ -372,6 +384,9 @@ class ConvLayer(NDNLayer):
                     stride=self.stride, dilation=self.dilation)
         else:
             s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
+            # Alternative location of batch_norm:
+            #if self.output_norm is not None:
+            #    s = self.output_norm(s)
 
             if self._fullpadding:
                 s = F.pad(s, self._npads, "constant", 0)

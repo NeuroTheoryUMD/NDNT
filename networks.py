@@ -141,8 +141,9 @@ class FFnetwork(nn.Module):
 
                     if ffnet_type == 'normal': # then inputs will be concatenated along 'filter' dimension
                         num_cat_filters += input_dims_list[ii][0]
-                    else:  # these are combined and input to first layer has same size as one input
-                        assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for' + ffnet_type + 'ffnetwork'
+                    elif input_dims_list[ii][0] > 1:
+                        # these are combined and input to first layer has same size as one input
+                        assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for ' + ffnet_type + ' ffnetwork'
                     
             self.input_dims = [num_cat_filters] + input_dims_list[0][1:]
         

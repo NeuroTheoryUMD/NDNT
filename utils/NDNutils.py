@@ -418,6 +418,29 @@ def initialize_gaussian_envelope( ws, w_shape):
                 wx = np.einsum('abcde, d->abcde', wx, genv)
     return np.reshape(wx, [-1, nfilt])
 
+## CONVERSION BETWEEN grid and pixel coordinates for READOUT LAYERS
+# Specifically grid_sample (align_corners=False) and other interpolation
+def pixel2grid( p, L=60 ):
+    """Pixels are starting with number 0 up to L-1, converted to range of -1 to 1"""
+    x = (2*p+1)/L - 1
+    return x
+
+
+def grid2pixel( x, L=60, force_int=True, enforce_bounds=False ):
+    p = (L*(x+1)-1)/2
+    if enforce_bounds:
+        if p > L-1:
+            p = L-1
+        if p < 0:
+            p = 0    
+    if force_int:
+        if isinstance(x, np.ndarray):
+            return np.round(p).astype(np.int64)
+        else:
+            return int(np.round(p))
+    else:
+        return p
+
 
 def save_checkpoint(state, save_path: str, is_best: bool = False, max_keep: int = None):
     """Saves torch model to checkpoint file.
