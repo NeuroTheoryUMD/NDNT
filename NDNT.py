@@ -276,8 +276,9 @@ class NDN(nn.Module):
             num_workers=1,
             is_fixation=False,
             full_batch=False,
+            pin_memory=False,
             data_seed=None,
-            device=None,
+            #device=None,
             **kwargs):
 
         from torch.utils.data import DataLoader, random_split, Subset
@@ -327,9 +328,14 @@ class NDN(nn.Module):
             val_ds = Subset(dataset, val_inds)
 
             shuffle_data = True  # no reason not to shuffle -- samples everything over epoch
-
-            train_dl = DataLoader(train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
-            valid_dl = DataLoader(val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data)
+            if pin_memory:
+                print('Pinning memory')
+            train_dl = DataLoader(
+                train_ds, batch_size=batch_size, shuffle=shuffle_data,
+                num_workers=num_workers, pin_memory=pin_memory)
+            valid_dl = DataLoader(
+                val_ds, batch_size=batch_size, shuffle=shuffle_data,
+                num_workers=num_workers, pin_memory=pin_memory)
             
         return train_dl, valid_dl
     # END NDN.get_dataloaders

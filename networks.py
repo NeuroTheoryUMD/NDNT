@@ -15,6 +15,7 @@ LayerTypes = {
     'stconv': layers.STconvLayer,
     'readout': layers.ReadoutLayer,
     'fixation': layers.FixationLayer,
+    'lag': layers.LagLayer,
     'time': layers.TimeLayer,
     'dim0': layers.Dim0Layer,
     'channel': layers.ChannelLayer,
@@ -291,16 +292,19 @@ class ScaffoldNetwork(FFnetwork):
                 scaffold_levels = np.array(scaffold_levels, dtype=np.int64)
             self.scaffold_levels = scaffold_levels 
         # Determine output dimensions
-        assert self.layers[self.scaffold_levels[0]].output_dims[3] == 1, "Scaffold: cannot currently handle lag dimensions"
+        #assert self.layers[self.scaffold_levels[0]].output_dims[3] == 1, "Scaffold: cannot currently handle lag dimensions"
         self.spatial_dims = self.layers[self.scaffold_levels[0]].output_dims[1:3]
         self.filter_count = np.zeros(len(self.scaffold_levels))
         self.filter_count[0] = self.layers[self.scaffold_levels[0]].output_dims[0]
 
+        #Tchomps = np.zeros(self.scaffold_levels)
         for ii in range(1, len(self.scaffold_levels)):
             assert self.layers[self.scaffold_levels[ii]].output_dims[1:3] == self.spatial_dims, "Spatial dims problem layer %d"%self.scaffold_levels[ii] 
-            assert self.layers[self.scaffold_levels[ii]].output_dims[3] == 1, "Scaffold: cannot currently handle lag dimensions"
+            #assert self.layers[self.scaffold_levels[ii]].output_dims[3] == 1, "Scaffold: cannot currently handle lag dimensions"
+            #if self.layers[self.scaffold_levels[ii]].output_dims[3] > 1:
+            #    Tchomps[ii] = self.layers[self.scaffold_levels[ii]].output_dims[3]-1
             self.filter_count[ii] = self.layers[self.scaffold_levels[ii]].output_dims[0]
-        
+
         # Construct output dimensions
         self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [1]
     # END ScaffoldNetwork.__init__
@@ -314,10 +318,14 @@ class ScaffoldNetwork(FFnetwork):
 
         for layer in self.layers:
             x = layer(x)
-            out.append(x)
+            if layer.output_dims[3] > 1:
+                # Need to return just first lag (lag0) -- 'chomp'
+                y = x.reshape([-1, np.prod(layer.output_dims[:3]), layer.output_dims[3]])[:, :, 0]
+                out.append(y)
+            else:
+                out.append(x)
         
         return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
-
     # END ScaffoldNetwork.forward()
 
     @classmethod

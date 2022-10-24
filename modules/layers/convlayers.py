@@ -149,7 +149,7 @@ class ConvLayer(NDNLayer):
         assert self.stride == 1, 'Cannot handle greater strides than 1.'
         assert self.dilation == 1, 'Cannot handle greater dilations than 1.'
 
-        self.padding = padding        
+        self.padding = padding   # self.padding will be a list of integers...    
 
         # These assignments will be moved to the setter with padding as property and _npads as internal
         # Define padding as "same" or "valid" and then _npads is the number of each edge
@@ -452,7 +452,7 @@ class TconvLayer(ConvLayer):
         
         assert input_dims is not None, "TConvLayer: input_dims must be specified"
         assert num_filters is not None, "TConvLayer: num_filters must be specified"
-        assert (conv_dims is not None) or (filter_dims is not None), "STConvLayer: conv_dims or filter_dims must be specified"
+        assert (conv_dims is not None) or (filter_dims is not None), "TConvLayer: conv_dims or filter_dims must be specified"
         
         if conv_dims is None:
             conv_dims = filter_dims[1:]
@@ -472,7 +472,54 @@ class TconvLayer(ConvLayer):
         self.is1D = (self.input_dims[2] == 1)
         # "1D" means one spatial dimension is singleton
 
+        # padding now property from ConvLayer: set in overload of setter
+        self.padding = padding
         # Do spatial padding by hand -- will want to generalize this for two-ds
+#        if self.is1D:
+#            if padding == 'valid':
+#                self.padding = 0
+#            elif padding == 'same':
+#                self.padding = (self.filter_dims[-1]-1, 0,
+#                    self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
+#        else:
+#            # Checks to ensure cuda-bug with large convolutional filters is not activated #2
+#            assert self.filter_dims[2] < self.input_dims[2], "Filter widths must be smaller than input dims."
+#            if padding == 'valid':
+#                self.padding = 0
+#            elif padding == 'same':
+#                self.padding = (self.filter_dims[-1]-1, 0,
+#                    self.filter_dims[1]//2,
+#                    (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+#                    self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
+#            elif padding == 'spatial':
+#                self.padding = (0, 0,
+#                    self.filter_dims[1]//2,
+#                    (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+#                    self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
+        
+        # check if output normalization is specified
+        if output_norm == 'batch':
+            if self.is1D:
+                self.output_norm = nn.BatchNorm2d(self.num_filters)
+            else:
+                self.output_norm = nn.BatchNorm3d(self.num_filters)
+        else:
+            self.output_norm = None
+    #END TconvLayer.__init__
+
+    @property
+    def padding(self):
+        return super().padding
+    
+    ## JAKES CODE: Not sure what it is doing but causing error
+    #@padding.setter
+    #def padding(self, value):
+        #super(TconvLayer, self.__class__).padding.fset(self, value)
+        #if isinstance(value, int):
+        #    npad = value
+        #else:
+        #    npad = value[0]+value[1]
+
         if self.is1D:
             if padding == 'valid':
                 self.padding = 0
@@ -489,31 +536,58 @@ class TconvLayer(ConvLayer):
                     self.filter_dims[1]//2,
                     (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
                     self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
-        
-        # check if output normalization is specified
-        if output_norm == 'batch':
-            if self.is1D:
-                self.output_norm = nn.BatchNorm2d(self.num_filters)
-            else:
-                self.output_norm = nn.BatchNorm3d(self.num_filters)
-        else:
-            self.output_norm = None
-    #END TconvLayer.__init__
+            elif padding == 'spatial':
+                self.padding = (0, 0,
+                    self.filter_dims[1]//2,
+                    (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+                    self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
 
-    @property
-    def padding(self):
-        return super().padding
-    
+
+
     @padding.setter
     def padding(self, value):
-        super(TconvLayer, self.__class__).padding.fset(self, value)
-        if isinstance(value, int):
-            npad = value
+        assert value in ['valid', 'same', 'spatial'], "TconvLayer: incorrect value entered for padding"
+        self._padding = value
+        self._fullpadding = False
+        sz = self.filter_dims[1:] # handle 2D if necessary
+
+        if self.is1D:
+            if self._padding == 'valid':
+                self._npads = 0
+            elif self._padding == 'same':
+                self._npads = (self.filter_dims[-1]-1, 0,
+                    self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
+            elif self._padding == 'spatial':
+                self._npads = (0, 0,
+                    self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
+            self._fullpadding = self.filter_dims[1]%2 == 0
         else:
-            npad = value[0]+value[1]
+            if self._padding == 'valid':
+                self._npads = 0 #(0, 0, 0, 0, 0, 0)
+            elif self._padding == 'same':
+                assert self.stride == 1, "Warning: 'same' padding not yet implemented when stride > 1"
+                self._npads = (self.filter_dims[-1]-1, 0,
+                    self.filter_dims[1]//2,
+                    (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+                    self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
+            elif self._padding == 'spatial':
+                self._npads = (0, 0,
+                    self.filter_dims[1]//2,
+                    (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+                    self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
+            self._fullpadding = self._fullpadding or (self.filter_dims[2]%2 == 0)
+
+        # Also adjust spatial output dims
+        new_output_dims = [
+            self.num_filters, 
+            self.input_dims[1] - sz[0] + 1 + self._npads[2]+self._npads[3], 
+            1, 
+            self.input_dims[3] - sz[2] + 1 + self._npads[0]+self._npads[1]]
+        if not self.is1D:
+            new_output_dims[2] = self.input_dims[2] - sz[1] + 1 + self._npads[4]+self._npads[5]
         
-        self.output_dims[-1] = self.input_dims[-1] - self.filter_dims[-1] + 1 + npad
-        self.output_dims = self.output_dims # annoying fix for the num_outputs dependency on all output_dims values being updated
+        self.output_dims = new_output_dims
+        #self.output_dims = self.output_dims # annoying fix for the num_outputs dependency on all output_dims values being updated
 
     def forward(self, x):
 
@@ -535,9 +609,9 @@ class TconvLayer(ConvLayer):
 
             w = w.view(self.filter_dims + [self.num_filters]).permute(4,0,1,2,3) # [C,H,W,T,N]->[N,C,H,W,T]
             s = x.view([-1] + self.input_dims) # [B,C*W*H*T]->[B,C,W,H,T]
-            
+
             if self.padding:
-                s = F.pad(s, self.padding, "constant", 0)
+                s = F.pad(s, self._npads, "constant", 0)
 
             y = F.conv3d(
                 s,
@@ -552,7 +626,7 @@ class TconvLayer(ConvLayer):
         if self.NL is not None:
             y = self.NL(y)
         
-        if self.ei_mask is not None:
+        if self._ei_mask is not None:
             y = y * self._ei_mask[None,:,None,None,None]
         
         y = y.reshape((-1, self.num_outputs))
@@ -567,7 +641,7 @@ class TconvLayer(ConvLayer):
             time_reverse=time_reverse)
 
     @classmethod
-    def layer_dict(cls, **kwargs):
+    def layer_dict(cls, padding='spatial', conv_dims=None, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -576,9 +650,10 @@ class TconvLayer(ConvLayer):
         -- Other values will be given their defaults
         """
 
-        Ldict = super().layer_dict(**kwargs)
+        Ldict = super().layer_dict(padding=padding, **kwargs)
         # Added arguments
         Ldict['layer_type'] = 'tconv'
+        Ldict['conv_dims'] = conv_dims
         return Ldict
     # END [classmethod] TconvLayer.layer_dict
 
