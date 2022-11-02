@@ -37,9 +37,7 @@ class LagLayer(NDNLayer):
 
         # These dims are processed by filter, and must match between stimulus and filter dims
         self.num_lags = num_lags
-        output_dims = self.output_dims  # this automatically sets num_outputs as well
-        output_dims[3] = self.input_dims[3]-num_lags+1
-        self.output_dims = output_dims
+        self.output_dims[3] = self.input_dims[3]-num_lags+1
         self.num_folded_dims = np.prod(filter_dims[:3])
     #END LagLayer.__init__
 
@@ -64,7 +62,7 @@ class LagLayer(NDNLayer):
         if self._ei_mask is not None:
             y = y * self._ei_mask[None,:,None]
         
-        y = y.reshape((-1, self.num_outputs))
+        y = y.reshape((-1, np.prod(self.output_dims)))
 
         return y
     #END LagLayer.forward
