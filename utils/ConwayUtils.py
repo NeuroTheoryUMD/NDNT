@@ -341,19 +341,67 @@ def saccade_detect( ets, blinks=None, min_sac_interval=100, T=4000, trial_edge=8
     return Csacs, Camps
 
 
-def trial_saccade_display( tr, ets, sacc_ts, sacc_amps=None ):
+def trial_saccade_display( tr, ets, sacc_ts, sacc_amps=None, T=4000 ):
     """# Trial display with saccades for high-res eye traces"""
-    a = np.where((sacc_ts >= tr*4000) & (sacc_ts < (tr+1)*4000))[0]
-    ts = sacc_ts[a]-tr*4000
+    dt = 4.0/T  # convert to units of time assuming trial is 4 sec
+    a = np.where((sacc_ts >= tr*T) & (sacc_ts < (tr+1)*T))[0]
+    ts = sacc_ts[a]-tr*T
     if sacc_amps is not None:
         print('Amplitudes:', np.sqrt(sacc_amps[a]))
     for ii in range(ets.shape[1]//2):
         DU.ss()
-        plt.plot(np.arange(4000)*0.001, ets[tr*4000+np.arange(4000),2*ii], 'g' )
-        plt.plot(np.arange(4000)*0.001, ets[tr*4000+np.arange(4000),2*ii+1], 'c' )
+        plt.plot(np.arange(T)*dt, ets[tr*T+np.arange(T),2*ii], 'g' )
+        plt.plot(np.arange(T)*dt, ets[tr*T+np.arange(T),2*ii+1], 'c' )
         ys = plt.ylim()
         for ii in range(len(a)):
-            plt.plot(np.ones(2)*ts[ii]*0.001, ys,'r--')
+            plt.plot(np.ones(2)*ts[ii]*dt, ys,'r--')
         plt.xlim([0, 4])
         plt.ylim(ys)
         plt.show()
+
+
+### DISPLAY
+def display_cnn( cnnP ):
+    cnnP.plot_filters()
+    w1 = cnnP.networks[0].layers[1].get_weights()
+    wOUT = cnnP.networks[1].layers[0].get_weights()
+
+    if len(w1.shape) > 4:  # then has lag dims too
+        NF, fw, fw2, NL, NS = w1.shape
+    else:
+        NF, fw, fw2, NS = w1.shape
+        NL = 0
+    
+    DU.ss(NS, NF, rh=16/NF)
+    for ii in range(NS):
+        m = np.max(abs(w1[..., ii]))
+
+        if NL > 0:
+            # find best lag
+            lag = np.argmax(np.var(w1[..., ii].reshape([-1, NL]),axis=0))
+            for ff in range(NF):
+                plt.subplot(NS, NF, NF*ii+ff+1)
+                DU.imagesc(w1[ff, :,:, lag, ii], max=m)
+                if ff == 0:
+                  plt.ylabel("Lag = %d"%lag)
+        else:     
+            for ff in range(NF):
+                plt.subplot(NS, NF, NF*ii+ff+1)
+                DU.imagesc(w1[ff, :,:, ii], max=m)
+    plt.show()
+
+    DU.ss(1,1,rh=3)
+    DU.imagesc(wOUT.T)
+    Nlvls = len(cnnP.networks[0].layers)
+    LVLws = np.zeros(Nlvls)
+    cnt = 0
+    for ll in range(len(cnnP.networks[0].layers)):
+        nsubs = cnnP.networks[0].layers[ll].weight.data.shape[1]
+        LVLws[ll] = np.sum( abs(wOUT[np.arange(nsubs)+cnt, :]) )
+        cnt += nsubs
+        if ll < Nlvls-1:
+            plt.plot([-0.5, wOUT.shape[1]-0.5], [cnt-0.5, cnt-0.5], 'r')
+    plt.colorbar()
+    plt.show()
+
+    print(LVLws/np.sum(LVLws))
