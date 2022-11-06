@@ -275,7 +275,7 @@ class ScaffoldNetwork(FFnetwork):
         s += self.__class__.__name__
         return s
 
-    def __init__(self, scaffold_levels=None, **kwargs):
+    def __init__(self, scaffold_levels=None, num_lags_out=1, **kwargs):
         """
         This essentially used the constructor for Point1DGaussian, with dicationary input.
         Currently there is no extra code required at the network level. I think the constructor
@@ -283,6 +283,8 @@ class ScaffoldNetwork(FFnetwork):
         """
         super().__init__(**kwargs)
         self.network_type = 'scaffold'
+
+        self.num_lags_out = num_lags_out
 
         num_layers = len(self.layers)
         if scaffold_levels is None:
@@ -306,7 +308,7 @@ class ScaffoldNetwork(FFnetwork):
             self.filter_count[ii] = self.layers[self.scaffold_levels[ii]].output_dims[0]
 
         # Construct output dimensions
-        self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [1]
+        self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [self.num_lags_out]
     # END ScaffoldNetwork.__init__
 
     def forward(self, inputs):
@@ -318,10 +320,11 @@ class ScaffoldNetwork(FFnetwork):
 
         for layer in self.layers:
             x = layer(x)
-            if layer.output_dims[3] > 1:
+            nt = x.shape[0]
+            if layer.output_dims[3] > self.num_lags_out:
                 # Need to return just first lag (lag0) -- 'chomp'
-                y = x.reshape([-1, np.prod(layer.output_dims[:3]), layer.output_dims[3]])[:, :, 0]
-                out.append(y)
+                y = x.reshape([nt, -1, layer.output_dims[3]])[..., :(self.num_lags_out)]
+                out.append( y.reshape((nt, -1) ))
             else:
                 out.append(x)
         
@@ -329,10 +332,11 @@ class ScaffoldNetwork(FFnetwork):
     # END ScaffoldNetwork.forward()
 
     @classmethod
-    def ffnet_dict( cls, scaffold_levels=None, **kwargs):
+    def ffnet_dict( cls, scaffold_levels=None, num_lags_out=1, **kwargs):
         ffnet_dict = super().ffnet_dict(**kwargs)
         ffnet_dict['ffnet_type'] = 'scaffold'
         ffnet_dict['scaffold_levels'] = scaffold_levels
+        ffnet_dict['num_lags_out'] = num_lags_out
         return ffnet_dict
 
 

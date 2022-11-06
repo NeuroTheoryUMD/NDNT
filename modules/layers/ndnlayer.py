@@ -223,7 +223,9 @@ class NDNLayer(nn.Module):
         # Apply positive constraints
         if self.pos_constraint:
             #w = torch.maximum(self.weight, self.minval)
-            w = torch.square(self.weight)
+            #w = torch.square(self.weight)
+            w = self.weight.clamp(min=0)
+            # note this is instead of w = self.weight.clamp(min=0)
         else:
             w = self.weight
         # Add normalization
