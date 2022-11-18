@@ -520,27 +520,27 @@ class TconvLayer(ConvLayer):
         #else:
         #    npad = value[0]+value[1]
 
-        if self.is1D:
-            if padding == 'valid':
-                self.padding = 0
-            elif padding == 'same':
-                self.padding = (self.filter_dims[-1]-1, 0,
-                    self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
-        else:
-            # Checks to ensure cuda-bug with large convolutional filters is not activated #2
-            assert self.filter_dims[2] < self.input_dims[2], "Filter widths must be smaller than input dims."
-            if padding == 'valid':
-                self.padding = 0
-            elif padding == 'same':
-                self.padding = (self.filter_dims[-1]-1, 0,
-                    self.filter_dims[1]//2,
-                    (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
-                    self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
-            elif padding == 'spatial':
-                self.padding = (0, 0,
-                    self.filter_dims[1]//2,
-                    (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
-                    self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
+        # if self.is1D:
+        #     if padding == 'valid':
+        #         self.padding = 0
+        #     elif padding == 'same':
+        #         self.padding = (self.filter_dims[-1]-1, 0,
+        #             self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
+        # else:
+        #     # Checks to ensure cuda-bug with large convolutional filters is not activated #2
+        #     assert self.filter_dims[2] < self.input_dims[2], "Filter widths must be smaller than input dims."
+        #     if padding == 'valid':
+        #         self.padding = 0
+        #     elif padding == 'same':
+        #         self.padding = (self.filter_dims[-1]-1, 0,
+        #             self.filter_dims[1]//2,
+        #             (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+        #             self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
+        #     elif padding == 'spatial':
+        #         self.padding = (0, 0,
+        #             self.filter_dims[1]//2,
+        #             (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+        #             self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
 
 
 
@@ -563,7 +563,8 @@ class TconvLayer(ConvLayer):
             self._fullpadding = self.filter_dims[1]%2 == 0
         else:
             if self._padding == 'valid':
-                self._npads = 0 #(0, 0, 0, 0, 0, 0)
+                self._npads = (0, 0, 0, 0, 0, 0)
+                
             elif self._padding == 'same':
                 assert self.stride == 1, "Warning: 'same' padding not yet implemented when stride > 1"
                 self._npads = (self.filter_dims[-1]-1, 0,
