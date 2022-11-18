@@ -61,7 +61,7 @@ class NDNLayer(nn.Module):
             filter_dims=None,
             NLtype:str='lin',
             norm_type:int=0,
-            pos_constraint=False,
+            pos_constraint=0,
             num_inh:int=0,
             bias:bool=False,
             weights_initializer:str='xavier_uniform',
@@ -200,8 +200,11 @@ class NDNLayer(nn.Module):
         else:
             print('weights initializer not defined')
 
-        if self.pos_constraint:
+        if self.pos_constraint>0:
             self.weight.data = abs(self.weight)
+        elif self.pos_constraint<0:
+            self.weight.data = -abs(self.weight)
+
         if self.norm_type == 1:
             self.weight.data = F.normalize( self.weight.data, dim=0 ) / self.weight_scale   
 
@@ -221,10 +224,12 @@ class NDNLayer(nn.Module):
 
     def preprocess_weights(self):
         # Apply positive constraints
-        if self.pos_constraint:
+        if self.pos_constraint>0:
             #w = torch.maximum(self.weight, self.minval)
             #w = torch.square(self.weight)
             w = self.weight.clamp(min=0)
+        elif self.pos_constraint<0:
+            w = self.weight.clamp(max=0)
             # note this is instead of w = self.weight.clamp(min=0)
         else:
             w = self.weight
