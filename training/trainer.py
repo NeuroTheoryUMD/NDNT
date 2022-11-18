@@ -452,9 +452,15 @@ class LBFGSTrainer(Trainer):
                 val_loader = train_loader
                 
             if isinstance(val_loader, dict):
-                for dsub in val_loader:
-                    val_loader[dsub] = val_loader[dsub].to(self.device)
+                # for dsub in val_loader:
+                #     val_loader[dsub] = val_loader[dsub].to(self.device)
+                
+                # copy the model to the validation set device
+                dsubs = list(val_loader.keys())
+                self.model.to(val_loader[dsubs[0]].device)
                 out = self.model.validation_step(val_loader)
+                # copy the model back
+                self.model.to(self.device)
             else:
                 out = self.validate_one_epoch(val_loader)
                 if np.isnan(out['val_loss']):
