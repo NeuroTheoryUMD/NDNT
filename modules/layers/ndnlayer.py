@@ -328,8 +328,12 @@ class NDNLayer(nn.Module):
         ws = self.get_weights(time_reverse=time_reverse)
         
         if self.input_dims[2] == 1:
-            from NDNT.utils import plot_filters_ST1D
-            plot_filters_ST1D(ws, **kwargs)
+            if self.input_dims[1] == 1:
+                from NDNT.utils import plot_filters_1D
+                plot_filters_1D(ws, **kwargs)
+            else:
+                from NDNT.utils import plot_filters_ST1D
+                plot_filters_ST1D(ws, **kwargs)
         else:
             if self.input_dims[0] == 1:
                 from NDNT.utils import plot_filters_ST2D
