@@ -609,13 +609,13 @@ class TconvLayer(ConvLayer):
         else:
 
             w = w.view(self.filter_dims + [self.num_filters]).permute(4,0,1,2,3) # [C,H,W,T,N]->[N,C,H,W,T]
-            s = x.view([-1] + self.input_dims) # [B,C*W*H*T]->[B,C,W,H,T]
+            x = x.view([-1] + self.input_dims) # [B,C*W*H*T]->[B,C,W,H,T]
 
             if self.padding:
-                s = F.pad(s, self._npads, "constant", 0)
+                x = F.pad(x, self._npads, "constant", 0)
 
             y = F.conv3d(
-                s,
+                x,
                 w, 
                 bias=self.bias,
                 stride=self.stride, dilation=self.dilation)
@@ -630,7 +630,7 @@ class TconvLayer(ConvLayer):
         if self._ei_mask is not None:
             y = y * self._ei_mask[None,:,None,None,None]
         
-        y = y.reshape((-1, self.num_outputs))
+        y = y.view((-1, self.num_outputs))
 
         return y
     #END TconvLayer.forward
