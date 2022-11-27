@@ -11,6 +11,7 @@ from .create_reg_matrices import *
 from .NDNutils import *
 
 # Plot functions used by the NDN
+from .plotting import plot_filters_1D
 from .plotting import plot_filters_ST1D
 from .plotting import plot_filters_ST2D
 from .plotting import plot_filters_ST3D
