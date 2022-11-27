@@ -187,6 +187,7 @@ class Regularization(nn.Module):
                         'glocalt': LocalityReg,
                         'localx': LocalityReg,
                         'localt': LocalityReg,
+                        'trd': LocalityReg,
                         'local': Tikhanov,
                         'glocal': Tikhanov,
                         'max': Tikhanov,
@@ -235,7 +236,7 @@ class LocalityReg(RegModule):
     def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, **kwargs):
         """Constructor for LocalityReg class"""
 
-        _valid_reg_types = ['localx', 'localt', 'glocalx', 'glocalt']
+        _valid_reg_types = ['localx', 'localt', 'glocalx', 'glocalt', 'trd']
         assert reg_type in _valid_reg_types, '{} is not a valid Locality Reg type'.format(reg_type)
 
         super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
@@ -306,6 +307,14 @@ class LocalityReg(RegModule):
             rpen = torch.einsum('cxytn,tw->wn', w, self.localt_pen)
             rpen = torch.einsum('tn,cxytn->n', rpen, w)
         
+        elif self.reg_type == 'trd':
+            
+            # penalty on time
+            w = weights.reshape(self.input_dims + [-1])**2
+
+            rpen = torch.einsum('cxytn,tw->wn', w, self.trd_pen)
+            rpen = torch.einsum('tn,cxytn->n', rpen, w)
+        
         return rpen
     # END LocalityReg.compute_reg_penalty
 
@@ -321,6 +330,9 @@ class LocalityReg(RegModule):
 
         elif self.reg_type == 'glocalt' or self.reg_type == 'localt':
             self.register_buffer('localt_pen',((torch.arange(self.input_dims[3])-torch.arange(self.input_dims[3])[:,None])**2).float()/self.input_dims[3]**2)
+        
+        elif self.reg_type == 'trd':
+            self.register_buffer('trd_pen', (torch.sqrt(torch.arange(self.input_dims[3])**2+torch.arange(self.input_dims[3])[:,None]**2)).float()/self.input_dims[3]**2)
 
 class DiagonalReg(RegModule):
     """ Regularization module for diagonal penalties"""
