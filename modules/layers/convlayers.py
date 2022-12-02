@@ -32,6 +32,7 @@ class ConvLayer(NDNLayer):
             stride=None,
             dilation=1,
             padding='same',
+            window=None,
             folded_lags=False,
             **kwargs,
             ):
@@ -73,6 +74,7 @@ class ConvLayer(NDNLayer):
         for ii in [1,2]:
             if filter_dims[ii]%2 != 1: print("ConvDim %d should be odd."%ii) 
                 
+        self.window = False
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         self.tent_basis = None
         if temporal_tent_spacing is not None and temporal_tent_spacing > 1:
@@ -179,6 +181,14 @@ class ConvLayer(NDNLayer):
                 #self.output_norm = nn.BatchNorm2d(self.folded_dims, affine=False)
         else:
             self.output_norm = None
+
+        if window is not None:
+            if window == 'hamming':
+                win=np.hamming(filter_dims[1])
+                self.register_buffer('window_function', torch.tensor(np.outer(win,win)).type(torch.float32))
+                self.window = True
+            else:
+                print("ConvLayer: unrecognized window")
     # END ConvLayer.__init__
 
     ## This is now defined in NDNLayer so inherited -- applies to all NDNLayer children
@@ -345,12 +355,18 @@ class ConvLayer(NDNLayer):
     
     def preprocess_weights(self):
         w = super().preprocess_weights()
+        if self.window:
+            w = w.view(self.filter_dims+[self.num_filters]) # [C, H, W, T, D]
+            w = torch.einsum('chwln, hw->chwln', w, self.window_function)
+            w = w.reshape(-1, self.num_filters)
+
         if self.tent_basis is not None:
             wdims = self.tent_basis.shape[0]
             
             w = w.view(self.filter_dims[:3] + [wdims] + [-1]) # [C, H, W, T, D]
             w = torch.einsum('chwtn,tz->chwzn', w, self.tent_basis)
             w = w.reshape(-1, self.num_filters)
+        
         return w
 
     def forward(self, x):
