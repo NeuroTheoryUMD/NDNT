@@ -10,15 +10,14 @@ class Trainer:
     '''
     This is the most basic trainer. There are fancier things we could add (hooks, callbacks, etc.), but I don't understand them well enough yet.
     '''
-    def __init__(self, model=None, optimizer=None, scheduler=None,
+    def __init__(self, optimizer=None, scheduler=None,
             device=None,
             optimize_graph=False,
             dirpath=os.path.join('.', 'checkpoints'),
-            num_gpus=None,
             version=None,
             max_epochs=100,
             early_stopping=None,
-            log_activations=True,
+            log_activations=False,
             scheduler_after='batch',
             scheduler_metric=None,
             accumulate_grad_batches=1,
@@ -71,24 +70,15 @@ class Trainer:
             version = max_version + 1
 
         self.dirpath = os.path.join(dirpath, "version%d" % version)
-        if num_gpus:
-            if num_gpus > 1:
-                self.multi_gpu = True
-            else:
-                self.multi_gpu = False
-        else:
-            self.multi_gpu = False
         self.early_stopping = early_stopping
 
         # ensure_dir(self.dirpath)
-        
         if device is None:
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.device = device
         self.logger = SummaryWriter(log_dir=self.dirpath, comment="version%d" % version) # use tensorboard to keep track of experiments
         self.version = version
-        self.model = model # initialize model attribute
         self.epoch = 0
         self.max_epochs = max_epochs
         self.n_iter = 0
@@ -102,24 +92,20 @@ class Trainer:
 
     def fit(self, model, train_loader, val_loader, seed=None):
         
-        self.model = model # can we just assign this here? --> makes it look more like the way lightning trainer is called (with model passed into fit)
-
-        self.prepare_fit(seed=seed)
-        # Print Model Summary: has to happen after model is moved to device
-        # _ = ModelSummary(self.model, train_loader.dataset[0]['stim'].shape, batch_size=train_loader.batch_size, device=self.device, dtypes=None)
+        model = self.prepare_fit(model, seed=seed)
 
         # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
         try:            
-            self.fit_loop(self.max_epochs, train_loader, val_loader)
+            self.fit_loop(model, self.max_epochs, train_loader, val_loader)
             
         except KeyboardInterrupt: # user aborted training
             
-            self.graceful_exit()
+            self.graceful_exit(model)
             return
 
-        self.graceful_exit()
+        self.graceful_exit(model)
 
-    def prepare_fit(self, seed=None):
+    def prepare_fit(self, model, seed=None):
         '''
         This is called before fit_loop, and is used to set up the model and optimizer.
         '''
@@ -152,19 +138,14 @@ class Trainer:
             torch.manual_seed(seed)
             torch.cuda.manual_seed(seed)
         
-        # if more than one device, use parallel training
-        if torch.cuda.device_count() > 1 and self.multi_gpu:
-            if self.verbose > 0:
-                print("Using", torch.cuda.device_count(), "GPUs!") # this should be specified in requewstee
-            # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
-            self.model = nn.DataParallel(self.model)
-        
-        self.model.to(self.device) # move model to device
+        model = model.to(self.device) # move model to device
 
         self.optimizer.zero_grad() # set gradients to zero
 
+        return model
+
     
-    def fit_loop(self, epochs, train_loader, val_loader):
+    def fit_loop(self, model, epochs, train_loader, val_loader):
         
         self.nbatch = len(train_loader)
 
@@ -184,7 +165,7 @@ class Trainer:
                 return hook_fn
 
             # Hook the activations
-            for name, layer in self.model.named_modules():
+            for name, layer in model.named_modules():
                 if 'NL' in name or 'reg' in name or 'loss' in name:
                     continue
 
@@ -195,11 +176,11 @@ class Trainer:
         for epoch in range(epochs):
             self.epoch += 1
             # train one epoch
-            out = self.train_one_epoch(train_loader, self.epoch)
+            out = self.train_one_epoch(model, train_loader, self.epoch)
             self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], self.epoch)
             train_loss = out['train_loss']
             if np.isnan(train_loss):
-                break
+                self.graceful_exit(model)
 
             if self.log_activations:
                 for name in self.logged_parameters:
@@ -228,7 +209,7 @@ class Trainer:
 
             # validate every epoch
             if self.epoch % 1 == 0:
-                out = self.validate_one_epoch(val_loader)
+                out = self.validate_one_epoch(model, val_loader)
                 if out['val_loss'] < self.val_loss_min:
                     is_best=True
                 else:
@@ -249,7 +230,7 @@ class Trainer:
                         self.scheduler.step(step_metric)
             
             # checkpoint
-            self.checkpoint_model(self.epoch, is_best=is_best)
+            self.checkpoint_model(model, self.epoch, is_best=is_best)
 
             # callbacks: e.g., early stopping
             if self.early_stopping:
@@ -259,11 +240,11 @@ class Trainer:
                         print("Early stopping")
                     break
 
-    def validate_one_epoch(self, val_loader):
+    def validate_one_epoch(self, model, val_loader):
         # validation step for one epoch
 
         # bring models to evaluation mode
-        self.model.eval()
+        model.eval()
         runningloss = 0
         nsteps = len(val_loader)
         if self.verbose > 1:
@@ -280,10 +261,7 @@ class Trainer:
                     if data[dsub].device != self.device:
                         data[dsub] = data[dsub].to(self.device)
                 
-                if isinstance(self.model, nn.DataParallel):
-                    out = self.model.module.validation_step(data)
-                else:
-                    out = self.model.validation_step(data)
+                out = model.validation_step(data)
 
                 runningloss += out['val_loss'].item()
 
@@ -292,12 +270,12 @@ class Trainer:
 
         return {'val_loss': runningloss/nsteps}
             
-    def train_one_epoch(self, train_loader, epoch=0):
+    def train_one_epoch(self, model, train_loader, epoch=0):
         # train for one epoch
         
         assert not self.use_closure, "Trainer: LBFGS and LBFGSNew are supported by LBFGSTrainer"
         
-        self.model.train() # set model to training mode
+        model.train() # set model to training mode
 
         runningloss = 0
         if self.verbose == 2:
@@ -309,7 +287,7 @@ class Trainer:
         for batch_idx, data in enumerate(pbar):
             
             # handle optimization step
-            out = self.train_one_step(data, batch_idx=batch_idx)
+            out = self.train_one_step(model, data, batch_idx=batch_idx)
 
             if self.use_gpu:
                 torch.cuda.empty_cache()
@@ -324,7 +302,7 @@ class Trainer:
         return {'train_loss': runningloss/(batch_idx + 1)} # should this be an aggregate out?
 
 
-    def train_one_step(self, data, batch_idx=None):
+    def train_one_step(self, model, data, batch_idx=None):
         
         # Data to device if it's not already there
         if self.use_gpu:
@@ -332,10 +310,8 @@ class Trainer:
                 if data[dsub].device != self.device:
                     data[dsub] = data[dsub].to(self.device)
 
-        if isinstance(self.model, nn.DataParallel):
-            out = self.model.module.training_step(data)
-        else:
-            out = self.model.training_step(data)
+        
+        out = model.training_step(data)
         
         self.n_iter += 1
         self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
@@ -366,11 +342,9 @@ class Trainer:
         
         return {'train_loss': loss.detach().item()}
     
-    def checkpoint_model(self, epoch=None, is_best=False):
-        if isinstance(self.model, nn.DataParallel):
-            state = self.model.module.state_dict()
-        else:
-            state = self.model.state_dict()
+    def checkpoint_model(self, model, epoch=None, is_best=False):
+        
+        state = model.state_dict()
         
         if epoch is None:
             epoch = self.epoch
@@ -384,20 +358,17 @@ class Trainer:
 
         save_checkpoint(cpkt, os.path.join(self.dirpath, 'model_checkpoint.ckpt'), is_best=is_best)
     
-    def graceful_exit(self):
+    def graceful_exit(self, model):
         if self.verbose > 0:
             print("Done fitting")
         # to run upon keybord interrupt
-        self.checkpoint_model() # save checkpoint
-
-        if isinstance(self.model, nn.DataParallel):
-            self.model = self.model.module # get the non-data-parallel model
+        self.checkpoint_model(model) # save checkpoint
 
         if self.device.type == 'cuda':
-            self.model.cpu()
+            model.cpu()
             torch.cuda.empty_cache()
 
-        self.model.eval()
+        model.eval()
 
         if self.log_activations:
             for hook in self.hooks:
@@ -405,13 +376,13 @@ class Trainer:
 
         # save model
         try:
-            torch.save(self.model, os.path.join(self.dirpath, 'model.pt'))
+            torch.save(model, os.path.join(self.dirpath, 'model.pt'))
         except:
-            torch.save({'state_dict': self.model.state_dict()}, os.path.join(self.dirpath, 'model.pt'))
+            torch.save({'state_dict': model.state_dict()}, os.path.join(self.dirpath, 'model.pt'))
 
         # log final value of loss along with hyperparameters
         defopts = dict()
-        defopts['model'] = self.model.__class__.__name__
+        defopts['model'] = model.__class__.__name__
         defopts['optimizer'] = self.optimizer.__class__.__name__
         defopts.update(self.optimizer.defaults)
         newopts = dict()
@@ -440,21 +411,26 @@ class LBFGSTrainer(Trainer):
         self.fullbatch = full_batch
     
     def fit(self, model, train_loader, val_loader=None, seed=None):
-        
-        self.model = model # can we just assign this here? --> makes it look more like the way lightning trainer is called (with model passed into fit)
 
-        self.prepare_fit(seed=seed)
+        self.prepare_fit(model, seed=seed)
 
         if isinstance(train_loader, dict):
             ''' fit entire dataset at once'''
-            self.fit_data_dict(train_loader)
+            self.fit_data_dict(model, train_loader)
+
             if val_loader is None:
                 val_loader = train_loader
                 
             if isinstance(val_loader, dict):
-                for dsub in val_loader:
-                    val_loader[dsub] = val_loader[dsub].to(self.device)
-                out = self.model.validation_step(val_loader)
+                # for dsub in val_loader:
+                #     val_loader[dsub] = val_loader[dsub].to(self.device)
+                
+                # copy the model to the validation set device
+                dsubs = list(val_loader.keys())
+                model = model.to(val_loader[dsubs[0]].device)
+                out = model.validation_step(val_loader)
+                # copy the model back
+                model = model.to(self.device)
             else:
                 out = self.validate_one_epoch(val_loader)
                 if np.isnan(out['val_loss']):
@@ -470,16 +446,16 @@ class LBFGSTrainer(Trainer):
 
             # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
             try:            
-                self.fit_loop(self.max_epochs, train_loader, val_loader)
+                self.fit_loop(model, self.max_epochs, train_loader, val_loader)
                 
             except KeyboardInterrupt: # user aborted training
                 
-                self.graceful_exit()
+                self.graceful_exit(model)
                 return
 
-        self.graceful_exit()
+        self.graceful_exit(model)
 
-    def fit_data_dict(self, train_data):
+    def fit_data_dict(self, model, train_data):
         "fit data that is provided in a dictionary"
         for dsub in train_data:
             train_data[dsub] = train_data[dsub].to(self.device)
@@ -489,7 +465,7 @@ class LBFGSTrainer(Trainer):
             self.optimizer.zero_grad(set_to_none=self.set_to_none)
             loss = torch.zeros(1, device=self.device)
 
-            out = self.model.training_step(train_data)
+            out = model.training_step(train_data)
             loss = out['loss']
             if np.isnan(loss.item()):
                 return loss
@@ -509,10 +485,10 @@ class LBFGSTrainer(Trainer):
         return {'train_loss': loss}
         
         
-    def train_one_epoch(self, train_loader, epoch=0):
+    def train_one_epoch(self, model, train_loader, epoch=0):
         # train for one epoch
         
-        self.model.train() # set model to training mode
+        model.train() # set model to training mode
 
         self.iter = 1
         max_iter = self.optimizer.param_groups[0]['max_iter']
@@ -539,7 +515,7 @@ class LBFGSTrainer(Trainer):
                             if data[dsub].device != self.device:
                                 data[dsub] = data[dsub].to(self.device)
 
-                    out = self.model.training_step(data)
+                    out = model.training_step(data)
                     if torch.isnan(out['loss']):
                         break
                     loss += out['loss']

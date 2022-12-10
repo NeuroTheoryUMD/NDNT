@@ -32,6 +32,7 @@ class ConvLayer(NDNLayer):
             stride=None,
             dilation=1,
             padding='same',
+            window=None,
             folded_lags=False,
             **kwargs,
             ):
@@ -73,6 +74,7 @@ class ConvLayer(NDNLayer):
         for ii in [1,2]:
             if filter_dims[ii]%2 != 1: print("ConvDim %d should be odd."%ii) 
                 
+        self.window = False
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         self.tent_basis = None
         if temporal_tent_spacing is not None and temporal_tent_spacing > 1:
@@ -179,6 +181,14 @@ class ConvLayer(NDNLayer):
                 #self.output_norm = nn.BatchNorm2d(self.folded_dims, affine=False)
         else:
             self.output_norm = None
+
+        if window is not None:
+            if window == 'hamming':
+                win=np.hamming(filter_dims[1])
+                self.register_buffer('window_function', torch.tensor(np.outer(win,win)).type(torch.float32))
+                self.window = True
+            else:
+                print("ConvLayer: unrecognized window")
     # END ConvLayer.__init__
 
     ## This is now defined in NDNLayer so inherited -- applies to all NDNLayer children
@@ -345,12 +355,18 @@ class ConvLayer(NDNLayer):
     
     def preprocess_weights(self):
         w = super().preprocess_weights()
+        if self.window:
+            w = w.view(self.filter_dims+[self.num_filters]) # [C, H, W, T, D]
+            w = torch.einsum('chwln, hw->chwln', w, self.window_function)
+            w = w.reshape(-1, self.num_filters)
+
         if self.tent_basis is not None:
             wdims = self.tent_basis.shape[0]
             
             w = w.view(self.filter_dims[:3] + [wdims] + [-1]) # [C, H, W, T, D]
             w = torch.einsum('chwtn,tz->chwzn', w, self.tent_basis)
             w = w.reshape(-1, self.num_filters)
+        
         return w
 
     def forward(self, x):
@@ -520,27 +536,27 @@ class TconvLayer(ConvLayer):
         #else:
         #    npad = value[0]+value[1]
 
-        if self.is1D:
-            if padding == 'valid':
-                self.padding = 0
-            elif padding == 'same':
-                self.padding = (self.filter_dims[-1]-1, 0,
-                    self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
-        else:
-            # Checks to ensure cuda-bug with large convolutional filters is not activated #2
-            assert self.filter_dims[2] < self.input_dims[2], "Filter widths must be smaller than input dims."
-            if padding == 'valid':
-                self.padding = 0
-            elif padding == 'same':
-                self.padding = (self.filter_dims[-1]-1, 0,
-                    self.filter_dims[1]//2,
-                    (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
-                    self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
-            elif padding == 'spatial':
-                self.padding = (0, 0,
-                    self.filter_dims[1]//2,
-                    (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
-                    self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
+        # if self.is1D:
+        #     if padding == 'valid':
+        #         self.padding = 0
+        #     elif padding == 'same':
+        #         self.padding = (self.filter_dims[-1]-1, 0,
+        #             self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
+        # else:
+        #     # Checks to ensure cuda-bug with large convolutional filters is not activated #2
+        #     assert self.filter_dims[2] < self.input_dims[2], "Filter widths must be smaller than input dims."
+        #     if padding == 'valid':
+        #         self.padding = 0
+        #     elif padding == 'same':
+        #         self.padding = (self.filter_dims[-1]-1, 0,
+        #             self.filter_dims[1]//2,
+        #             (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+        #             self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
+        #     elif padding == 'spatial':
+        #         self.padding = (0, 0,
+        #             self.filter_dims[1]//2,
+        #             (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
+        #             self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
 
 
 
@@ -563,7 +579,8 @@ class TconvLayer(ConvLayer):
             self._fullpadding = self.filter_dims[1]%2 == 0
         else:
             if self._padding == 'valid':
-                self._npads = 0 #(0, 0, 0, 0, 0, 0)
+                self._npads = (0, 0, 0, 0, 0, 0)
+                
             elif self._padding == 'same':
                 assert self.stride == 1, "Warning: 'same' padding not yet implemented when stride > 1"
                 self._npads = (self.filter_dims[-1]-1, 0,
@@ -608,13 +625,13 @@ class TconvLayer(ConvLayer):
         else:
 
             w = w.view(self.filter_dims + [self.num_filters]).permute(4,0,1,2,3) # [C,H,W,T,N]->[N,C,H,W,T]
-            s = x.view([-1] + self.input_dims) # [B,C*W*H*T]->[B,C,W,H,T]
+            x = x.view([-1] + self.input_dims) # [B,C*W*H*T]->[B,C,W,H,T]
 
             if self.padding:
-                s = F.pad(s, self._npads, "constant", 0)
+                x = F.pad(x, self._npads, "constant", 0)
 
             y = F.conv3d(
-                s,
+                x,
                 w, 
                 bias=self.bias,
                 stride=self.stride, dilation=self.dilation)
@@ -629,7 +646,7 @@ class TconvLayer(ConvLayer):
         if self._ei_mask is not None:
             y = y * self._ei_mask[None,:,None,None,None]
         
-        y = y.reshape((-1, self.num_outputs))
+        y = y.view((-1, self.num_outputs))
 
         return y
     #END TconvLayer.forward
