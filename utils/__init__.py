@@ -18,4 +18,3 @@ from .plotting import plot_filters_ST3D
 
 # Dan-specific utilities
 from .DanUtils import *
-from .ConwayUtils import *
