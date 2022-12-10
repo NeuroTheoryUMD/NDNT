@@ -296,6 +296,7 @@ class FixationLayer(NDNLayer):
             num_spatial_dims=2,
             #input_dims=None,  # this has to be set to [1,1,1,1] by default
             batch_sample=False,
+            fix_n_index=False,
             #init_mu_range=0.1,
             init_sigma=0.3,
             single_sigma=False,
@@ -314,7 +315,7 @@ class FixationLayer(NDNLayer):
 
         super().__init__(
             num_filters = num_spatial_dims,
-            filter_dims = [num_fixations, 1, 1, 1],
+            filter_dims = [1, num_fixations, 1, 1],
             NLtype = NLtype,
             bias=bias,
             **kwargs)
@@ -326,7 +327,8 @@ class FixationLayer(NDNLayer):
         self.batch_sample = batch_sample
         self.init_sigma = init_sigma
         self.single_sigma = single_sigma
-        
+        self.fix_n_index = fix_n_index
+
         # shared sigmas across all fixations
         if self.single_sigma:
             self.sigmas = Parameter(torch.Tensor(self.num_spatial_dims)) 
@@ -410,6 +412,7 @@ class FixationLayer(NDNLayer):
         del Ldict['bias']
         # Added arguments
         Ldict['batch_sample'] = True
+        Ldict['fix_n_index'] = False
         Ldict['init_mu_range'] = 0.1
         Ldict['init_sigma'] = init_sigma
         Ldict['single_sigma'] = False

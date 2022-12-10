@@ -373,6 +373,8 @@ class NDNLayer(nn.Module):
 
         # Check that input_dims are four-dimensional: otherwise assume filter_dimension missing, and lags
         if input_dims is not None:
+            if len(input_dims) == 1:
+                input_dims = [1] + input_dims + [1, 1]
             if len(input_dims) == 2:
                 input_dims = [1] + input_dims + [1]
             elif len(input_dims) == 3:
