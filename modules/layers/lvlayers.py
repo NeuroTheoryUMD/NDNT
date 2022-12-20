@@ -54,7 +54,7 @@ class LVLayer(NDNLayer):
             raise ValueError("either init_mu_range doesn't belong to [0.0, 1.0] or init_sigma_range is non-positive")
         
         # position grid shape
-        self.grid_shape = (1, 1, 1, self.numLVs)
+        #self.grid_shape = (1, 1, 1, self.numLVs)
 
         # initialize means and spreads
         self.sigma = Parameter(torch.Tensor(*self.sigma_shape))
@@ -66,9 +66,11 @@ class LVLayer(NDNLayer):
         self.sm_skips = []
         self.sample = True
 
+        # In case normalizing 
+        self.weight_scale = 100.0/self.nt  # average magnitude will be 0.1 over each LV
+
         # Currently will not use positive-contraint: should use nonlin=ReLu instead
         assert not self.pos_constraint, "LVLayer: should implement positive constraints through nonlinearity"
-        assert self.norm_type == 0, "LVLayer: normalization is not currently implemented"
     # END LVLayer.__init__
             
     def forward(self, x):
@@ -77,8 +79,9 @@ class LVLayer(NDNLayer):
             x: time-indices of LVs
             z: output LVs
         """
-        #assert x is None, "LVLayer: note this currently takes no input"
-        # Ignore input x -- 
+
+        # Will normalize LVs if useful
+        mus = self.preprocess_weights()
 
         # Sample (adapted from grid_sample)
         with torch.no_grad():
@@ -90,7 +93,7 @@ class LVLayer(NDNLayer):
         #mus = self.weight[:, None, None, :]
         nt = x.shape[0]
         assert torch.max(x) < self.nt, "LVLayer: not enough LVs"
-        x = x[:,0].detach().numpy().astype(np.int32)
+        x = x[:,0].detach().cpu().numpy().astype(np.int32)
 
         grid_shape = (nt, self.numLVs)
         if self.sample:
@@ -99,9 +102,9 @@ class LVLayer(NDNLayer):
             norm = self.weight.new(*grid_shape).zero_()  # for consistency and CUDA capability
 
         if self.sigma_shape[0] == 1:
-            z = norm * self.sigma + self.weight[x, :]
+            z = norm * self.sigma + mus[x, :]
         else:
-            z = norm * self.sigma[x, :] + self.weight[x, :]
+            z = norm * self.sigma[x, :] + mus[x, :]
 
         if self.NL is not None:
             z = self.NL(z)
@@ -111,7 +114,7 @@ class LVLayer(NDNLayer):
 
     @classmethod
     def layer_dict(cls, 
-        num_time_pnts=None, init_mu=0.5, init_sigma=1.0, 
+        num_time_pnts=None, init_mu=0.5, init_sigma=1.0,
         num_lvs=1, sigma_shape='lv', **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
@@ -125,7 +128,6 @@ class LVLayer(NDNLayer):
         Ldict['layer_type'] = 'LVlayer'
         # delete standard layer info for purposes of constructor
         #del Ldict['input_dims']
-        del Ldict['norm_type']
         del Ldict['weights_initializer']
         del Ldict['bias_initializer']
         del Ldict['initialize_center']
