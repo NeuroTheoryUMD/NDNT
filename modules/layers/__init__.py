@@ -7,3 +7,4 @@ from .timelayers import TimeLayer
 from .dimlayers import Dim0Layer
 from .dimlayers import ChannelLayer
 from .laglayers import LagLayer
+from .lvlayers import LVLayer

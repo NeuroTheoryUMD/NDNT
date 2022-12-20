@@ -19,6 +19,7 @@ LayerTypes = {
     'time': layers.TimeLayer,
     'dim0': layers.Dim0Layer,
     'channel': layers.ChannelLayer,
+    'LVlayer': layers.LVLayer
     # 'external': layers.ExternalLayer,    
 }
 
