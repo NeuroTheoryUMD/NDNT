@@ -160,6 +160,28 @@ def fold_sample( num_items, folds=5, random_gen=False, which_fold=None):
     return val_items, rem_items
 
 
+# Generic time-embedding
+def time_embedding( stim, nlags ):
+    """Assume all stim dimensions are flattened into single dimension. 
+    Will only act on self.stim if 'stim' argument is left None
+    Copied from SensoryBase"""
+
+    tmp_stim = deepcopy(stim)
+    NT = stim.shape[0]
+    original_dims = None
+    if len(tmp_stim.shape) != 2:
+        original_dims = tmp_stim.shape
+        print( "  Time embed: flattening stimulus from", original_dims)
+    tmp_stim = tmp_stim.reshape([NT, -1])  # automatically generates 2-dimensional stim
+
+    # Actual time-embedding itself
+    tmp_stim = tmp_stim[np.arange(NT)[:,None]-np.arange(nlags), :]
+    tmp_stim = np.transpose( tmp_stim, (0,2,1) ).reshape([NT, -1])
+
+    return tmp_stim
+# END time_embedding()
+
+
 def design_matrix_drift( NT, anchors, zero_left=True, zero_right=False, const_right=False, to_plot=False):
     """Produce a design matrix based on continuous data (s) and anchor points for a tent_basis.
     Here s is a continuous variable (e.g., a stimulus) that is function of time -- single dimension --
