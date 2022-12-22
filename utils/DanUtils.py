@@ -1,5 +1,4 @@
 import numpy as np
-import scipy.io as sio
 from copy import deepcopy
 import NDNT.utils.NDNutils as NDNutils
 import matplotlib.pyplot as plt
@@ -171,7 +170,8 @@ def time_embedding( stim, nlags ):
     original_dims = None
     if len(tmp_stim.shape) != 2:
         original_dims = tmp_stim.shape
-        print( "  Time embed: flattening stimulus from", original_dims)
+        if len(tmp_stim.shape) > 2:
+            print( "  Time embed: flattening stimulus from", original_dims)
     tmp_stim = tmp_stim.reshape([NT, -1])  # automatically generates 2-dimensional stim
 
     # Actual time-embedding itself
@@ -400,7 +400,8 @@ def monocular_data_import( datadir, exptn, time_shift=1, num_lags=20):
     block_output determines whether to fit using block info, or used_inds info (derived from blocks)
     num_lags is for purposes of used_inds
     """
-    
+    import scipy.io as sio
+
     l_files_to_use = np.add(list(range(16)), 1)  # good laminar-probe experiments
     u_files_to_use = [1, 2, 5, 6, 12]  # good utah-array experiments
     assert exptn <= len(l_files_to_use)+len(u_files_to_use), 'Expt number too high.'
