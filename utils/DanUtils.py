@@ -160,26 +160,21 @@ def fold_sample( num_items, folds=5, random_gen=False, which_fold=None):
 
 
 # Generic time-embedding
-def time_embedding( stim, nlags ):
-    """Assume all stim dimensions are flattened into single dimension. 
-    Will only act on self.stim if 'stim' argument is left None
-    Copied from SensoryBase"""
+def time_embedding_simple( stim, nlags ):
+    """Simple time embedding: takes the stim and time-embeds with nlags
+    If stim is multi-dimensional, it flattens. This is a numpy function"""
 
-    tmp_stim = deepcopy(stim)
-    NT = stim.shape[0]
-    original_dims = None
-    if len(tmp_stim.shape) != 2:
-        original_dims = tmp_stim.shape
-        if len(tmp_stim.shape) > 2:
-            print( "  Time embed: flattening stimulus from", original_dims)
-    tmp_stim = tmp_stim.reshape([NT, -1])  # automatically generates 2-dimensional stim
+    if len(stim.shape) == 1:
+        stim = stim[:, None]
+    NT, num_dims = stim.shape
+    tmp_stim = deepcopy(stim).reshape([NT, -1])  # automatically generates 2-dimensional stim
 
-    # Actual time-embedding itself
-    tmp_stim = tmp_stim[np.arange(NT)[:,None]-np.arange(nlags), :]
-    tmp_stim = np.transpose( tmp_stim, (0,2,1) ).reshape([NT, -1])
-
-    return tmp_stim
-# END time_embedding()
+    X = np.zeros([NT, num_dims, nlags], dtype=np.float32)
+    X[:, :, 0] = tmp_stim
+    for ii in range(1, nlags):
+        X[ii:, :, ii] = tmp_stim[:(-ii),:]
+    return X.reshape([NT, -1])
+# END time_embedding_simple()
 
 
 def design_matrix_drift( NT, anchors, zero_left=True, zero_right=False, const_right=False, to_plot=False):
