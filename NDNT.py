@@ -93,6 +93,7 @@ class NDN(nn.Module):
         if optimizer_params is None:
             optimizer_params = create_optimizer_params()
         self.opt_params = optimizer_params
+        self.speckled_flag = False
     # END NDN.__init__
 
     def assemble_ffnetworks(self, ffnet_list, external_nets=None):
@@ -172,7 +173,11 @@ class NDN(nn.Module):
     def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
      
         y = batch['robs']
-        dfs = batch['dfs']
+
+        if self.speckled_flag:
+            dfs = batch['dfs'] * batch['Mtrn']
+        else:
+            dfs = batch['dfs']
 
         y_hat = self(batch)
 
@@ -186,7 +191,11 @@ class NDN(nn.Module):
     def validation_step(self, batch, batch_idx=None):
         
         y = batch['robs']
-        dfs = batch['dfs']
+
+        if self.speckled_flag:
+            dfs = batch['dfs'] * batch['Mval']
+        else:
+            dfs = batch['dfs']
 
         y_hat = self(batch)
         loss = self.val_loss(y_hat, y, dfs)
@@ -404,6 +413,7 @@ class NDN(nn.Module):
         dataset,
         train_inds=None,
         val_inds=None,
+        speckledXV=False,
         seed=None, # this currently seed for data AND optimization
         save_dir:str=None,
         version:int=None,
@@ -435,18 +445,25 @@ class NDN(nn.Module):
         name = self.model_name
 
         # Determine train_inds and val_inds: read from dataset if not specified, or warn
-        if train_inds is None:
-            # check dataset itself
-            if hasattr(dataset, 'train_inds'):
-                if dataset.train_inds is not None:
-                    train_inds = dataset.train_inds
-                if dataset.val_inds is not None:
-                    val_inds = dataset.val_inds
-            else:
-                train_inds = range(len(dataset))
-                if 'verbose' in kwargs.keys():
-                    if kwargs['verbose'] > 0:
-                        print( "Warning: no train_inds specified. Using full dataset passed in.")
+        self.speckled_flag = speckledXV  # This determines training/test loop
+        if speckledXV:
+            assert train_inds is None, "SPECKLED: no train_inds"
+            assert val_inds is None, "SPECKLED: no val_inds"
+            train_inds = range(len(dataset))
+            val_inds = range(len(dataset))
+        else:
+            if train_inds is None:
+                # check dataset itself
+                if hasattr(dataset, 'train_inds'):
+                    if dataset.train_inds is not None:
+                        train_inds = dataset.train_inds
+                    if dataset.val_inds is not None:
+                        val_inds = dataset.val_inds
+                else:
+                    train_inds = range(len(dataset))
+                    if 'verbose' in kwargs.keys():
+                        if kwargs['verbose'] > 0:
+                            print( "Warning: no train_inds specified. Using full dataset passed in.")
 
         if force_dict_training:
             batch_size = len(train_inds)
@@ -646,7 +663,7 @@ class NDN(nn.Module):
     # otherwise not initializing biases, even if desired
 
     def eval_models(
-        self, data, data_inds=None, bits=False, null_adjusted=True,
+        self, data, data_inds=None, bits=False, null_adjusted=True, speckledXV=False, train_val=1,
         batch_size=1000, num_workers=0, **kwargs ):
         '''
         get null-adjusted log likelihood (if null_adjusted = True)
@@ -666,8 +683,14 @@ class NDN(nn.Module):
             m0 = self.to(dev0)
             yhat = m0(data)
             y = data['robs']
-            dfs = data['dfs']
-
+            if speckledXV:
+                if train_val == 1:
+                    dfs = data['Mval']*data['dfs']
+                else:
+                    dfs = data['Mtrn']*data['dfs']
+            else:
+                dfs = data['dfs']
+            
             if 'poisson' in m0.loss_type:
                 loss = m0.loss_module.lossNR
             else:
@@ -717,10 +740,18 @@ class NDN(nn.Module):
                         data_sample[dsub] = data_sample[dsub].to(d)
                 with torch.no_grad():
                     pred = self(data_sample)
+                    if speckledXV:
+                        if train_val == 1:
+                            dfs = data_sample['dfs']*data_sample['Mval']
+                        else:
+                            dfs = data_sample['dfs']*data_sample['Mtrn']
+                    else:
+                        dfs = data_sample['dfs']
+                    
                     LLsum += self.loss_module.unit_loss( 
-                        pred, data_sample['robs'], data_filters=data_sample['dfs'], temporal_normalize=False)
+                        pred, data_sample['robs'], data_filters=dfs, temporal_normalize=False)
                     Tsum += torch.sum(data_sample['dfs'], axis=0)
-                    Rsum += torch.sum(torch.mul(data_sample['dfs'], data_sample['robs']), axis=0)
+                    Rsum += torch.sum(torch.mul(dfs, data_sample['robs']), axis=0)
             LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
 
             # Null-adjust
