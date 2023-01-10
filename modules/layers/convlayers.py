@@ -185,7 +185,10 @@ class ConvLayer(NDNLayer):
         if window is not None:
             if window == 'hamming':
                 win=np.hamming(filter_dims[1])
-                self.register_buffer('window_function', torch.tensor(np.outer(win,win)).type(torch.float32))
+                if self.is1D:
+                    self.register_buffer('window_function', torch.tensor(win).type(torch.float32))
+                else:
+                    self.register_buffer('window_function', torch.tensor(np.outer(win,win)).type(torch.float32))
                 self.window = True
             else:
                 print("ConvLayer: unrecognized window")
@@ -346,6 +349,7 @@ class ConvLayer(NDNLayer):
         Ldict['filter_dims'] = filter_dims
         Ldict['temporal_tent_spacing'] = 1
         Ldict['output_norm'] = None
+        Ldict['window'] = None  # could be 'hamming'
         Ldict['stride'] = 1
         Ldict['dilation'] = 1
         Ldict['padding'] = padding
@@ -357,7 +361,10 @@ class ConvLayer(NDNLayer):
         w = super().preprocess_weights()
         if self.window:
             w = w.view(self.filter_dims+[self.num_filters]) # [C, H, W, T, D]
-            w = torch.einsum('chwln, hw->chwln', w, self.window_function)
+            if self.is1D:
+                w = torch.einsum('chwln, h->chwln', w, self.window_function)
+            else:
+                w = torch.einsum('chwln, hw->chwln', w, self.window_function)
             w = w.reshape(-1, self.num_filters)
 
         if self.tent_basis is not None:

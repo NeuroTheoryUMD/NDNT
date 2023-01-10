@@ -13,11 +13,13 @@ LayerTypes = {
     'divnorm': layers.DivNormLayer,
     'tconv': layers.TconvLayer,
     'stconv': layers.STconvLayer,
+    'biconv': layers.BiConvLayer1D,
     'readout': layers.ReadoutLayer,
     'fixation': layers.FixationLayer,
     'lag': layers.LagLayer,
     'time': layers.TimeLayer,
     'dim0': layers.Dim0Layer,
+    'dimSP': layers.DimSPLayer,
     'channel': layers.ChannelLayer,
     'LVlayer': layers.LVLayer
     # 'external': layers.ExternalLayer,    
@@ -81,7 +83,7 @@ class FFnetwork(nn.Module):
                 if ll == 0:
                     self.layer_list[ll]['input_dims'] = deepcopy(self.input_dims)
                 else:
-                    self.layer_list[ll]['input_dims'] = self.layers[ll-1].output_dims
+                    self.layer_list[ll]['input_dims'] = deepcopy(self.layers[ll-1].output_dims)
             Ltype = self.layer_list[ll]['layer_type']
             self.layers.append( LayerTypes[Ltype](**self.layer_list[ll]) )
 

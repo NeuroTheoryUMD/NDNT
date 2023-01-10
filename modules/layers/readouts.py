@@ -163,7 +163,7 @@ class ReadoutLayer(NDNLayer):
                 #return (norm * self.sigma + self.mu).clamp(-1,1)
                 return (norm[:,:,:,None] * self.sigma[None, :, None, :] + self.mu[None, :, None, :]).clamp(-1,1) 
             else:
-                return (torch.einsum('ancd,bnid->bnic', self.sigma[None, :, None, :], norm) + self.mu[None, :, None, :]).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
+                return (torch.einsum('ancd,bnid->bnic', self.sigma[None, :, None, :]**2, norm) + self.mu[None, :, None, :]).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
     # END ReadoutLayer.sample_grid() 
 
     def passive_readout(self):

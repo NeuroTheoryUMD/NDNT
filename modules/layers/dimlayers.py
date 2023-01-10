@@ -166,3 +166,81 @@ class ChannelLayer(NDNLayer):
 
         return y 
     # END ChannelLayer.forward
+
+
+class DimSPLayer(NDNLayer):
+    """
+    Filters that act solely on spatial-dimensions (dims-1,3)
+
+    """ 
+
+    def __init__(self,
+            input_dims=None,
+            num_filters=None,
+            **kwargs,
+        ):
+
+        assert input_dims is not None, "DimSPLayer: Must specify input_dims"
+        assert np.prod(input_dims[1:3]) > 1, "DimSPLayer: Spatial dims of input must be non-trivial"
+        assert num_filters is not None, "DimSPLayer: num_filters must be specified"
+        
+        # Put filter weights in time-lag dimension to allow regularization using d2t etc
+        filter_dims = [1, input_dims[1], input_dims[2], 1]
+        assert input_dims[3] == 1, "DimSPLayer: Currently does not work with lags"
+
+        super().__init__(input_dims,
+            num_filters,
+            filter_dims=filter_dims,
+            bias=False,
+            **kwargs)
+
+        self.output_dims = [num_filters*input_dims[0], 1, 1, input_dims[3]]
+        self.num_outputs = np.prod(self.output_dims)
+
+        self.num_sp_dims = input_dims[1]*input_dims[2]
+    # END Dim0Layer.__init__
+
+    def forward(self, x):
+
+        w = self.preprocess_weights()
+
+        # Reshape input to expose spatial dims -- note a lag-dim will screw this up without a permute
+        if self.input_dims[3] == 1:
+            x = x.reshape( [-1, self.input_dims[0], self.num_sp_dims] )
+        else:
+            print("NEED TO RESHAPE, PERMUTE, and RESHAPE")
+        # Simple linear processing of dim0
+        x = torch.matmul(x, w).reshape([-1, self.num_outputs])
+
+        # left over things from NDNLayer forward
+        if self.norm_type == 2:
+            x = x / self.weight_scale
+
+        #x = x + self.bias
+
+        # Nonlinearity
+        if self.NL is not None:
+            x = self.NL(x)
+
+        # Constrain output to be signed
+        if self._ei_mask is not None:
+            x = x * self._ei_mask
+
+        return x 
+    # END DimSPLayer.forward
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        Ldict['layer_type'] = 'dimSP'
+        del Ldict['bias']
+        return Ldict
+    # END [classmethod] DimSPLayer.layer_dict

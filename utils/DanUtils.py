@@ -1,6 +1,7 @@
 import numpy as np
 from copy import deepcopy
 import NDNT.utils.NDNutils as NDNutils
+import NDNT.utils.DanUtils as DU
 import matplotlib.pyplot as plt
 
 
@@ -240,6 +241,32 @@ def max_multiD(k):
         print('havent figured out how to do this number of dimensions yet.')
 
 ## SPECIFIC TO DIFFERENT DATASETS -- to adopt/distribute eventually
+def compute_tfilters( tkerns=None, tfilts=None, mod=None, to_plot=True):
+    """Compute a spatiotemporal filter from temporal kernels convolved with second-layer filter"""
+    if mod is not None:
+        tkerns = mod.get_weights(layer_target=0)
+        filts = mod.get_weights(layer_target=1)
+    else:
+        assert filts is not None, "Cant have everything be none"
+    nlag, ntks = tkerns.shape
+    nfilts = filts.shape[-1]
+    if len(filts.shape) == 2:
+        filts=filts.reshape([ntks,-1, nfilts])
+    else:
+        assert filts.shape[0] == ntks, "Issue with filter shapes"
+    Mfilts = np.einsum('ij,jkl->ikl', tkerns, filts)
+    if to_plot:
+        nrows = (nfilts-1)//8 + 1
+        ncols = np.minimum(nfilts, 8)
+        DU.ss(nrows, ncols, rh=1.5)
+        for ii in range(nfilts):
+            plt.subplot(nrows, ncols, ii+1)
+            imagesc(Mfilts[:,:, ii].T)
+        plt.show()
+    else:
+        return Mfilts
+
+
 def binocular_data_import( datadir, expt_num ):
     """Usage: stim, Robs, DFs, used_inds, Eadd_info = binocular_data_import( datadir, expt_num )
 
