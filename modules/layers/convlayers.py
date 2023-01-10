@@ -362,7 +362,7 @@ class ConvLayer(NDNLayer):
         if self.window:
             w = w.view(self.filter_dims+[self.num_filters]) # [C, H, W, T, D]
             if self.is1D:
-                w = torch.einsum('chwln, h->chwln', w, self.window_function)
+                w = torch.einsum('chwln,h->chwln', w, self.window_function)
             else:
                 w = torch.einsum('chwln, hw->chwln', w, self.window_function)
             w = w.reshape(-1, self.num_filters)
@@ -380,7 +380,6 @@ class ConvLayer(NDNLayer):
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
 
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
-
 
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)
         # puts output_dims first, as required for conv
