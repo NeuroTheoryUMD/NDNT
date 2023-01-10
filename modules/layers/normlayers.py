@@ -45,13 +45,18 @@ class DivNormLayer(NDNLayer):
         
         torch.nn.init.uniform_(self.weight, 0.0, 1.0)
         torch.nn.init.uniform_(self.bias, 0.0, 1.0)
+    
+    def preprocess_weights(self):
+
+        w = super().preprocess_weights()
+
+        return w * self.mask
 
     def forward(self, x):
         # TODO: make if statement for 1-d or 2-d, 3-d indpendent of x, should be specified by a property
 
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
-        w *= self.mask
 
         # Nonlinearity (apply first)
         if self.NL is not None:
