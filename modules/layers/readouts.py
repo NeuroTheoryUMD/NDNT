@@ -181,6 +181,23 @@ class ReadoutLayer(NDNLayer):
         self.set_parameters(val=False)
         self.sample = False
 
+    def get_weights(self, to_reshape=True, time_reverse=None, num_inh=None):
+        """overloaded to read not use preprocess weights but instead use layer property features"""
+
+        assert time_reverse is None, "  READOUT: time_reverse will not work here."
+        assert num_inh is None, "  READOUT: num_inh will not work here."
+        ws = self.features
+        if to_reshape:
+            ws = ws.reshape(self.filter_dims + [self.num_filters]).squeeze()
+        else:
+            ws = ws.squeeze()
+
+        if self.num_filters == 1:
+            # Add singleton dimension corresponding to number of filters
+            ws = ws[..., None]
+    
+        return ws.detach().numpy()
+
     def forward(self, x, shift=None):
         """
         Propagates the input forwards through the readout

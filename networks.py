@@ -66,7 +66,7 @@ class FFnetwork(nn.Module):
         # Establish input dims from the network
         if input_dims_list is None:
             # then pull from first layer
-            assert xstim_n is not None, "If input_dims is not specified, it must be specified in layer-0"
+            assert layer_list[0]['input_dims'] is not None, "If input_dims is not specified, it must be specified in layer-0"
             input_dims_list = [deepcopy(layer_list[0]['input_dims'])]
         
         # Build input_dims from sources
