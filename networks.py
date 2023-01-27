@@ -172,7 +172,9 @@ class FFnetwork(nn.Module):
                     elif self.network_type == 'add': # add inputs
                         x = torch.add( x, inputs[mm].view([-1]+self.input_dims_list[mm]) )
                     elif self.network_type == 'mult': # multiply: (input1) x (1+input2)
-                        x = torch.multiply( x, torch.add(inputs[mm].view([-1]+self.input_dims_list[mm]), 1.0) )
+                        x = torch.multiply(
+                            x, torch.add(inputs[mm].view([-1]+self.input_dims_list[mm]), 1.0).clamp(min=0.0) )
+                        # Make sure multiplication is not negative
                 x = x.view([nt, -1])
         else:
             x = inputs

@@ -36,7 +36,7 @@ class Regularization(nn.Module):
             vals (dict, optional): key-value pairs specifying value for each type of regularization 
             
             Note: to pass in boundary_condition information, use a dict in vals with the values corresponding to
-            particular regularization, e,g., 'BCs':{'d2t':1, 'd2x':0}
+            particular regularization, e,g., 'BCs':{'d2t':1, 'd2x':0} (1=on, 0=off)i4
             
         Raises:
             TypeError: If `input_dims` is not specified
