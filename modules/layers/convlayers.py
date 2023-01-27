@@ -576,9 +576,10 @@ class TconvLayer(ConvLayer):
         if self.is1D:
             if self._padding == 'valid':
                 self._npads = 0
-            elif self._padding == 'same':
-                self._npads = (self.filter_dims[-1]-1, 0,
-                    self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
+            # TODO: delete this 
+            #  elif self._padding == 'same':
+            #    self._npads = (self.filter_dims[-1]-1, 0,
+            #        self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
             elif self._padding == 'spatial':
                 self._npads = (0, 0,
                     self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
@@ -616,11 +617,10 @@ class TconvLayer(ConvLayer):
 
         w = self.preprocess_weights()
         if self.is1D:
-
-            s = x.view([-1] + self.input_dims[:3]) # [B,C,W,T]
-            w = w.view(self.filter_dims[:2] + [self.filter_dims[3]] + [-1]).permute(3,0,1,2) # [C,H,T,N]->[N,C,W,T]
+            w = w.view(self.filter_dims[:2] + [self.filter_dims[3]] + [-1]).permute(3,0,1,2) # [C,H,T,N]->[N,C,H,T]
+            s = x.view([-1] + self.input_dims[:2]+[self.input_dims[3]]) # [B,C,W,T]
             if self.padding:
-                s = F.pad(s, self.padding, "constant", 0)
+                s = F.pad(s, self._npads, "constant", 0)
 
             y = F.conv2d(
                 s,
