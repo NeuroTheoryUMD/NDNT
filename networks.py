@@ -422,6 +422,9 @@ class ReadoutNetwork(FFnetwork):
     def forward(self, inputs):
         """network inputs correspond to output of conv layer, and (if it exists), a shifter""" 
 
+        if not isinstance(inputs, list):
+            inputs = [inputs]
+
         if self.shifter:
             y = self.layers[0](inputs[0], shift=inputs[1])
         else:

@@ -231,7 +231,7 @@ class ReadoutLayer(NDNLayer):
             grid = self.sample_grid(batch_size=N, sample=self.sample)  # sample determines sampling from Gaussian
         else:
             # use one sampled grid_locations for all sample in the batch
-            grid = self.sample_grid(batch_size=1, sample=self.sample).expand(N, outdims, 1, self.num_space.dims)
+            grid = self.sample_grid(batch_size=1, sample=self.sample).expand(N, outdims, 1, self.num_space_dims)
         
         if shift is not None:
             # shifter is run outside the readout forward
