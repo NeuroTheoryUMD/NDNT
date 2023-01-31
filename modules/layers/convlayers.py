@@ -476,17 +476,21 @@ class TconvLayer(ConvLayer):
         assert num_filters is not None, "TConvLayer: num_filters must be specified"
         assert (conv_dims is not None) or (filter_dims is not None), "TConvLayer: conv_dims or filter_dims must be specified"
         
+        # Convoluted way to use either filter_dims or conv_dims
+        if (filter_dims is not None) and (not isinstance(filter_dims, list)):
+            filter_dims = [filter_dims]
         if conv_dims is None:
             conv_dims = filter_dims[1:]
-
         if filter_dims is None:
             filter_dims = [input_dims[0]] + conv_dims
-        else:            
+        else:
             filter_dims[1:] = conv_dims
 
         # All parameters of filter (weights) should be correctly fit in layer_params
-        super().__init__(input_dims,
-            num_filters, conv_dims, padding=padding, **kwargs)
+        super().__init__(
+            input_dims=input_dims, num_filters=num_filters, 
+            filter_dims=filter_dims, padding=padding, output_norm=output_norm, 
+            **kwargs)
 
         self.num_lags = self.input_dims[3]
 
@@ -650,7 +654,10 @@ class TconvLayer(ConvLayer):
             y = self.NL(y)
         
         if self._ei_mask is not None:
-            y = y * self._ei_mask[None,:,None,None,None]
+            if self.is1D:
+                y = y * self._ei_mask[None,:,None,None]
+            else:
+                y = y * self._ei_mask[None,:,None,None,None]
         
         y = y.view((-1, self.num_outputs))
 
