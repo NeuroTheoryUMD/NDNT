@@ -663,7 +663,7 @@ class NDN(nn.Module):
     # otherwise not initializing biases, even if desired
 
     def eval_models(
-        self, data, data_inds=None, bits=False, null_adjusted=True, speckledXV=False, train_val=1,
+        self, data, data_inds=None, bits=False, null_adjusted=False, speckledXV=False, train_val=1,
         batch_size=1000, num_workers=0, **kwargs ):
         '''
         get null-adjusted log likelihood (if null_adjusted = True)
