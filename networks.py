@@ -66,7 +66,7 @@ class FFnetwork(nn.Module):
         # Establish input dims from the network
         if input_dims_list is None:
             # then pull from first layer
-            assert xstim_n is not None, "If input_dims is not specified, it must be specified in layer-0"
+            assert layer_list[0]['input_dims'] is not None, "If input_dims is not specified, it must be specified in layer-0"
             input_dims_list = [deepcopy(layer_list[0]['input_dims'])]
         
         # Build input_dims from sources
@@ -172,7 +172,9 @@ class FFnetwork(nn.Module):
                     elif self.network_type == 'add': # add inputs
                         x = torch.add( x, inputs[mm].view([-1]+self.input_dims_list[mm]) )
                     elif self.network_type == 'mult': # multiply: (input1) x (1+input2)
-                        x = torch.multiply( x, torch.add(inputs[mm].view([-1]+self.input_dims_list[mm]), 1.0) )
+                        x = torch.multiply(
+                            x, torch.add(inputs[mm].view([-1]+self.input_dims_list[mm]), 1.0).clamp(min=0.0) )
+                        # Make sure multiplication is not negative
                 x = x.view([nt, -1])
         else:
             x = inputs
@@ -419,6 +421,9 @@ class ReadoutNetwork(FFnetwork):
 
     def forward(self, inputs):
         """network inputs correspond to output of conv layer, and (if it exists), a shifter""" 
+
+        if not isinstance(inputs, list):
+            inputs = [inputs]
 
         if self.shifter:
             y = self.layers[0](inputs[0], shift=inputs[1])

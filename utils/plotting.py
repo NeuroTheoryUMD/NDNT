@@ -24,10 +24,10 @@ def plot_filters_1D(ws, cmaps='gray', num_cols=8, row_height=2, fix_scale=True, 
     plt.show()
 
 
-def plot_filters_ST1D(ws, cmaps='gray', num_cols=8, row_height=2, fix_scale=True, **kwargs):
+def plot_filters_ST1D(ws, cmaps='gray', num_cols=None, row_height=2, fix_scale=True, **kwargs):
     """function to plot 1-D spatiotemporal filters (so, 2-d images) by passing in weights of multiple filters"""
     num_filters = ws.shape[-1]
-    if num_filters < 8:
+    if num_cols is None:
         num_cols = 8
     num_rows = np.ceil(num_filters/num_cols).astype(int)
     fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)

@@ -476,17 +476,21 @@ class TconvLayer(ConvLayer):
         assert num_filters is not None, "TConvLayer: num_filters must be specified"
         assert (conv_dims is not None) or (filter_dims is not None), "TConvLayer: conv_dims or filter_dims must be specified"
         
+        # Convoluted way to use either filter_dims or conv_dims
+        if (filter_dims is not None) and (not isinstance(filter_dims, list)):
+            filter_dims = [filter_dims]
         if conv_dims is None:
             conv_dims = filter_dims[1:]
-
         if filter_dims is None:
             filter_dims = [input_dims[0]] + conv_dims
-        else:            
+        else:
             filter_dims[1:] = conv_dims
 
         # All parameters of filter (weights) should be correctly fit in layer_params
-        super().__init__(input_dims,
-            num_filters, conv_dims, padding=padding, **kwargs)
+        super().__init__(
+            input_dims=input_dims, num_filters=num_filters, 
+            filter_dims=filter_dims, padding=padding, output_norm=output_norm, 
+            **kwargs)
 
         self.num_lags = self.input_dims[3]
 
@@ -576,9 +580,10 @@ class TconvLayer(ConvLayer):
         if self.is1D:
             if self._padding == 'valid':
                 self._npads = 0
-            elif self._padding == 'same':
-                self._npads = (self.filter_dims[-1]-1, 0,
-                    self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
+            # TODO: delete this 
+            #  elif self._padding == 'same':
+            #    self._npads = (self.filter_dims[-1]-1, 0,
+            #        self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
             elif self._padding == 'spatial':
                 self._npads = (0, 0,
                     self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
@@ -616,11 +621,10 @@ class TconvLayer(ConvLayer):
 
         w = self.preprocess_weights()
         if self.is1D:
-
-            s = x.view([-1] + self.input_dims[:3]) # [B,C,W,T]
-            w = w.view(self.filter_dims[:2] + [self.filter_dims[3]] + [-1]).permute(3,0,1,2) # [C,H,T,N]->[N,C,W,T]
+            w = w.view(self.filter_dims[:2] + [self.filter_dims[3]] + [-1]).permute(3,0,1,2) # [C,H,T,N]->[N,C,H,T]
+            s = x.view([-1] + self.input_dims[:2]+[self.input_dims[3]]) # [B,C,W,T]
             if self.padding:
-                s = F.pad(s, self.padding, "constant", 0)
+                s = F.pad(s, self._npads, "constant", 0)
 
             y = F.conv2d(
                 s,
@@ -650,7 +654,10 @@ class TconvLayer(ConvLayer):
             y = self.NL(y)
         
         if self._ei_mask is not None:
-            y = y * self._ei_mask[None,:,None,None,None]
+            if self.is1D:
+                y = y * self._ei_mask[None,:,None,None]
+            else:
+                y = y * self._ei_mask[None,:,None,None,None]
         
         y = y.view((-1, self.num_outputs))
 

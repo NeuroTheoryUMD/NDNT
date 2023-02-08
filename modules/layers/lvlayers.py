@@ -25,18 +25,20 @@ class LVLayer(NDNLayer):
         init_mu_range=0.5,
         init_sigma=1.0,
         sigma_shape='lv',  # 'full', 'lv' (one sigma for each LV), or 'time' (one sigma for each time)
+        input_dims=[1,1,1,1],  # ignored if not entered, otherwise overwritten
         **kwargs):
 
         assert num_time_pnts is not None, "LVLayer: Must specify num_time_pnts explicitly"
         # Determine whether one- or two-dimensional fixation
-        self.numLVs = num_lvs
-        self.nt = num_time_pnts
 
         super().__init__(
-            filter_dims=[1, 1, 1, self.nt], 
-            num_filters=self.numLVs,
+            input_dims=input_dims, filter_dims=[1, 1, 1, num_time_pnts], 
+            num_filters=num_lvs,
             bias=False, pos_constraint=False,
             **kwargs)
+
+        self.numLVs = num_lvs
+        self.nt = num_time_pnts
 
         # This makes weights NTxnum_dims     
         self.init_mu_range = init_mu_range
@@ -92,7 +94,7 @@ class LVLayer(NDNLayer):
         #sigs = self.sigma[:, None, None, :]
         #mus = self.weight[:, None, None, :]
         nt = x.shape[0]
-        assert torch.max(x) < self.nt, "LVLayer: not enough LVs"
+        #assert torch.max(x) < self.nt, "LVLayer: not enough LVs"
         x = x[:,0].detach().cpu().numpy().astype(np.int32)
 
         grid_shape = (nt, self.numLVs)
