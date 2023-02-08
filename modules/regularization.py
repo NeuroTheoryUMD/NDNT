@@ -181,6 +181,9 @@ class Regularization(nn.Module):
                         'l1': InlineReg,
                         'l2': InlineReg,
                         'norm2': InlineReg,
+                        'norm': InlineReg,
+                        'pos': InlineReg,
+                        'neg': InlineReg,
                         'orth': InlineReg,
                         'bi_t': InlineReg,
                         'glocalx': LocalityReg,
@@ -411,7 +414,7 @@ class DiagonalReg(RegModule):
 class InlineReg(RegModule):
     """ Regularization module for inline penalties"""
     def __init__(self, reg_type=None, reg_val=None, input_dims=None, **kwargs):
-        assert reg_type in ['l1', 'l2', 'norm2', 'orth', 'bi_t'], "{} is not a valid Inline Regularization type".format(reg_type)
+        assert reg_type in ['l1', 'l2', 'norm2', 'norm', 'pos', 'neg', 'orth', 'bi_t'], "{} is not a valid Inline Regularization type".format(reg_type)
         super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, **kwargs)
 
     def compute_reg_penalty(self, weights):
@@ -425,6 +428,14 @@ class InlineReg(RegModule):
         
         elif self.reg_type == 'norm2':  # [custom] convex (I think) soft-normalization regularization
             reg_pen = torch.square( torch.mean(torch.square(weights), dim=0)-1 )
+        
+        elif self.reg_type == 'norm':  # [custom] convex (I think) soft-normalization regularization
+            reg_pen = (weights.norm(dim=0)-1).pow(2).mean()
+        elif self.reg_type == 'pos':  # [custom] soft positive regularization
+            reg_pen = self.relu(-weights).mean()
+
+        elif self.reg_type == 'neg':  # [custom] soft negative regularization
+            reg_pen = self.relu(weights).mean()
 
         elif self.reg_type == 'orth':  # [custom] orthogonal regularization
             w = (weights.T @ weights).abs()
