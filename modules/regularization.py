@@ -432,10 +432,10 @@ class InlineReg(RegModule):
         elif self.reg_type == 'norm':  # [custom] convex (I think) soft-normalization regularization
             reg_pen = (weights.norm(dim=0)-1).pow(2).mean()
         elif self.reg_type == 'pos':  # [custom] soft positive regularization
-            reg_pen = self.relu(-weights).mean()
+            reg_pen = F.relu(-weights).mean()
 
         elif self.reg_type == 'neg':  # [custom] soft negative regularization
-            reg_pen = self.relu(weights).mean()
+            reg_pen = F.relu(weights).mean()
 
         elif self.reg_type == 'orth':  # [custom] orthogonal regularization
             w = (weights.T @ weights).abs()
