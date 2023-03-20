@@ -558,9 +558,11 @@ class NDN(nn.Module):
         self.prepare_regularization()
 
         # Create dataloaders 
+        shuffle_data=True  # no condition when we don't want it shuffled, right?
+
         from torch.utils.data import DataLoader
-        train_dl = DataLoader( train_ds, batch_size=batch_size, num_workers=num_workers) 
-        valid_dl = DataLoader( val_ds, batch_size=batch_size, num_workers=num_workers) 
+        train_dl = DataLoader( train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
+        valid_dl = DataLoader( val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
 
         # Make trainer 
         trainer = self.get_trainer(
@@ -818,23 +820,8 @@ class NDN(nn.Module):
                         data_sample[dsub] = data_sample[dsub].to(d)
                 with torch.no_grad():
                     pred = self(data_sample)
-                    LLsum += self.loss_module.unit_loss( 
-                        pred, data_sample['robs'], data_filters=data_sample['dfs'], temporal_normalize=False)
-                    Tsum += torch.sum(data_sample['dfs'], axis=0)
-                    Rsum += torch.sum(torch.mul(data_sample['dfs'], data_sample['robs']), axis=0)
-            LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
 
-            # Null-adjust
-            if null_adjusted:
-                rbar = torch.divide(Rsum, Tsum.clamp(1))
-                LLnulls = torch.log(rbar)-1
-                LLneuron = -LLneuron - LLnulls 
-        if bits:
-            LLneuron/=np.log(2)
-
-        return LLneuron.detach().cpu().numpy()
-
-
+            return pred  # end of the old method
 
     def get_weights(self, ffnet_target=0, **kwargs):
         """passed down to layer call, with optional arguments conveyed"""
