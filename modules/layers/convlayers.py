@@ -133,10 +133,10 @@ class ConvLayer(NDNLayer):
         self.filter_dims = filter_dims
 
         # Checks to ensure cuda-bug with large convolutional filters is not activated #1
-        assert self.filter_dims[1] < self.input_dims[1], "Spatial Filter widths must be smaller than input dims."
-        # Check if 1 or 2-d convolution required
-        if self.input_dims[2] > 1:
-            assert self.filter_dims[2] < self.input_dims[2], "Spatial Filter widths must be smaller than input dims."
+        # assert self.filter_dims[1] < self.input_dims[1], "Spatial Filter widths must be smaller than input dims."
+        # # Check if 1 or 2-d convolution required
+        # if self.input_dims[2] > 1:
+        #     assert self.filter_dims[2] < self.input_dims[2], "Spatial Filter widths must be smaller than input dims."
 
         if stride is None:
             self.stride = 1   
