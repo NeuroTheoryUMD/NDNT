@@ -9,6 +9,7 @@ import numpy as np # TODO: we can get rid of this and just use torch for math
 import NDNT.metrics.poisson_loss as plosses
 import NDNT.metrics.mse_loss as glosses
 from NDNT.utils import create_optimizer_params
+from NDNT.samplers.experiment_sampler import ExperimentSampler
 
 import NDNT.networks as NDNnetworks
 
@@ -284,6 +285,7 @@ class NDN(nn.Module):
             batch_size=10, 
             num_workers=1,
             is_fixation=False,
+            is_multiexp=False,
             full_batch=False,
             pin_memory=False,
             data_seed=None,
@@ -291,6 +293,9 @@ class NDN(nn.Module):
             **kwargs):
 
         from torch.utils.data import DataLoader, random_split, Subset
+
+        # get the verbose flag if it is provided, default to False if not
+        verbose = kwargs.get('verbose', False)
 
         covariates = list(dataset[0].keys())
         #print('Dataset covariates:', covariates)
@@ -329,6 +334,12 @@ class NDN(nn.Module):
                 torch.utils.data.sampler.SubsetRandomSampler(val_inds),
                 batch_size=batch_size,
                 drop_last=False)
+
+            train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
+            valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
+        elif is_multiexp:
+            train_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=train_inds, shuffle=True, verbose=verbose)
+            val_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=val_inds, shuffle=True, verbose=verbose)
 
             train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
             valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
@@ -564,7 +575,7 @@ class NDN(nn.Module):
         train_dl = DataLoader( train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
         valid_dl = DataLoader( val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
 
-        # Make trainer 
+        # Make trainer
         trainer = self.get_trainer(
             version=version,
             optimizer=optimizer,

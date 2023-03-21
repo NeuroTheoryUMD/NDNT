@@ -2,6 +2,7 @@ from . import modules
 from .modules import layers
 from . import metrics
 from . import training
+from . import samplers
 
 from .modules.regularization import Regularization
 
