@@ -20,6 +20,7 @@ LayerTypes = {
     'time': layers.TimeLayer,
     'dim0': layers.Dim0Layer,
     'dimSP': layers.DimSPLayer,
+    'dimSPT': layers.DimSPTLayer,
     'channel': layers.ChannelLayer,
     'LVlayer': layers.LVLayer
     # 'external': layers.ExternalLayer,    

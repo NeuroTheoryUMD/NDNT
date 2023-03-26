@@ -237,6 +237,13 @@ def max_multiD(k):
         d1best = np.argmax( np.max(k[:,:, d2best], axis=0) )
         d0best = np.argmax( k[:,d1best, d2best] )
         return [d0best, d1best, d2best]
+    elif num_dims == 4:
+        a,b,c,d = k.shape
+        d3best = np.argmax( np.max(np.reshape(k, [a*b*c, d]), axis=0) )
+        d2best = np.argmax( np.max(np.reshape(k[..., d3best], [a*b, c]), axis=0) )
+        d1best = np.argmax( np.max(k[:,:, d2best, d3best], axis=0) )
+        d0best = np.argmax( k[:,d1best, d2best, d3best] )
+        return [d0best, d1best, d2best, d3best]
     else:
         print('havent figured out how to do this number of dimensions yet.')
 
