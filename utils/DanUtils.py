@@ -57,12 +57,12 @@ def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, 
 # END imagesc
 
 
-def find_peaks( x, clearance=10, n_peaks=6, thresh=13.0 ):
+def find_peaks( x, clearance=10, max_peaks=10, thresh=13.0 ):
     """Find maximum of peaks and then get rid of other points around it for plus/minus some amount"""
     y = deepcopy(x)
     rem = np.arange(len(x))
     pks, amps = [], []
-    for counter in range(n_peaks):
+    for counter in range(max_peaks):
         #plt.plot(y,clrs[counter])
         a = rem[np.argmax(y[rem])]
         if y[a] >= thresh:
@@ -102,6 +102,16 @@ def display_matrix( x, prec=3, spacing=4, number_rows=False, number_cols=False )
         for mm in range(b):
             print( s%x[nn, mm], end='')
         print('')
+
+
+def figure_export( fig_handle, filename, bitmap=False, dpi=300):
+    """Usage: figure_export( fig_handle, filename, variable_list, bitmap=False, dpi=300)
+    if bitmap, will use dpi and export as .png. Otherwise will export PDF"""
+
+    if bitmap:
+        fig_handle.savefig( filename, bbox_inches='tight', dpi=dpi, transparent=True )
+    else:
+        fig_handle.savefig( filename, bbox_inches='tight', transparent=True )
 
 
 def matlab_export(filename, variable_list):

@@ -40,9 +40,12 @@ class Dim0Layer(NDNLayer):
 
         # Reshape input to expose dim0 and put last
         x = x.reshape( [-1, self.input_dims[0], self.num_other_dims] ).permute([0, 2, 1])
-
         # Simple linear processing of dim0
         x = torch.matmul(x, w).permute([0, 2, 1]).reshape([-1, self.num_outputs])
+
+        # Einsum version
+        #x = x.view( [-1, self.input_dims[0], self.num_other_dims] )
+        #x = torch.einsum('tcx,cn->tnx', x, w)
 
         # left over things from NDNLayer forward
         if self.norm_type == 2:
@@ -171,19 +174,22 @@ class ChannelLayer(NDNLayer):
 class DimSPLayer(NDNLayer):
     """
     Filters that act solely on spatial-dimensions (dims-1,3)
-
+    transparent=True means that one spatial filter for each channel
     """ 
 
     def __init__(self,
             input_dims=None,
             num_filters=None,
+            transparent=False,
             **kwargs,
         ):
 
         assert input_dims is not None, "DimSPLayer: Must specify input_dims"
         assert np.prod(input_dims[1:3]) > 1, "DimSPLayer: Spatial dims of input must be non-trivial"
         assert num_filters is not None, "DimSPLayer: num_filters must be specified"
-        
+        if transparent:
+            assert input_dims[0]==num_filters, "DimSPLayer: transparency requires correct # of filters"
+
         # Put filter weights in time-lag dimension to allow regularization using d2t etc
         filter_dims = [1, input_dims[1], input_dims[2], 1]
         assert input_dims[3] == 1, "DimSPLayer: Currently does not work with lags"
@@ -194,9 +200,13 @@ class DimSPLayer(NDNLayer):
             bias=False,
             **kwargs)
 
-        self.output_dims = [num_filters*input_dims[0], 1, 1, input_dims[3]]
-        self.num_outputs = np.prod(self.output_dims)
+        self.transparent = transparent
+        if transparent:
+            self.output_dims = [num_filters, 1, 1, input_dims[3]]
+        else:
+            self.output_dims = [num_filters*input_dims[0], 1, 1, input_dims[3]]
 
+        self.num_outputs = np.prod(self.output_dims)
         self.num_sp_dims = input_dims[1]*input_dims[2]
     # END DimSPLayer.__init__
 
@@ -206,11 +216,18 @@ class DimSPLayer(NDNLayer):
 
         # Reshape input to expose spatial dims -- note a lag-dim will screw this up without a permute
         if self.input_dims[3] == 1:
-            x = x.reshape( [-1, self.input_dims[0], self.num_sp_dims] )
+            x = x.view( [-1, self.input_dims[0], self.num_sp_dims] )
         else:
             print("NEED TO RESHAPE, PERMUTE, and RESHAPE")
-        # Simple linear processing of dim0
-        x = torch.matmul(x, w).reshape([-1, self.num_outputs])
+
+        if self.transparent:
+            # One spatial filter for each channel
+            x = torch.einsum('tcx,xc->tc', x, w)
+            #x = torch.sum(torch.multiply(x, w.T), axis=2)
+            #x = torch.diagonal(torch.matmul(x, w), dim1=1, dim2=2)
+        else:
+            # Simple linear processing of dim0
+            x = torch.matmul(x, w).reshape([-1, self.num_outputs])
 
         # left over things from NDNLayer forward
         if self.norm_type == 2:
@@ -230,7 +247,7 @@ class DimSPLayer(NDNLayer):
     # END DimSPLayer.forward
 
     @classmethod
-    def layer_dict(cls, **kwargs):
+    def layer_dict(cls, transparent=False, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -241,6 +258,7 @@ class DimSPLayer(NDNLayer):
 
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'dimSP'
+        Ldict['transparent'] = transparent
         del Ldict['bias']
         return Ldict
     # END [classmethod] DimSPLayer.layer_dict
@@ -254,6 +272,7 @@ class DimSPTLayer(NDNLayer):
     def __init__(self,
             input_dims=None,
             num_filters=None,
+            transparent=False,
             **kwargs,
         ):
 
@@ -272,6 +291,7 @@ class DimSPTLayer(NDNLayer):
 
         self.output_dims = [num_filters*input_dims[0], 1, 1, 1]
         self.num_outputs = np.prod(self.output_dims)
+        self.transparent = transparent
 
         self.num_spt_dims = input_dims[1]*input_dims[2]*input_dims[3]
     # END DimSPLayer.__init__
@@ -304,7 +324,7 @@ class DimSPTLayer(NDNLayer):
     # END DimSPTLayer.forward
 
     @classmethod
-    def layer_dict(cls, **kwargs):
+    def layer_dict(cls, transparent=False, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -315,6 +335,7 @@ class DimSPTLayer(NDNLayer):
 
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'dimSPT'
+        Ldict['transparent'] = transparent
         del Ldict['bias']
         return Ldict
     # END [classmethod] DimSPTLayer.layer_dict
