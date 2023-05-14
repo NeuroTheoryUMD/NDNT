@@ -14,6 +14,8 @@ LayerTypes = {
     'tconv': layers.TconvLayer,
     'stconv': layers.STconvLayer,
     'biconv': layers.BiConvLayer1D,
+    'iter': layers.IterLayer,
+    'iterT': layers.IterTlayer,
     'readout': layers.ReadoutLayer,
     'fixation': layers.FixationLayer,
     'lag': layers.LagLayer,
@@ -24,6 +26,7 @@ LayerTypes = {
     'channel': layers.ChannelLayer,
     'LVlayer': layers.LVLayer
     # 'external': layers.ExternalLayer,    
+    #'res': layers.ResLayer,
 }
 
 _valid_ffnet_types = ['normal', 'add', 'mult', 'readout', 'scaffold']
