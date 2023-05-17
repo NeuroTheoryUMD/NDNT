@@ -6,12 +6,11 @@ from functools import reduce
 
 import numpy as np # TODO: we can get rid of this and just use torch for math
 
-import NDNT.metrics.poisson_loss as plosses
-import NDNT.metrics.mse_loss as glosses
-from NDNT.utils import create_optimizer_params
-from NDNT.samplers.experiment_sampler import ExperimentSampler
+from .metrics import poisson_loss as plosses
+from .metrics import mse_loss as glosses
+from .utils import create_optimizer_params
 
-import NDNT.networks as NDNnetworks
+from . import networks as NDNnetworks
 
 FFnets = {
     'normal': NDNnetworks.FFnetwork,
@@ -285,7 +284,6 @@ class NDN(nn.Module):
             batch_size=10, 
             num_workers=1,
             is_fixation=False,
-            is_multiexp=False,
             full_batch=False,
             pin_memory=False,
             data_seed=None,
@@ -293,9 +291,6 @@ class NDN(nn.Module):
             **kwargs):
 
         from torch.utils.data import DataLoader, random_split, Subset
-
-        # get the verbose flag if it is provided, default to False if not
-        verbose = kwargs.get('verbose', False)
 
         covariates = list(dataset[0].keys())
         #print('Dataset covariates:', covariates)
@@ -334,12 +329,6 @@ class NDN(nn.Module):
                 torch.utils.data.sampler.SubsetRandomSampler(val_inds),
                 batch_size=batch_size,
                 drop_last=False)
-
-            train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
-            valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
-        elif is_multiexp:
-            train_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=train_inds, shuffle=True, verbose=verbose)
-            val_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=val_inds, shuffle=True, verbose=verbose)
 
             train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
             valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
@@ -569,13 +558,11 @@ class NDN(nn.Module):
         self.prepare_regularization()
 
         # Create dataloaders 
-        shuffle_data=True  # no condition when we don't want it shuffled, right?
-
         from torch.utils.data import DataLoader
-        train_dl = DataLoader( train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
-        valid_dl = DataLoader( val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
+        train_dl = DataLoader( train_ds, batch_size=batch_size, num_workers=num_workers) 
+        valid_dl = DataLoader( val_ds, batch_size=batch_size, num_workers=num_workers) 
 
-        # Make trainer
+        # Make trainer 
         trainer = self.get_trainer(
             version=version,
             optimizer=optimizer,
@@ -676,7 +663,7 @@ class NDN(nn.Module):
     # otherwise not initializing biases, even if desired
 
     def eval_models(
-        self, data, data_inds=None, bits=False, null_adjusted=False, speckledXV=False, train_val=1,
+        self, data, data_inds=None, bits=False, null_adjusted=True, speckledXV=False, train_val=1,
         batch_size=1000, num_workers=0, **kwargs ):
         '''
         get null-adjusted log likelihood (if null_adjusted = True)
@@ -831,8 +818,23 @@ class NDN(nn.Module):
                         data_sample[dsub] = data_sample[dsub].to(d)
                 with torch.no_grad():
                     pred = self(data_sample)
+                    LLsum += self.loss_module.unit_loss( 
+                        pred, data_sample['robs'], data_filters=data_sample['dfs'], temporal_normalize=False)
+                    Tsum += torch.sum(data_sample['dfs'], axis=0)
+                    Rsum += torch.sum(torch.mul(data_sample['dfs'], data_sample['robs']), axis=0)
+            LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
 
-            return pred  # end of the old method
+            # Null-adjust
+            if null_adjusted:
+                rbar = torch.divide(Rsum, Tsum.clamp(1))
+                LLnulls = torch.log(rbar)-1
+                LLneuron = -LLneuron - LLnulls 
+        if bits:
+            LLneuron/=np.log(2)
+
+        return LLneuron.detach().cpu().numpy()
+
+
 
     def get_weights(self, ffnet_target=0, **kwargs):
         """passed down to layer call, with optional arguments conveyed"""

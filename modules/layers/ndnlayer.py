@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from torch.nn.parameter import Parameter
 from torch.nn import init
 
-from NDNT.modules.regularization import Regularization
+from .. regularization import Regularization
 from .. activations import NLtypes
 
 from copy import deepcopy
@@ -65,7 +65,6 @@ class NDNLayer(nn.Module):
             num_inh:int=0,
             bias:bool=False,
             weights_initializer:str='xavier_uniform',
-            output_norm=None,
             initialize_center=False,
             bias_initializer:str='zeros',
             reg_vals:dict=None,
@@ -127,20 +126,6 @@ class NDNLayer(nn.Module):
         #    self.ei_mask = None
         #else:
         #    self.register_buffer('ei_mask', torch.cat( (torch.ones(self.num_filters-num_inh), -torch.ones(num_inh))) )
-
-        # check if output normalization is specified
-        #if output_norm in ['batch', 'batchX']:
-        #    if output_norm == 'batchX':
-        #        affine = False
-        #    else:
-        #        affine = True
-        #    if self.filter_dims[2] == 1:
-        #        self.output_norm = nn.BatchNorm1d(self.num_filters, affine=affine)
-        #    else:
-        #        self.output_norm = nn.BatchNorm2d(self.num_filters, affine=affine)
-        #        #self.output_norm = nn.BatchNorm2d(self.folded_dims, affine=False)
-        #else:
-        #    self.output_norm = None
 
         # Set inital weight and bias values
         self.reset_parameters( weights_initializer, bias_initializer )
@@ -267,9 +252,6 @@ class NDNLayer(nn.Module):
 
         x = x + self.bias
 
-        #if self.output_norm is not None:
-        #    x = self.output_norm(x)
-
         # Nonlinearity
         if self.NL is not None:
             x = self.NL(x)
@@ -347,7 +329,7 @@ class NDNLayer(nn.Module):
                 time_reverse = False
             
         ws = self.get_weights(time_reverse=time_reverse)
-
+        
         if self.input_dims[2] == 1:
             if self.input_dims[1] == 1:
                 from NDNT.utils import plot_filters_1D
@@ -421,7 +403,6 @@ class NDNLayer(nn.Module):
             'bias': bias,
             'weights_initializer': 'xavier_uniform',
             'bias_initializer': 'zeros',
-            'output_norm':None,
             'initialize_center': initialize_center,
             'reg_vals': {}
         }
