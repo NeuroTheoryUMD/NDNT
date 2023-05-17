@@ -1,7 +1,7 @@
 import numpy as np
 from copy import deepcopy
-import NDNT.utils.NDNutils as NDNutils
-import NDNT.utils.DanUtils as DU
+from . import NDNutils
+from . import DanUtils as DU
 import matplotlib.pyplot as plt
 
 
@@ -18,10 +18,8 @@ def ss( num_rows=1, num_cols=1, row_height=2.5, rh=None, fighandle=False):
     # Short-hand for subplot_setup with useful defaults for quick usage
     if rh is not None:
         row_height=rh  # really to just save a bit of typing
-    h = subplot_setup(num_rows, num_cols, row_height=row_height, fighandle=fighandle)
-    if fighandle:
-        return h
-    
+    subplot_setup(num_rows, num_cols, row_height=row_height, fighandle=fighandle)
+
 
 def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, axis_labels=True ):
     """Modifications of plt.imshow that choose reasonable defaults"""
@@ -59,12 +57,12 @@ def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, 
 # END imagesc
 
 
-def find_peaks( x, clearance=10, max_peaks=10, thresh=13.0 ):
+def find_peaks( x, clearance=10, n_peaks=6, thresh=13.0 ):
     """Find maximum of peaks and then get rid of other points around it for plus/minus some amount"""
     y = deepcopy(x)
     rem = np.arange(len(x))
     pks, amps = [], []
-    for counter in range(max_peaks):
+    for counter in range(n_peaks):
         #plt.plot(y,clrs[counter])
         a = rem[np.argmax(y[rem])]
         if y[a] >= thresh:
@@ -104,16 +102,6 @@ def display_matrix( x, prec=3, spacing=4, number_rows=False, number_cols=False )
         for mm in range(b):
             print( s%x[nn, mm], end='')
         print('')
-
-
-def figure_export( fig_handle, filename, bitmap=False, dpi=300):
-    """Usage: figure_export( fig_handle, filename, variable_list, bitmap=False, dpi=300)
-    if bitmap, will use dpi and export as .png. Otherwise will export PDF"""
-
-    if bitmap:
-        fig_handle.savefig( filename, bbox_inches='tight', dpi=dpi, transparent=True )
-    else:
-        fig_handle.savefig( filename, bbox_inches='tight', transparent=True )
 
 
 def matlab_export(filename, variable_list):
@@ -249,13 +237,6 @@ def max_multiD(k):
         d1best = np.argmax( np.max(k[:,:, d2best], axis=0) )
         d0best = np.argmax( k[:,d1best, d2best] )
         return [d0best, d1best, d2best]
-    elif num_dims == 4:
-        a,b,c,d = k.shape
-        d3best = np.argmax( np.max(np.reshape(k, [a*b*c, d]), axis=0) )
-        d2best = np.argmax( np.max(np.reshape(k[..., d3best], [a*b, c]), axis=0) )
-        d1best = np.argmax( np.max(k[:,:, d2best, d3best], axis=0) )
-        d0best = np.argmax( k[:,d1best, d2best, d3best] )
-        return [d0best, d1best, d2best, d3best]
     else:
         print('havent figured out how to do this number of dimensions yet.')
 

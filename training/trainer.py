@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm # progress bar
-from NDNT.utils import save_checkpoint, ensure_dir
+from ..utils import save_checkpoint, ensure_dir
 from .lbfgsnew import LBFGSNew
 class Trainer:
     '''

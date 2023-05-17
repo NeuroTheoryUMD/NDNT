@@ -1,7 +1,7 @@
 from copy import deepcopy
 # Access all potential layer information
-from NDNT.modules.layers import *   
-from NDNT.modules.activations import NLtypes
+from ..modules.layers import *   
+from ..modules.activations import NLtypes
 
 #################### CREATE NETWORK PARAMETER-DICTS ####################
 def layer_dict(
