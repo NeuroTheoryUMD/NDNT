@@ -398,6 +398,9 @@ class ConvLayer(NDNLayer):
                 y = self.output_norm(y)
 
         y = torch.reshape(y, (-1, self.num_outputs))
+
+        # store activity regularization to add to loss later
+        self.activity_regularization = self.activity_reg.regularize(y)
         
         return y
     # END ConvLayer.forward
@@ -560,6 +563,9 @@ class TconvLayer(ConvLayer):
         
         y = y.view((-1, self.num_outputs))
 
+        # store activity regularization to add to loss later
+        self.activity_regularization = self.activity_reg.regularize(y)
+
         return y
     #END TconvLayer.forward
 
@@ -689,6 +695,9 @@ class STconvLayer(TconvLayer):
             y = y * self._ei_mask[None,:,None,None,None]
         
         y = y.reshape((-1, self.num_outputs))
+
+        # store activity regularization to add to loss later
+        self.activity_regularization = self.activity_reg.regularize(y)
 
         return y
     # END STconvLayer.forward 
