@@ -1,7 +1,7 @@
 import numpy as np
 from copy import deepcopy
-import NDNT.utils.NDNutils as NDNutils
-import NDNT.utils.DanUtils as DU
+from ..utils import NDNutils
+from ..utils import DanUtils as DU
 import matplotlib.pyplot as plt
 
 

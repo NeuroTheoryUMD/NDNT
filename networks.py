@@ -5,7 +5,7 @@ from torch import nn
 from functools import reduce
 from copy import deepcopy
 
-import NDNT.modules.layers as layers
+from .modules import layers
 
 LayerTypes = {
     'normal': layers.NDNLayer,
