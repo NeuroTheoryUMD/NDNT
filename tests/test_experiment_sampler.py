@@ -1,8 +1,7 @@
 import sys
 sys.path.append('../../') # to have access to NDNT
 
-from NDNT.samplers.experiment_sampler import *
-
+from NDNT.modules.experiment_sampler import *
 
 class TestDataset_withThreeSameExperiments(Dataset):
     def __init__(self):

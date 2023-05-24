@@ -9,7 +9,7 @@ import numpy as np # TODO: we can get rid of this and just use torch for math
 import NDNT.metrics.poisson_loss as plosses
 import NDNT.metrics.mse_loss as glosses
 from NDNT.utils import create_optimizer_params
-from NDNT.samplers.experiment_sampler import ExperimentSampler
+from NDNT.modules.experiment_sampler import ExperimentSampler
 
 import NDNT.networks as NDNnetworks
 

@@ -93,7 +93,9 @@ class Regularization(nn.Module):
                 self.boundary_conditions = deepcopy(reg_val)  # set potential boundary conditions
                 return
             else:
-                raise ValueError('Invalid regularization type ''%s''' % reg_type)
+                print("Regularization: %s not recognized as a valid regularization type" % reg_type)
+                # skip this regularization type
+                return
 
         if reg_val is None:  # then eliminate reg_type
             if reg_type in self.vals:
@@ -176,30 +178,30 @@ class Regularization(nn.Module):
     def get_reg_class(reg_type=None):
 
         reg_index = {'d2xt': ConvReg,
-                        'd2x': ConvReg,
-                        'd2t': ConvReg,
-                        'l1': InlineReg,
-                        'l2': InlineReg,
-                        'norm2': InlineReg,
-                        'norm': InlineReg,
-                        'pos': InlineReg,
-                        'neg': InlineReg,
-                        'orth': InlineReg,
-                        'bi_t': InlineReg,
-                        'glocalx': LocalityReg,
-                        'glocalt': LocalityReg,
-                        'localx': LocalityReg,
-                        'localt': LocalityReg,
-                        'trd': LocalityReg,
-                        'local': Tikhanov,
-                        'glocal': Tikhanov,
-                        'max': Tikhanov,
-                        'max_filt': Tikhanov,
-                        'max_space': Tikhanov,
-                        'center': DiagonalReg,
-                        'edge_t': DiagonalReg,
-                        'edge_x': DiagonalReg,}
-
+                     'd2x': ConvReg,
+                     'd2t': ConvReg,
+                     'l1': InlineReg,
+                     'l2': InlineReg,
+                     'norm2': InlineReg, # weight regularization
+                     'norm': InlineReg,
+                     'pos': InlineReg,
+                     'neg': InlineReg,
+                     'orth': InlineReg,
+                     'bi_t': InlineReg,
+                     'glocalx': LocalityReg,
+                     'glocalt': LocalityReg,
+                     'localx': LocalityReg,
+                     'localt': LocalityReg,
+                     'trd': LocalityReg,
+                     'local': Tikhanov,
+                     'glocal': Tikhanov,
+                     'max': Tikhanov,
+                     'max_filt': Tikhanov,
+                     'max_space': Tikhanov,
+                     'center': DiagonalReg,
+                     'edge_t': DiagonalReg,
+                     'edge_x': DiagonalReg,}
+        
         if reg_type is None:
             ret = reg_index.keys()
         else:
