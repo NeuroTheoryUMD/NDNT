@@ -707,21 +707,22 @@ class STconvLayer(TconvLayer):
     def __init__(self,
         input_dims=None, # [C, W, H, T]
         num_filters=None, # int
-        conv_dims=None, # [w,h,t]
-        filter_dims=None, # [C, w, h, t]
         output_norm=None,
         **kwargs):
+
+        # conv_dims=None, # [w,h,t]
+        # filter_dims=None, # [C, w, h, t]
         
         assert input_dims is not None, "STConvLayer: input_dims must be specified"
         assert num_filters is not None, "STConvLayer: num_filters must be specified"
-        assert (conv_dims is not None) or (filter_dims is not None), "STConvLayer: conv_dims or filter_dims must be specified"
+        # assert (conv_dims is not None) or (filter_dims is not None), "STConvLayer: conv_dims or filter_dims must be specified"
         
-        if conv_dims is None:
-            conv_dims = filter_dims[1:]
+        # if conv_dims is None:
+        #     conv_dims = filter_dims[1:]
 
         # All parameters of filter (weights) should be correctly fit in layer_params
         super().__init__(input_dims,
-            num_filters, conv_dims, output_norm=output_norm, **kwargs)
+            num_filters, output_norm=output_norm, **kwargs)
 
         assert self.input_dims[3] == self.filter_dims[3], "STConvLayer: input_dims[3] must equal filter_dims[3]"
         self.num_lags = self.input_dims[3]
@@ -743,7 +744,7 @@ class STconvLayer(TconvLayer):
             
             if self.padding:
                 # flip order of padding for STconv
-                pad = (self.padding[2], self.padding[3], self.padding[0], self.padding[1])
+                pad = (self._npads[2], self._npads[3], self._npads[0], self._npads[1])
             else:
                 # still need to pad the batch dimension
                 pad = (0,0,self.filter_dims[-1]-1,0)
@@ -763,7 +764,7 @@ class STconvLayer(TconvLayer):
             w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
             
             if self.padding:
-                pad = (self.padding[2], self.padding[3], self.padding[4], self.padding[5], self.padding[0], self.padding[1])
+                pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self._npads[0], self._npads[1])
             else:
                 # still need to pad the batch dimension
                 pad = (0,0,0,0,self.filter_dims[-1]-1,0)
@@ -785,7 +786,7 @@ class STconvLayer(TconvLayer):
         if self.NL is not None:
             y = self.NL(y)
         
-        if self.ei_mask is not None:
+        if self._ei_mask is not None:
             y = y * self._ei_mask[None,:,None,None,None]
         
         y = y.reshape((-1, self.num_outputs))
