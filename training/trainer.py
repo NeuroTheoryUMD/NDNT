@@ -6,6 +6,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm # progress bar
 from NDNT.utils import save_checkpoint, ensure_dir
 from .lbfgsnew import LBFGSNew
+
 class Trainer:
     '''
     This is the most basic trainer. There are fancier things we could add (hooks, callbacks, etc.), but I don't understand them well enough yet.
@@ -548,3 +549,25 @@ class LBFGSTrainer(Trainer):
                 torch.cuda.empty_cache()
 
         return {'train_loss': loss} # should this be an aggregate out?
+
+class TemperatureCalibratedTrainer(Trainer):
+
+    def __init__(self,
+            **kwargs,
+            ):
+
+        super().__init__(**kwargs)
+
+    def validate_one_epoch(self, model, val_loader):
+        # validation step for one epoch
+
+        # bring models to evaluation mode
+        model.eval()
+        assert hasattr(model, 'temperature'), 'Model must have a temperature attribute'
+        assert hasattr(model, 'set_temperature'), 'Model must have a set_temperature method'
+
+        model.temperature.requries_grad = True
+        after_temperature_nll = model.set_temperature(val_loader, self.device)
+        model.temperature.requries_grad = False
+
+        return {'val_loss': after_temperature_nll}

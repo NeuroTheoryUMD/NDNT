@@ -8,8 +8,8 @@ from torch.nn import functional as F
 from torch.nn.parameter import Parameter
 from torch.nn import init
 
-from NDNT.modules.regularization import Regularization
-from NDNT.modules.activity_regularization import ActivityRegularization
+from ...modules.regularization import Regularization
+from ...modules.activity_regularization import ActivityRegularization
 from .. activations import NLtypes
 
 from copy import deepcopy
