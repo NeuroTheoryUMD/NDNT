@@ -507,3 +507,131 @@ class ResLayer(ConvLayer):
     # END ConvLayer.forward
 
 
+class STconvLayer2(TconvLayer):
+    """
+    Spatio-temporal convolutional layer.
+    STConv Layers overload the batch dimension and assume they are contiguous in time.
+
+    Args:
+        input_dims (list of ints): input dimensions [C, W, H, T]
+            This is, of course, not the real input dimensions, because the batch dimension is assumed to be contiguous.
+            The real input dimensions are [B, C, W, H, 1], T specifies the number of lags
+        num_filters (int): number of filters
+        filter_dims (list of ints): filter dimensions [C, w, h, T]
+            w < W, h < H
+        stride (int): stride of convolution
+
+    
+    """ 
+
+    def __init__(self,
+        input_dims=None, # [C, W, H, T]
+        num_lags=None,
+        num_filters=None, # int
+        filter_dims=None, # [C, w, h, t]
+        output_norm=None,
+        **kwargs):
+        
+        assert input_dims is not None, "STConvLayer: input_dims must be specified"
+        assert num_filters is not None, "STConvLayer: num_filters must be specified"
+        assert (conv_dims is not None) or (filter_dims is not None), "STConvLayer: conv_dims or filter_dims must be specified"
+        
+        if conv_dims is None:
+            conv_dims = filter_dims[1:]
+
+        # All parameters of filter (weights) should be correctly fit in layer_params
+        super().__init__(input_dims,
+            num_filters, conv_dims, output_norm=output_norm, **kwargs)
+
+        assert self.input_dims[3] == self.filter_dims[3], "STConvLayer: input_dims[3] must equal filter_dims[3]"
+        self.num_lags = self.input_dims[3]
+        self.input_dims[3] = 1  # take lag info and use for temporal convolution
+        self.output_dims[-1] = 1
+        self.output_dims = self.output_dims # annoying fix for the num_outputs dependency on all output_dims values being updated
+    # END STconvLayer.__init__
+
+    def forward(self, x):
+        # Reshape stim matrix LACKING temporal dimension [bcwh] 
+        # and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        # pytorch likes 3D convolutions to be [B,C,T,W,H].
+        # I benchmarked this and it'sd a 20% speedup to put the "Time" dimension first.
+
+        w = self.preprocess_weights()
+        if self.is1D:
+            s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
+            w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
+            
+            if self.padding:
+                # flip order of padding for STconv
+                pad = (self.padding[2], self.padding[3], self.padding[0], self.padding[1])
+            else:
+                # still need to pad the batch dimension
+                pad = (0,0,self.filter_dims[-1]-1,0)
+
+            s = F.pad(s, pad, "constant", 0)
+            
+            y = F.conv2d(
+                s,
+                w, 
+                bias=self.bias,
+                stride=self.stride, dilation=self.dilation)
+            
+            y = y.permute(2,1,3,0) # [1,N,B,W] -> [B,N,W,1]
+
+        else:
+            s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
+            w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
+            
+            if self.padding:
+                pad = (self.padding[2], self.padding[3], self.padding[4], self.padding[5], self.padding[0], self.padding[1])
+            else:
+                # still need to pad the batch dimension
+                pad = (0,0,0,0,self.filter_dims[-1]-1,0)
+
+            s = F.pad(s, pad, "constant", 0)
+
+            y = F.conv3d(
+                s,
+                w, 
+                bias=self.bias,
+                stride=self.stride, dilation=self.dilation)
+
+            y = y.permute(2,1,3,4,0) # [1,N,B,W,H] -> [B,N,W,H,1]
+        
+        if self.output_norm is not None:
+            y = self.output_norm(y)
+
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+        
+        if self.ei_mask is not None:
+            y = y * self._ei_mask[None,:,None,None,None]
+        
+        y = y.reshape((-1, self.num_outputs))
+
+        return y
+    # END STconvLayer.forward 
+
+    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
+        # Overload plot_filters to automatically time_reverse
+        super().plot_filters( 
+            cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
+            time_reverse=time_reverse)
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'stconv'
+        return Ldict
+    # END [classmethod] STconvLayer.layer_dict
+    
