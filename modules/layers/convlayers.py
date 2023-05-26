@@ -647,16 +647,16 @@ class STconvLayer(TconvLayer):
         if self.is1D:
             s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
             w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
-            
+
             if self.padding:
-                # flip order of padding for STconv
-                pad = (self._npads[2], self._npads[3], self._npads[0], self._npads[1])
+                # flip order of padding for STconv -- last two are temporal padding
+                pad = (self._npads[2], self._npads[3], self.filter_dims[-1]-1, 0)
             else:
                 # still need to pad the batch dimension
                 pad = (0,0,self.filter_dims[-1]-1,0)
 
             s = F.pad(s, pad, "constant", 0)
-            
+
             y = F.conv2d(
                 s,
                 w, 
@@ -669,11 +669,12 @@ class STconvLayer(TconvLayer):
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
             w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
             
-            # if self.padding:
-            #     pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self._npads[0], self._npads[1])
-            # else:
+             if self.padding:
+                 #pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self._npads[0], self._npads[1])
+                 pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
+             else:
                 # still need to pad the batch dimension
-            pad = (0,0,0,0,self.filter_dims[-1]-1,0)
+                pad = (0,0,0,0,self.filter_dims[-1]-1,0)
 
             s = F.pad(s, pad, "constant", 0)
 
@@ -693,7 +694,10 @@ class STconvLayer(TconvLayer):
             y = self.NL(y)
         
         if self._ei_mask is not None:
-            y = y * self._ei_mask[None,:,None,None,None]
+            if self.is1D:
+                y = y * self._ei_mask[None,:,None,None]
+            else:
+                y = y * self._ei_mask[None,:,None,None,None]
         
         y = y.reshape((-1, self.num_outputs))
 

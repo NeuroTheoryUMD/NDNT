@@ -172,7 +172,7 @@ class NDN(nn.Module):
     # END NDNT.forward
 
     def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
-     
+
         y = batch['robs']
 
         if self.speckled_flag:
@@ -728,8 +728,8 @@ class NDN(nn.Module):
                     #    torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
                     #rbar = np.divide(predcnt, Ts)
                     #LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
-                    rbar = np.divide(obscnt, Ts)
-                    LLnulls = np.log(rbar)-1
+                    rbar = np.divide(obscnt, np.maximum(Ts, 1))
+                    LLnulls = np.log(np.maximum(rbar, 1e-6))-1
 
                     LLneuron = -LLneuron - LLnulls             
 

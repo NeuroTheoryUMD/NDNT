@@ -219,7 +219,7 @@ class Trainer:
                 self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
             
             if self.verbose==1:
-                print("Epoch %d: train loss %.4f val loss %.4f" %(self.epoch, train_loss, out['val_loss']))
+                print("Epoch %d: train loss %.6f val loss %.6f" %(self.epoch, train_loss, out['val_loss']))
                 
             # scheduler if scheduler steps at epoch level
             if self.scheduler:
@@ -261,6 +261,9 @@ class Trainer:
                 for dsub in data:
                     if data[dsub].device != self.device:
                         data[dsub] = data[dsub].to(self.device)
+                    if len(data[dsub].shape) > 2:
+                        data[dsub] = data[dsub].flatten(end_dim=1)
+
                 
                 out = model.validation_step(data)
 
@@ -310,8 +313,9 @@ class Trainer:
             for dsub in data:
                 if data[dsub].device != self.device:
                     data[dsub] = data[dsub].to(self.device)
-
-        
+                # if trainer concatentates batches incorrectly --- this is a kluge
+                if len(data[dsub].shape) > 2:
+                    data[dsub] = data[dsub].flatten(end_dim=1)
         out = model.training_step(data)
         
         self.n_iter += 1
