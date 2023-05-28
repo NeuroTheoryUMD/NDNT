@@ -261,8 +261,8 @@ class Trainer:
                 for dsub in data:
                     if data[dsub].device != self.device:
                         data[dsub] = data[dsub].to(self.device)
-                    if len(data[dsub].shape) > 2:
-                        data[dsub] = data[dsub].flatten(end_dim=1)
+                    #if len(data[dsub].shape) > 2:  # kluge to get around collate_fn
+                    #    data[dsub] = data[dsub].flatten(end_dim=1)
 
                 
                 out = model.validation_step(data)
@@ -314,8 +314,8 @@ class Trainer:
                 if data[dsub].device != self.device:
                     data[dsub] = data[dsub].to(self.device)
                 # if trainer concatentates batches incorrectly --- this is a kluge
-                if len(data[dsub].shape) > 2:
-                    data[dsub] = data[dsub].flatten(end_dim=1)
+                #if len(data[dsub].shape) > 2:
+                #    data[dsub] = data[dsub].flatten(end_dim=1) # kluge to get around collate_fn
         out = model.training_step(data)
         
         self.n_iter += 1
@@ -553,6 +553,7 @@ class LBFGSTrainer(Trainer):
                 torch.cuda.empty_cache()
 
         return {'train_loss': loss} # should this be an aggregate out?
+
 
 class TemperatureCalibratedTrainer(Trainer):
 

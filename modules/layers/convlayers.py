@@ -630,7 +630,8 @@ class STconvLayer(TconvLayer):
         super().__init__(input_dims,
             num_filters, output_norm=output_norm, **kwargs)
 
-        assert self.input_dims[3] == self.filter_dims[3], "STConvLayer: input_dims[3] must equal filter_dims[3]"
+        #assert self.input_dims[3] == self.filter_dims[3], "STConvLayer: input_dims[3] must equal filter_dims[3]"    
+        self.input_dims[3] = self.filter_dims[3]  # num_lags for convolution specified in filter_dims (not input_dims)
         self.num_lags = self.input_dims[3]
         self.input_dims[3] = 1  # take lag info and use for temporal convolution
         self.output_dims[-1] = 1
@@ -669,10 +670,10 @@ class STconvLayer(TconvLayer):
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
             w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
             
-             if self.padding:
-                 #pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self._npads[0], self._npads[1])
-                 pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
-             else:
+            if self.padding:
+                #pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self._npads[0], self._npads[1])
+                pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
+            else:
                 # still need to pad the batch dimension
                 pad = (0,0,0,0,self.filter_dims[-1]-1,0)
 
