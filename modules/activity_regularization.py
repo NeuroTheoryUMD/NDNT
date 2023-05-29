@@ -32,11 +32,11 @@ class ActivityRegularization:
         :return: torch.Tensor (regularization loss)
         """
         activity_loss = 0.0
-        if 'activity' in self.reg_vals:
+        if self.reg_vals and 'activity' in self.reg_vals:
             activity_loss = self.activity(layer_output, alpha=self.reg_vals['activity'])
 
         nonneg_loss = 0.0
-        if 'nonneg' in self.reg_vals:
+        if self.reg_vals and 'nonneg' in self.reg_vals:
             nonneg_loss = self.nonneg(layer_output, alpha=self.reg_vals['nonneg'])
 
         return activity_loss + nonneg_loss
