@@ -4,8 +4,9 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm # progress bar
-from NDNT.utils import save_checkpoint, ensure_dir
+from ..utils import save_checkpoint, ensure_dir
 from .lbfgsnew import LBFGSNew
+
 class Trainer:
     '''
     This is the most basic trainer. There are fancier things we could add (hooks, callbacks, etc.), but I don't understand them well enough yet.
@@ -218,7 +219,7 @@ class Trainer:
                 self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
             
             if self.verbose==1:
-                print("Epoch %d: train loss %.4f val loss %.4f" %(self.epoch, train_loss, out['val_loss']))
+                print("Epoch %d: train loss %.6f val loss %.6f" %(self.epoch, train_loss, out['val_loss']))
                 
             # scheduler if scheduler steps at epoch level
             if self.scheduler:
@@ -260,6 +261,9 @@ class Trainer:
                 for dsub in data:
                     if data[dsub].device != self.device:
                         data[dsub] = data[dsub].to(self.device)
+                    #if len(data[dsub].shape) > 2:  # kluge to get around collate_fn
+                    #    data[dsub] = data[dsub].flatten(end_dim=1)
+
                 
                 out = model.validation_step(data)
 
@@ -309,8 +313,9 @@ class Trainer:
             for dsub in data:
                 if data[dsub].device != self.device:
                     data[dsub] = data[dsub].to(self.device)
-
-        
+                # if trainer concatentates batches incorrectly --- this is a kluge
+                #if len(data[dsub].shape) > 2:
+                #    data[dsub] = data[dsub].flatten(end_dim=1) # kluge to get around collate_fn
         out = model.training_step(data)
         
         self.n_iter += 1
@@ -548,3 +553,26 @@ class LBFGSTrainer(Trainer):
                 torch.cuda.empty_cache()
 
         return {'train_loss': loss} # should this be an aggregate out?
+
+
+class TemperatureCalibratedTrainer(Trainer):
+
+    def __init__(self,
+            **kwargs,
+            ):
+
+        super().__init__(**kwargs)
+
+    def validate_one_epoch(self, model, val_loader):
+        # validation step for one epoch
+
+        # bring models to evaluation mode
+        model.eval()
+        assert hasattr(model, 'temperature'), 'Model must have a temperature attribute'
+        assert hasattr(model, 'set_temperature'), 'Model must have a set_temperature method'
+
+        model.temperature.requries_grad = True
+        after_temperature_nll = model.set_temperature(val_loader, self.device)
+        model.temperature.requries_grad = False
+
+        return {'val_loss': after_temperature_nll}

@@ -5,7 +5,7 @@ from torch import nn
 from functools import reduce
 from copy import deepcopy
 
-import NDNT.modules.layers as layers
+from .modules import layers
 
 LayerTypes = {
     'normal': layers.NDNLayer,
@@ -13,7 +13,10 @@ LayerTypes = {
     'divnorm': layers.DivNormLayer,
     'tconv': layers.TconvLayer,
     'stconv': layers.STconvLayer,
+    'tlayer': layers.Tlayer,
     'biconv': layers.BiConvLayer1D,
+    'iter': layers.IterLayer,
+    'iterT': layers.IterTlayer,
     'readout': layers.ReadoutLayer,
     'fixation': layers.FixationLayer,
     'lag': layers.LagLayer,
@@ -24,6 +27,7 @@ LayerTypes = {
     'channel': layers.ChannelLayer,
     'LVlayer': layers.LVLayer
     # 'external': layers.ExternalLayer,    
+    #'res': layers.ResLayer,
 }
 
 _valid_ffnet_types = ['normal', 'add', 'mult', 'readout', 'scaffold']

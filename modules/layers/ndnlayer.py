@@ -8,7 +8,8 @@ from torch.nn import functional as F
 from torch.nn.parameter import Parameter
 from torch.nn import init
 
-from NDNT.modules.regularization import Regularization
+from ...modules.regularization import Regularization
+from ...modules.activity_regularization import ActivityRegularization
 from .. activations import NLtypes
 
 from copy import deepcopy
@@ -57,20 +58,20 @@ class NDNLayer(nn.Module):
 
     """
     def __init__(self, input_dims=None,
-            num_filters=None,
-            filter_dims=None,
-            NLtype:str='lin',
-            norm_type:int=0,
-            pos_constraint=0,
-            num_inh:int=0,
-            bias:bool=False,
-            weights_initializer:str='xavier_uniform',
-            output_norm=None,
-            initialize_center=False,
-            bias_initializer:str='zeros',
-            reg_vals:dict=None,
-            **kwargs,
-            ):
+                 num_filters=None,
+                 filter_dims=None,
+                 NLtype:str='lin',
+                 norm_type:int=0,
+                 pos_constraint=0,
+                 num_inh:int=0,
+                 bias:bool=False,
+                 weights_initializer:str='xavier_uniform',
+                 output_norm=None,
+                 initialize_center=False,
+                 bias_initializer:str='zeros',
+                 reg_vals:dict=None,
+                 **kwargs,
+                 ):
 
         assert input_dims is not None, "NDNLayer: Must specify input_dims"
         assert num_filters is not None, "NDNLayer: Must specify num_filters"
@@ -87,15 +88,15 @@ class NDNLayer(nn.Module):
             self.filter_dims = deepcopy(input_dims)
         else:
             self.filter_dims = filter_dims
-        
+
         output_dims = [num_filters, 1, 1, 1]
         self.output_dims = output_dims  # this automatically sets num_outputs as well
         #self.num_outputs = np.prod(self.output_dims) # Make this assigned through property
-        
+
         self.norm_type = norm_type
         self.pos_constraint = pos_constraint
         self.conv = False
-        
+
         # Was this implemented correctly? Where should NLtypes (the dictionary) live?
         if NLtype in NLtypes:
             self.NL = NLtypes[NLtype]
@@ -120,6 +121,9 @@ class NDNLayer(nn.Module):
             # How does this compare without explicit constraint? Maybe better, maybe worse...
 
         self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals, num_outputs=num_filters )
+        self.activity_reg = ActivityRegularization(reg_vals=reg_vals)
+        # place to store the activity regularization value to be used in the loss function
+        self.activity_regularization = 0.0
 
         # Now taken care of in model properties
         self.num_inh = num_inh
@@ -168,8 +172,8 @@ class NDNLayer(nn.Module):
         if value == 0:
             self._ei_mask = None
         else:
-            self.register_buffer('_ei_mask', 
-                torch.cat( (torch.ones(self.num_filters-self._num_inh), -torch.ones(self._num_inh))) )
+            self.register_buffer('_ei_mask',
+                                 torch.cat( (torch.ones(self.num_filters-self._num_inh), -torch.ones(self._num_inh))) )
 
     def reset_parameters(self, weights_initializer=None, bias_initializer=None, param=None) -> None:
         '''
@@ -223,17 +227,17 @@ class NDNLayer(nn.Module):
         #    self.weight.data = -abs(self.weight)
 
         if self.norm_type == 1:
-            self.weight.data = F.normalize( self.weight.data, dim=0 ) / self.weight_scale   
+            self.weight.data = F.normalize( self.weight.data, dim=0 ) / self.weight_scale
 
         if bias_initializer == 'zeros':
             init.zeros_(self.bias)
         elif bias_initializer == 'uniform':
             fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
             bound = 1 / np.sqrt(fan_in)
-            init.uniform_(self.bias, -bound, bound)          
+            init.uniform_(self.bias, -bound, bound)
         else:
             print('bias initializer not defined')
-    
+
     def initialize_gaussian_envelope(self):
         from NDNT.utils import initialize_gaussian_envelope
         w_centered = initialize_gaussian_envelope( self.get_weights(to_reshape=False), self.filter_dims)
@@ -278,15 +282,21 @@ class NDNLayer(nn.Module):
         if self._ei_mask is not None:
             x = x * self._ei_mask
 
-        return x 
-    # END NDNLayer.forward
-        
+        # store activity regularization to add to loss later
+        self.activity_regularization = self.activity_reg.regularize(x)
+
+        return x
+        # END NDNLayer.forward
+
     def compute_reg_loss(self):
-        return self.reg.compute_reg_loss(self.preprocess_weights())
+        weight_regularization = self.reg.compute_reg_loss(self.preprocess_weights())
+
+        # combine these two types of regularization
+        return weight_regularization + self.activity_regularization
 
     def get_weights(self, to_reshape=True, time_reverse=False, num_inh=0):
         """num-inh can take into account previous layer inhibition weights"""
-        
+
         ws = self.preprocess_weights().detach().cpu().numpy()
         num_filts = ws.shape[-1]
         if time_reverse or (num_inh>0):
@@ -345,9 +355,9 @@ class NDNLayer(nn.Module):
                 time_reverse = True
             else:
                 time_reverse = False
-            
+
         ws = self.get_weights(time_reverse=time_reverse)
-        
+
         if self.input_dims[2] == 1:
             if self.input_dims[1] == 1:
                 from NDNT.utils import plot_filters_1D
@@ -380,7 +390,7 @@ class NDNLayer(nn.Module):
         weight_shape = tuple([np.prod(filter_dims), num_filters])  # likewise
 
         dinfo = {
-            'input_dims': tuple(input_dims), 'filter_dims': tuple(filter_dims), 
+            'input_dims': tuple(input_dims), 'filter_dims': tuple(filter_dims),
             'output_dims': output_dims, 'num_outputs': num_outputs,
             'weight_shape': weight_shape}
 
@@ -388,11 +398,11 @@ class NDNLayer(nn.Module):
     # END [static] NDNLayer.dim_info
 
     @classmethod
-    def layer_dict(cls, 
-            input_dims=None, num_filters=None, # necessary parameters
-            bias=False, NLtype='lin', norm_type=0,
-            initialize_center=False, num_inh=0, pos_constraint=False, # optional parameters
-            **kwargs):
+    def layer_dict(cls,
+                   input_dims=None, num_filters=None, # necessary parameters
+                   bias=False, NLtype='lin', norm_type=0,
+                   initialize_center=False, num_inh=0, pos_constraint=False, # optional parameters
+                   **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 

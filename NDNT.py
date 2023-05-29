@@ -6,12 +6,12 @@ from functools import reduce
 
 import numpy as np # TODO: we can get rid of this and just use torch for math
 
-import NDNT.metrics.poisson_loss as plosses
-import NDNT.metrics.mse_loss as glosses
-from NDNT.utils import create_optimizer_params
-from NDNT.samplers.experiment_sampler import ExperimentSampler
+from .metrics import poisson_loss as plosses
+from .metrics import mse_loss as glosses
+from .utils import create_optimizer_params
+from .modules.experiment_sampler import ExperimentSampler
 
-import NDNT.networks as NDNnetworks
+from . import networks as NDNnetworks
 
 FFnets = {
     'normal': NDNnetworks.FFnetwork,
@@ -68,6 +68,7 @@ class NDN(nn.Module):
         self.loss = self.loss_module
         self.val_loss = self.loss_module
         self.trainer = None  # to stash last trainer used in fitting
+        self.block_sample = False  # if need time-contiguous blocks
 
         # Assemble FFnetworks from if passed in network-list -- else can embed model
         networks = self.assemble_ffnetworks(ffnet_list, external_modules)
@@ -172,7 +173,7 @@ class NDN(nn.Module):
     # END NDNT.forward
 
     def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
-     
+
         y = batch['robs']
 
         if self.speckled_flag:
@@ -284,7 +285,7 @@ class NDN(nn.Module):
             val_inds=None,
             batch_size=10, 
             num_workers=1,
-            is_fixation=False,
+            #is_fixation=False,
             is_multiexp=False,
             full_batch=False,
             pin_memory=False,
@@ -301,27 +302,32 @@ class NDN(nn.Module):
         #print('Dataset covariates:', covariates)
 
         if train_inds is None or val_inds is None:
-            # check dataset itself
-            if hasattr(dataset, 'val_inds') and \
-                (dataset.train_inds is not None) and (dataset.val_inds is not None):
-                train_inds = dataset.train_inds
-                val_inds = dataset.val_inds
-            else:
-                n_val = len(dataset)//5
-                n_train = len(dataset)-n_val
+            n_val = len(dataset)//5
+            n_train = len(dataset)-n_val
 
-                if data_seed is None:
-                    train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
-                else:
-                    train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator().manual_seed(data_seed))
-            
-                if train_inds is None:
-                    train_inds = train_ds.indices
-                if val_inds is None:
-                    val_inds = val_ds.indices
+            if data_seed is None:
+                train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
+            else:
+                train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator().manual_seed(data_seed))
+        
+            if train_inds is None:
+                train_inds = train_ds.indices
+            if val_inds is None:
+                val_inds = val_ds.indices
             
         # build dataloaders:
-        if is_fixation:
+        if self.block_sample:
+            # New method: just change collate function to collate_blocks provided by dataset
+            #train_ds = Subset(dataset, train_inds)
+            #val_ds = Subset(dataset, val_inds)
+
+            #train_dl = DataLoader(
+            #    train_ds, batch_size=batch_size, shuffle=True, collate_fn=dataset.collate_blocks,
+            #    num_workers=num_workers, pin_memory=pin_memory)
+            #valid_dl = DataLoader(
+            #    val_ds, batch_size=batch_size, shuffle=True, collate_fn=dataset.collate_blocks,
+            #    num_workers=num_workers, pin_memory=pin_memory)
+
             # we use a batch sampler to sample the data because it generates indices for the whole batch at one time
             # instead of iterating over each sample. This is both faster (probably) for our cases, and it allows us
             # to use the "Fixation" datasets and concatenate along a variable-length batch dimension
@@ -433,6 +439,7 @@ class NDN(nn.Module):
         scheduler=None,
         batch_size=None,
         force_dict_training=False,  # will force dict-based training instead of using data-loaders for LBFGS
+        block_sample=None, # to pass in flag to use dataset's block-sampler (and choose appropriate dataloader)
         reuse_trainer=False,
         device=None,
         **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
@@ -451,7 +458,10 @@ class NDN(nn.Module):
 
         if save_dir is None:
             save_dir = self.working_dir
-        
+
+        if block_sample is not None:
+            self.block_sample = block_sample
+
         # Should be set ahead of time
         name = self.model_name
 
@@ -465,16 +475,25 @@ class NDN(nn.Module):
         else:
             if train_inds is None:
                 # check dataset itself
-                if hasattr(dataset, 'train_inds'):
-                    if dataset.train_inds is not None:
-                        train_inds = dataset.train_inds
-                    if dataset.val_inds is not None:
-                        val_inds = dataset.val_inds
+                if self.block_sample:
+                    if hasattr(dataset, 'train_blks'):
+                        if dataset.train_blks is not None:
+                            train_inds = dataset.train_blks
+                        if dataset.val_inds is not None:
+                            val_inds = dataset.val_blks
+                    else:
+                        print( "Warning: no train_bkls specified (block_sample)")                
                 else:
-                    train_inds = range(len(dataset))
-                    if 'verbose' in kwargs.keys():
-                        if kwargs['verbose'] > 0:
-                            print( "Warning: no train_inds specified. Using full dataset passed in.")
+                    if hasattr(dataset, 'train_inds'):
+                        if dataset.train_inds is not None:
+                            train_inds = dataset.train_inds
+                        if dataset.val_inds is not None:
+                            val_inds = dataset.val_inds
+                    else:
+                        train_inds = range(len(dataset))
+                        if 'verbose' in kwargs.keys():
+                            if kwargs['verbose'] > 0:
+                                print( "Warning: no train_inds specified. Using full dataset passed in.")
 
         if force_dict_training:
             batch_size = len(train_inds)
@@ -491,7 +510,8 @@ class NDN(nn.Module):
                 print( 'Model:', self.model_name)
         # Create dataloaders / 
         train_dl, valid_dl = self.get_dataloaders(
-            dataset, batch_size=batch_size, train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
+            dataset, batch_size=batch_size, 
+            train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
 
         # Make trainer 
         if reuse_trainer & (self.trainer is not None):
@@ -512,7 +532,8 @@ class NDN(nn.Module):
             from NDNT.training import LBFGSTrainer
             assert isinstance(trainer, LBFGSTrainer), "force_dict_training will not work unless using LBFGS." 
 
-            trainer.fit(self, train_dl.dataset[:], valid_dl.dataset[:], seed=seed)
+            #trainer.fit(self, train_dl.dataset[:], valid_dl.dataset[:], seed=seed)
+            trainer.fit(self, dataset[train_inds], dataset[val_inds], seed=seed)
         else:
             trainer.fit(self, train_dl, valid_dl, seed=seed)
         t1 = time.time()
@@ -728,8 +749,8 @@ class NDN(nn.Module):
                     #    torch.multiply(dfs, yhat), axis=0).detach().cpu().numpy()
                     #rbar = np.divide(predcnt, Ts)
                     #LLnulls = np.log(rbar)-np.divide(predcnt, np.maximum(obscnt,1))
-                    rbar = np.divide(obscnt, Ts)
-                    LLnulls = np.log(rbar)-1
+                    rbar = np.divide(obscnt, np.maximum(Ts, 1))
+                    LLnulls = np.log(np.maximum(rbar, 1e-6))-1
 
                     LLneuron = -LLneuron - LLnulls             
 
@@ -741,7 +762,9 @@ class NDN(nn.Module):
             if data_inds is None:
                 data_inds = list(range(len(data)))
 
-            data_dl, _ = self.get_dataloaders(data, batch_size=batch_size, num_workers=num_workers, train_inds=data_inds, val_inds=data_inds)
+            data_dl, _ = self.get_dataloaders(
+                data, batch_size=batch_size, num_workers=num_workers, 
+                train_inds=data_inds, val_inds=data_inds)
 
             LLsum, Tsum, Rsum = 0, 0, 0
             from tqdm import tqdm
@@ -819,7 +842,9 @@ class NDN(nn.Module):
             if data_inds is None:
                 data_inds = list(range(len(data)))
 
-            data_dl, _ = self.get_dataloaders(data, batch_size=batch_size, num_workers=num_workers, train_inds=data_inds, val_inds=data_inds)
+            data_dl, _ = self.get_dataloaders(
+                data, batch_size=batch_size, num_workers=num_workers, 
+                train_inds=data_inds, val_inds=data_inds)
 
             LLsum, Tsum, Rsum = 0, 0, 0
             from tqdm import tqdm
@@ -965,7 +990,7 @@ class NDN(nn.Module):
     def device( self ):
         return next(self.parameters()).device
         # just for checking -- but not definitive/great to do in general, apparently
-    
+
     @classmethod
     def load_model(cls, checkpoint_path=None, model_name=None, version=None):
         '''

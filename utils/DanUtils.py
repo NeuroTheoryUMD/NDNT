@@ -1,7 +1,7 @@
 import numpy as np
 from copy import deepcopy
-import NDNT.utils.NDNutils as NDNutils
-import NDNT.utils.DanUtils as DU
+from ..utils import NDNutils
+from ..utils import DanUtils as DU
 import matplotlib.pyplot as plt
 
 
@@ -18,8 +18,10 @@ def ss( num_rows=1, num_cols=1, row_height=2.5, rh=None, fighandle=False):
     # Short-hand for subplot_setup with useful defaults for quick usage
     if rh is not None:
         row_height=rh  # really to just save a bit of typing
-    subplot_setup(num_rows, num_cols, row_height=row_height, fighandle=fighandle)
-
+    h = subplot_setup(num_rows, num_cols, row_height=row_height, fighandle=fighandle)
+    if fighandle:
+        return h
+    
 
 def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, axis_labels=True ):
     """Modifications of plt.imshow that choose reasonable defaults"""
@@ -57,12 +59,12 @@ def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, 
 # END imagesc
 
 
-def find_peaks( x, clearance=10, n_peaks=6, thresh=13.0 ):
+def find_peaks( x, clearance=10, max_peaks=10, thresh=13.0 ):
     """Find maximum of peaks and then get rid of other points around it for plus/minus some amount"""
     y = deepcopy(x)
     rem = np.arange(len(x))
     pks, amps = [], []
-    for counter in range(n_peaks):
+    for counter in range(max_peaks):
         #plt.plot(y,clrs[counter])
         a = rem[np.argmax(y[rem])]
         if y[a] >= thresh:
@@ -102,6 +104,16 @@ def display_matrix( x, prec=3, spacing=4, number_rows=False, number_cols=False )
         for mm in range(b):
             print( s%x[nn, mm], end='')
         print('')
+
+
+def figure_export( fig_handle, filename, bitmap=False, dpi=300):
+    """Usage: figure_export( fig_handle, filename, variable_list, bitmap=False, dpi=300)
+    if bitmap, will use dpi and export as .png. Otherwise will export PDF"""
+
+    if bitmap:
+        fig_handle.savefig( filename, bbox_inches='tight', dpi=dpi, transparent=True )
+    else:
+        fig_handle.savefig( filename, bbox_inches='tight', transparent=True )
 
 
 def matlab_export(filename, variable_list):

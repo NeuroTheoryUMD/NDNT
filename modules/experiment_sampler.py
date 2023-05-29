@@ -143,7 +143,8 @@ class ExperimentSampler(Sampler):
                 exp_batch_size = round(exp_length / (dataset.NT - len(indices)) * batch_size)
             else:
                 exp_batch_size = round(exp_length / dataset.NT * batch_size)
-            print(exp_index, '-->', 'L', exp_length, 'B', exp_batch_size)
+            if verbose:
+                print(exp_index, '-->', 'L', exp_length, 'B', exp_batch_size)
             self.exp_batch_sizes.append(exp_batch_size)
 
         # TODO: use the floor of the smallest experiment for now, and consider using the largest one later
