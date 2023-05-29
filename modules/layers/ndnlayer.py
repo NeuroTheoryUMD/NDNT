@@ -81,7 +81,7 @@ class NDNLayer(nn.Module):
 
         super().__init__()
 
-        self.input_dims = input_dims
+        self.input_dims = deepcopy(input_dims)
         self.num_filters = num_filters
         if filter_dims is None:
             self.filter_dims = deepcopy(input_dims)
