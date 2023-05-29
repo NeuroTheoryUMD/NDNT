@@ -13,6 +13,7 @@ LayerTypes = {
     'divnorm': layers.DivNormLayer,
     'tconv': layers.TconvLayer,
     'stconv': layers.STconvLayer,
+    'tlayer': layers.Tlayer,
     'biconv': layers.BiConvLayer1D,
     'iter': layers.IterLayer,
     'iterT': layers.IterTlayer,
