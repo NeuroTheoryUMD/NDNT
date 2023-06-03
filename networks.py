@@ -17,6 +17,7 @@ LayerTypes = {
     'biconv': layers.BiConvLayer1D,
     'iter': layers.IterLayer,
     'iterT': layers.IterTlayer,
+    'iterST': layers.IterSTlayer,
     'readout': layers.ReadoutLayer,
     'fixation': layers.FixationLayer,
     'lag': layers.LagLayer,
