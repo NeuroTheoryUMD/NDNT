@@ -686,8 +686,9 @@ class STconvLayer(TconvLayer):
 
             y = y.permute(2,1,3,4,0) # [1,N,B,W,H] -> [B,N,W,H,1]
         
-        if self.output_norm is not None:
-            y = self.output_norm(y)
+        if not self.res_layer:
+            if self.output_norm is not None:
+                y = self.output_norm(y)
 
         # Nonlinearity
         if self.NL is not None:
@@ -698,6 +699,16 @@ class STconvLayer(TconvLayer):
                 y = y * self._ei_mask[None,:,None,None]
             else:
                 y = y * self._ei_mask[None,:,None,None,None]
+        
+        if self.res_layer:
+            # s is with dimensions: B, C, T, X, Y 
+            if self.is1D:
+                y = y + torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) )
+            else:
+                y = y + torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
+                 
+            if self.output_norm is not None:
+                y = self.output_norm(y)
         
         y = y.reshape((-1, self.num_outputs))
 
