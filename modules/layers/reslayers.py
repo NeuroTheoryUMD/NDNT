@@ -418,7 +418,7 @@ class IterSTlayer(STconvLayer):
         self.res_layer = res_layer
 
         # Remaing lags after layer are output
-        self.output_dims[3] = input_dims[3]-(num_lags-1)*num_iter
+        self.output_dims[3] = 1 #input_dims[3]-(num_lags-1)*num_iter
 
         if self.output_config != 'last':  # then 'full'
             self.output_dims[0] *= num_iter
@@ -453,7 +453,7 @@ class IterSTlayer(STconvLayer):
 
         Ldict = super().layer_dict(**kwargs)
         # Added arguments
-        Ldict['layer_type'] = 'iterT'
+        Ldict['layer_type'] = 'iterST'
         Ldict['filter_width'] = filter_width
         Ldict['num_iter'] = num_iter
         Ldict['num_lags'] = num_lags
@@ -477,49 +477,81 @@ class IterSTlayer(STconvLayer):
         w = self.preprocess_weights()
 
         if self.is1D:
-            x = x.view([-1] + self.input_dims[:2]+[self.input_dims[3]]) # [B,C,W,T]
-            w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] + [-1]).permute(3,0,1,2) # [C,H,T,N]->[N,C,H,T]
+            x = x.view([-1] + self.input_dims[:3])
+            w = w.view(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
+
+            #x = x.view([-1] + self.input_dims[:2]+[self.input_dims[3]]) # [B,C,W,T]
+            #w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] + [-1]).permute(3,0,1,2) # [C,H,T,N]->[N,C,H,T]
+
+            if self.padding:
+                # flip order of padding for STconv -- last two are temporal padding
+                pad = (self._npads[2], self._npads[3], self.filter_dims[-1]-1, 0)
+            else:
+                # still need to pad the batch dimension
+                pad = (0,0,self.filter_dims[-1]-1,0)
 
         else:
-            w = w.view(self.filter_dims + [self.num_filters]).permute(4,0,1,2,3) # [C,H,W,T,N]->[N,C,H,W,T]
-            x = x.view([-1] + self.input_dims) # [B,C*W*H*T]->[B,C,W,H,T]
+            #w = w.view(self.filter_dims + [self.num_filters]).permute(4,0,1,2,3) # [C,H,W,T,N]->[N,C,H,W,T]
+            #x = x.view([-1] + self.input_dims) # [B,C*W*H*T]->[B,C,W,H,T]
+
+            x = x.reshape([-1] + self.input_dims)
+            w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
+            
+            if self.padding:
+                pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
+            else:
+                # still need to pad the batch dimension
+                pad = (0,0,0,0,self.filter_dims[-1]-1,0)
 
         # Prepare weights
         #w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)
         # puts output_dims first, as required for conv
 
-        reduce_lag = self.filter_dims[3]-1
+        #reduce_lag = self.filter_dims[3]-1
 
         outputs = None
         for iter in range(self.num_iter):
 
-            if self.padding:
-                s = F.pad(x, self._npads, "constant", 0)
-            else:
-                s = x
+            # Pad at least the temporal dimensions if not the spatial dimension too
+            #x = F.pad(x, pad, "constant", 0)
+            # Rotate stimulus into proper convolutonal form
 
             if self.is1D:
+                s = x.permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
                 #w = w.view(self.filter_dims[:2] + [self.filter_dims[3]] + [-1]).permute(3,0,1,2) # [C,H,T,N]->[N,C,H,T] 
                 y = F.conv2d(
-                    s,
+                    F.pad(s, pad, "constant", 0),
                     w, 
                     bias=self.bias,
                     stride=self.stride, dilation=self.dilation)
+            
+                #y = y.permute(2,1,3,0) # [1,N,B,W] -> [B,N,W,1] -- do this after adding x
 
             else:
-
+                s = x.permute(4,1,0,2,3) # -> [1,C,B,W,H]
                 y = F.conv3d(
-                    s,
+                    F.pad(s, pad, "constant", 0),
                     w, 
                     bias=self.bias,
                     stride=self.stride, dilation=self.dilation)
+
+                # y = y.permute(2,1,3,4,0) # [1,N,B,W,H] -> [B,N,W,H,1] -- do this after adding x
+
+            # Rotate back to add and process
+            if self.is1D:
+                y = y.permute(2,1,3,0) # [1,N,B,W] -> [B,N,W,1] 
+            else:
+                y = y.permute(2,1,3,4,0) # [1,N,B,W,H] -> [B,N,W,H,1]
 
             # Nonlinearity
             if self.NL is not None:
                 y = self.NL(y)
 
             if self.res_layer:
-                y = y + x[..., :-reduce_lag]  # Add input back in (without oldest lag)
+                #y = y + x[..., :-reduce_lag]  # Add input back in (without oldest lag)
+                y = y + x  # same shape [1,C,B,W,H] or [1,C,B,W] 
+
+            # Rotate back for regular processing
 
             if self._ei_mask is not None:
                 if self.is1D:
@@ -532,153 +564,21 @@ class IterSTlayer(STconvLayer):
 
             if (self.output_config == 'full') | (iter == self.num_iter-1):
                 if outputs is None:
-                    outputs = y[..., 0]
+                    outputs = y
                 else:
-                    outputs = torch.cat( (outputs, y[..., 0]), dim=1)
+                    outputs = torch.cat( (outputs, y), dim=1)
+            # Rotate batch dimension back
+
+            if self.is1D:
+                x = x.permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
+            else:
+                x = y.permute(4,1,0,2,3) # [1,C,B,W,H]
+
             x = y
         # end of iteration loop
+
         return torch.reshape(outputs, (-1, self.num_outputs))
     # END IterSTlayer.forward
-
-##### THIS IS EASIER IMPLEMENTED IN ConvLayer Directly -- so not used so far
-class ResLayer(ConvLayer):
-    """
-    Residual network layer based on conv-net setup but with different forward.
-    Namely, the forward includes a skip-connection, and has to be 'same'
-
-    Args (required):
-        input_dims: tuple or list of ints, (num_channels, height, width, lags)
-        num_filters: number of output filters
-        filter_dims: width of convolutional kernel (int or list of ints)
-    Args (optional):
-        padding: 'same' or 'valid' (default 'same')
-        weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
-        bias_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
-        bias: bool, whether to include bias term
-        NLtype: str, 'lin', 'relu', 'tanh', 'sigmoid', 'elu', 'none'
-
-    """
-    def __init__(self,
-            input_dims=None,
-            num_filters=None,
-            filter_dims=None,
-            temporal_tent_spacing=None,
-            output_norm=None,
-            window=None,
-            **kwargs,
-            ):
-
-        super().__init__(
-            input_dims=input_dims,
-            num_filters=num_filters,
-            filter_dims=filter_dims,
-            temporal_tent_spacing=temporal_tent_spacing,
-            output_norm=output_norm,
-            stride=None,
-            padding='same',
-            dilation=1,
-            window=window,
-            **kwargs,
-            )
-
-        # This has exactly the same initializer and variables as ConvLayer
-        # but will just have the res-net twist
-
-
-    @classmethod
-    def layer_dict(cls, filter_dims=None, **kwargs):
-        """
-        This outputs a dictionary of parameters that need to input into the layer to completely specify.
-        Output is a dictionary with these keywords. 
-        -- All layer-specific inputs are included in the returned dict
-        -- Values that must be set are set to empty lists
-        -- Other values will be given their defaults
-        """
-
-        Ldict = super().layer_dict(**kwargs)
-        # Added arguments
-        Ldict['layer_type'] = 'res'
-        Ldict['filter_dims'] = filter_dims
-        Ldict['temporal_tent_spacing'] = 1
-        Ldict['output_norm'] = None
-        Ldict['window'] = None  # could be 'hamming'
-        Ldict['stride'] = 1
-        Ldict['dilation'] = 1
-
-        return Ldict
-    # END ResLayer.__init__
-    
-    def forward(self, x):
-        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
-
-        s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
-
-        w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)
-        # puts output_dims first, as required for conv
-        
-        # Collapse over irrelevant dims for dim-specific convs
-        if self.is1D:
-            s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) )
-            #if self.padding:
-            #s = F.pad(s, self._npads, "constant", 0)
-
-            if self._fullpadding:
-                #s = F.pad(s, self._npads, "constant", 0)
-                y = F.conv1d(
-                    F.pad(s, self._npads, "constant", 0),
-                    w.view([-1, self.folded_dims, self.filter_dims[1]]), 
-                    bias=self.bias,
-                    stride=self.stride, dilation=self.dilation)
-            else:
-                y = F.conv1d(
-                    s,
-                    w.view([-1, self.folded_dims, self.filter_dims[1]]), 
-                    bias=self.bias,
-                    padding=self._npads[0],
-                    stride=self.stride, dilation=self.dilation)
-        else:
-            s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
-            # Alternative location of batch_norm:
-            #if self.output_norm is not None:
-            #    s = self.output_norm(s)
-
-            if self._fullpadding:
-                s = F.pad(s, self._npads, "constant", 0)
-                y = F.conv2d(
-                    s, # we do our own padding
-                    w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
-                    bias=self.bias,
-                    stride=self.stride,
-                    dilation=self.dilation)
-            else:
-                # functional pads since padding is simple
-                y = F.conv2d(
-                    s, 
-                    w.reshape([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
-                    padding=(self._npads[2], self._npads[0]),
-                    bias=self.bias,
-                    stride=self.stride,
-                    dilation=self.dilation)
-
-        if self.output_norm is not None:
-            y = self.output_norm(y)
-
-        # Nonlinearity
-        if self.NL is not None:
-            y = self.NL(y)
-
-        if self._ei_mask is not None:
-            if self.is1D:
-                y = y * self._ei_mask[None, :, None]
-            else:
-                y = y * self._ei_mask[None, :, None, None]
-            # y = torch.einsum('bchw, c -> bchw* self.ei_mask
-            # w = torch.einsum('nctw,tz->nczw', w, self.tent_basis)
-
-        y = torch.reshape(y, (-1, self.num_outputs))
-        
-        return y
-    # END ConvLayer.forward
 
 
 class Tlayer(NDNLayer):

@@ -508,10 +508,6 @@ class NDN(nn.Module):
         if 'verbose' in kwargs:
             if kwargs['verbose'] > 0:
                 print( 'Model:', self.model_name)
-        # Create dataloaders / 
-        train_dl, valid_dl = self.get_dataloaders(
-            dataset, batch_size=batch_size, 
-            train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
 
         # Make trainer 
         if reuse_trainer & (self.trainer is not None):
@@ -535,6 +531,11 @@ class NDN(nn.Module):
             #trainer.fit(self, train_dl.dataset[:], valid_dl.dataset[:], seed=seed)
             trainer.fit(self, dataset[train_inds], dataset[val_inds], seed=seed)
         else:
+            # Create dataloaders / 
+            train_dl, valid_dl = self.get_dataloaders(
+                dataset, batch_size=batch_size, 
+                train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
+    
             trainer.fit(self, train_dl, valid_dl, seed=seed)
         t1 = time.time()
 
@@ -545,7 +546,6 @@ class NDN(nn.Module):
                 print('  Fit complete:', t1-t0, 'sec elapsed')
         else:  # default behavior
             print('  Fit complete:', t1-t0, 'sec elapsed')
-
     # END NDN.fit
 
     def fit_dl(self,
