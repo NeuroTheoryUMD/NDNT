@@ -40,5 +40,6 @@ NLtypes = {
     'square': Square(),
     'softplus': nn.Softplus(),
     'tanh': nn.Tanh(),
-    'sigmoid': nn.Sigmoid()
+    'sigmoid': nn.Sigmoid(),
+    'gelu': nn.GELU()
     }
