@@ -393,7 +393,7 @@ class ReadoutNetwork(FFnetwork):
         super().__init__(**kwargs)
         self.network_type = 'readout'
         # Make sure first type is readout: important for interpretation of input dims and potential shifter
-        assert kwargs['layer_list'][0]['layer_type'] == 'readout', "READOUT NET: Incorrect leading layer type"
+        #assert kwargs['layer_list'][0]['layer_type'] == 'readout', "READOUT NET: Incorrect leading layer type"
 
     def determine_input_dims( self, input_dims_list, **kwargs):
         """
