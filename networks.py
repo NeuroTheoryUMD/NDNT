@@ -272,8 +272,12 @@ class FFnetwork(nn.Module):
         return self.layers[layer_target].get_weights(**kwargs)
 
     @classmethod
-    def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', **kwargs):
-        return {'layer_list': deepcopy(layer_list), 'xstim_n':xstim_n, 'ffnet_n':ffnet_n, 'ffnet_type': ffnet_type }
+    def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', scaffold_levels=None, **kwargs):
+        return {
+            'ffnet_type': ffnet_type,
+            'xstim_n':xstim_n, 'ffnet_n':ffnet_n,
+            'layer_list': deepcopy(layer_list),
+            'scaffold_levels': scaffold_levels}
     # END FFnetwork class
 
 
