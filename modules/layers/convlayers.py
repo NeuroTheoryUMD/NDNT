@@ -49,8 +49,6 @@ class ConvLayer(NDNLayer):
 
         assert filter_dims is not None, "ConvLayer: filter_dims must be specified"
 
-        self.res_layer = res_layer
-
         #if conv_dims is None:
         #    from copy import copy
         #    conv_dims = copy(filter_dims[1:])
@@ -121,6 +119,7 @@ class ConvLayer(NDNLayer):
             )
 
         self.is1D = is1D
+        self.res_layer = res_layer
        
         if self.tent_basis is not None:
             self.register_buffer('tent_basis', torch.Tensor(self.tent_basis.T))

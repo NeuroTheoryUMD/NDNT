@@ -272,8 +272,12 @@ class FFnetwork(nn.Module):
         return self.layers[layer_target].get_weights(**kwargs)
 
     @classmethod
-    def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', **kwargs):
-        return {'layer_list': deepcopy(layer_list), 'xstim_n':xstim_n, 'ffnet_n':ffnet_n, 'ffnet_type': ffnet_type }
+    def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', scaffold_levels=None, **kwargs):
+        return {
+            'ffnet_type': ffnet_type,
+            'xstim_n':xstim_n, 'ffnet_n':ffnet_n,
+            'layer_list': deepcopy(layer_list),
+            'scaffold_levels': scaffold_levels}
     # END FFnetwork class
 
 
@@ -393,7 +397,7 @@ class ReadoutNetwork(FFnetwork):
         super().__init__(**kwargs)
         self.network_type = 'readout'
         # Make sure first type is readout: important for interpretation of input dims and potential shifter
-        assert kwargs['layer_list'][0]['layer_type'] == 'readout', "READOUT NET: Incorrect leading layer type"
+        #assert kwargs['layer_list'][0]['layer_type'] == 'readout', "READOUT NET: Incorrect leading layer type"
 
     def determine_input_dims( self, input_dims_list, **kwargs):
         """
