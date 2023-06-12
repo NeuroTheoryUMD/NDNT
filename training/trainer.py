@@ -361,6 +361,9 @@ class Trainer:
             'optim': self.optimizer.state_dict()
         } # probably also want to track n_ter =>  'n_iter': n_iter,
 
+        if is_best:
+            torch.save(model, os.path.join(self.dirpath, 'model_best.pt'))
+
         save_checkpoint(cpkt, os.path.join(self.dirpath, 'model_checkpoint.ckpt'), is_best=is_best)
     
     def graceful_exit(self, model):
