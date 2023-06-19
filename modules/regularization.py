@@ -200,6 +200,7 @@ class Regularization(nn.Module):
                      'max_space': Tikhanov,
                      'center': DiagonalReg,
                      'edge_t': DiagonalReg,
+                     'edge_t0': DiagonalReg,
                      'edge_x': DiagonalReg,}
         
         if reg_type is None:
@@ -344,7 +345,7 @@ class DiagonalReg(RegModule):
 
     def __init__(self, reg_type=None, reg_val=None, input_dims=None, **kwargs):
 
-        assert reg_type in ['center', 'edge_t', 'edge_x'], "{} is not a valid Diagonal Regularization type".format(reg_type)
+        assert reg_type in ['center', 'edge_t', 'edge_t0', 'edge_x'], "{} is not a valid Diagonal Regularization type".format(reg_type)
         super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, **kwargs)
 
         # the "input_dims" are ordered differently for matrix implementations,
@@ -363,7 +364,7 @@ class DiagonalReg(RegModule):
             wcollapse = w.mean(dim=(0,3,4)).reshape([-1])
             rpen = torch.mean( torch.matmul( wcollapse, self.regcost) )
 
-        elif self.reg_type == 'edge_t':
+        elif self.reg_type in ['edge_t', 'edge_t0']:
             wcollapse = w.mean(dim=(0,1,2,4)).reshape([-1])
             rpen = torch.mean( torch.matmul( wcollapse, self.regcost) )
 
@@ -400,6 +401,11 @@ class DiagonalReg(RegModule):
             rmat = np.zeros(self.input_dims[3])
             rmat[0] = 1
             rmat[-1] = 1
+            self.register_buffer( 'regcost', torch.Tensor(rmat))
+
+        elif reg_type == 'edge_t0':
+            rmat = np.zeros(self.input_dims[3])
+            rmat[0] = 1
             self.register_buffer( 'regcost', torch.Tensor(rmat))
 
         elif reg_type == 'edge_x':

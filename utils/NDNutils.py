@@ -429,10 +429,12 @@ def pixel2grid( p, L=60 ):
 def grid2pixel( x, L=60, force_int=True, enforce_bounds=False ):
     p = (L*(x+1)-1)/2
     if enforce_bounds:
-        if p > L-1:
-            p = L-1
-        if p < 0:
-            p = 0    
+        a = np.where(p > L-1)[0]
+        if len(a) > 0:   
+            p[a] = L-1
+        a = np.where(p < 0)[0]
+        if len(a) > 0:
+            p[a] = 0    
     if force_int:
         if isinstance(x, np.ndarray):
             return np.round(p).astype(np.int64)
