@@ -55,30 +55,31 @@ class Trainer:
         self.set_to_none = set_grad_to_none
         self.fullbatch = False
         
-        ensure_dir(dirpath)
+        if dirpath is not False:
+            ensure_dir(dirpath)
 
-        # auto version if version is None
-        if version is None:
-            # try to find version number
-            import re
-            dirlist = os.listdir(dirpath)            
-            versionlist = [re.findall('(?!version)\d+', x) for x in dirlist]
-            versionlist = [int(x[0]) for x in versionlist if not not x]
-            if versionlist:
-                max_version = max(versionlist)
-            else:
-                max_version = 0
-            version = max_version + 1
-
-        self.dirpath = os.path.join(dirpath, "version%d" % version)
+            # auto version if version is None
+            if version is None:
+                # try to find version number
+                import re
+                dirlist = os.listdir(dirpath)            
+                versionlist = [re.findall('(?!version)\d+', x) for x in dirlist]
+                versionlist = [int(x[0]) for x in versionlist if not not x]
+                if versionlist:
+                    max_version = max(versionlist)
+                else:
+                    max_version = 0
+                version = max_version + 1
+            self.dirpath = os.path.join(dirpath, "version%d" % version) if dirpath != False else None
+            self.logger = SummaryWriter(log_dir=self.dirpath, comment="version%d" % version) # use tensorboard to keep track of experiments
+        else:
+            version = 0
         self.early_stopping = early_stopping
-
         # ensure_dir(self.dirpath)
         if device is None:
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         self.device = device
-        self.logger = SummaryWriter(log_dir=self.dirpath, comment="version%d" % version) # use tensorboard to keep track of experiments
         self.version = version
         self.epoch = 0
         self.max_epochs = max_epochs
@@ -178,35 +179,37 @@ class Trainer:
             self.epoch += 1
             # train one epoch
             out = self.train_one_epoch(model, train_loader, self.epoch)
-            self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], self.epoch)
+            if hasattr(self, 'logger'):
+                self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], self.epoch)
             train_loss = out['train_loss']
-            if np.isnan(train_loss):
+            if np.isnan(train_loss.item()):
                 self.graceful_exit(model)
 
-            if self.log_activations:
-                for name in self.logged_parameters:
-                    try:
-                        self.logger.add_histogram(
-                                    f"Activations/{name.replace('.', ' ')}/hist",
-                                    activations[name].view(-1),
-                                    self.epoch,
-                                )
+            if hasattr(self, 'logger'):
+                if self.log_activations:
+                    for name in self.logged_parameters:
+                        try:
+                            self.logger.add_histogram(
+                                        f"Activations/{name.replace('.', ' ')}/hist",
+                                        activations[name].view(-1),
+                                        self.epoch,
+                                    )
 
-                        self.logger.add_scalar(
-                                    f"Activations/{name.replace('.', ' ')}/mean",
-                                    activations[name].mean(),
-                                    self.epoch,
-                                )
+                            self.logger.add_scalar(
+                                        f"Activations/{name.replace('.', ' ')}/mean",
+                                        activations[name].mean(),
+                                        self.epoch,
+                                    )
 
-                        self.logger.add_scalar(
-                                    f"Activations/{name.replace('.', ' ')}/std",
-                                    activations[name]
-                                    .std(dim=0)
-                                    .mean(),
-                                    self.epoch,
-                                )
-                    except:
-                        pass
+                            self.logger.add_scalar(
+                                        f"Activations/{name.replace('.', ' ')}/std",
+                                        activations[name]
+                                        .std(dim=0)
+                                        .mean(),
+                                        self.epoch,
+                                    )
+                        except:
+                            pass
 
             # validate every epoch
             if self.epoch % 1 == 0:
@@ -216,7 +219,8 @@ class Trainer:
                 else:
                     is_best=False
                 self.val_loss_min = out['val_loss']
-                self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
+                if hasattr(self, 'logger'):
+                    self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
             
             if self.verbose==1:
                 print("Epoch %d: train loss %.6f val loss %.6f" %(self.epoch, train_loss, out['val_loss']))
@@ -231,7 +235,8 @@ class Trainer:
                         self.scheduler.step(step_metric)
             
             # checkpoint
-            self.checkpoint_model(model, self.epoch, is_best=is_best)
+            if hasattr(self, 'dirpath'):
+                self.checkpoint_model(model, self.epoch, is_best=is_best)
 
             # callbacks: e.g., early stopping
             if self.early_stopping:
@@ -319,12 +324,13 @@ class Trainer:
         out = model.training_step(data)
         
         self.n_iter += 1
-        self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
-        self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
-        try:
-            self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
-        except:
-            pass
+        if hasattr(self, 'logger'):
+            self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
+            self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
+            try:
+                self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
+            except:
+                pass
 
         loss = out['loss']
         # with torch.set_grad_enabled(True):
@@ -370,7 +376,8 @@ class Trainer:
         if self.verbose > 0:
             print("Done fitting")
         # to run upon keybord interrupt
-        self.checkpoint_model(model) # save checkpoint
+        if hasattr(self, 'dirpath'):
+            self.checkpoint_model(model) # save checkpoint
 
         if self.device.type == 'cuda':
             model.cpu()
@@ -383,10 +390,11 @@ class Trainer:
                 hook.remove()
 
         # save model
-        try:
-            torch.save(model, os.path.join(self.dirpath, 'model.pt'))
-        except:
-            torch.save({'state_dict': model.state_dict()}, os.path.join(self.dirpath, 'model.pt'))
+        if hasattr(self, 'dirpath'):
+            try:
+                torch.save(model, os.path.join(self.dirpath, 'model.pt'))
+            except:
+                torch.save({'state_dict': model.state_dict()}, os.path.join(self.dirpath, 'model.pt'))
 
         # log final value of loss along with hyperparameters
         defopts = dict()
@@ -399,7 +407,8 @@ class Trainer:
                 newopts[k] = defopts[k]
     
         # self.logger.export_scalars_to_json(os.path.join(self.dirpath, "all_scalars.json"))
-        self.logger.close()
+        if hasattr(self, 'logger'):
+            self.logger.close()
 
         # if best model checkpoint exists, load that and save it
         
@@ -444,7 +453,8 @@ class LBFGSTrainer(Trainer):
                 if np.isnan(out['val_loss']):
                     return
             self.val_loss_min = out['val_loss'].item()
-            self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
+            if hasattr(self, 'logger'):
+                self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
 
         else:
             ''' fit one epoch at a time (can still accumulate the grads across epochs, but is much slower. handles datasets that cannot fit in memory'''
@@ -524,13 +534,14 @@ class LBFGSTrainer(Trainer):
                                 data[dsub] = data[dsub].to(self.device)
 
                     out = model.training_step(data)
-                    if torch.isnan(out['loss']):
+                    if np.isnan(out['loss'].item()):
                         break
                     loss += out['loss']
                     self.n_iter += 1
-                    self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
-                    self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
-                    self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
+                    if hasattr(self, 'logger'):
+                        self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
+                        self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
+                        self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
                     torch.cuda.empty_cache()
                     if self.verbose > 1:
                         # update progress bar
