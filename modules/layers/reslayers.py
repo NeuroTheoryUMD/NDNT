@@ -358,9 +358,9 @@ class IterTlayer(TconvLayer):
 
             if (self.output_config == 'full') | (iter == self.num_iter-1):
                 if outputs is None:
-                    outputs = y[..., 0]
+                    outputs = y[..., :self.output_dims[3]]
                 else:
-                    outputs = torch.cat( (outputs, y[..., 0]), dim=1)
+                    outputs = torch.cat( (outputs, y[..., :self.output_dims[3]]), dim=1)
             x = y
         # end of iteration loop
         return torch.reshape(outputs, (-1, self.num_outputs))
