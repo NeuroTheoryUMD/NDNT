@@ -6,6 +6,9 @@ import torch.nn as nn
 import os
 import shutil
 from collections import OrderedDict
+# for unpickler
+import pickle
+import io
 
 
 #################### CREATE OTHER PARAMETER-DICTS ####################
@@ -98,6 +101,13 @@ def create_optimizer_params(
     return optpar
 # END create_optimizer_params
 
+######## PICKLE FIXER -- load to CPU automatically ######
+class CPU_Unpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        if module == 'torch.storage' and name == '_load_from_bytes':
+            return lambda b: torch.load(io.BytesIO(b), map_location='cpu')
+        else:
+            return super().find_class(module, name)
 
 
 #################### DIRECTORY ORGANIZATION ####################
