@@ -808,7 +808,7 @@ class NDN(nn.Module):
         '''
         
         # Switch into evalulation mode
-        self.eval()
+        self.eval()            
 
         if isinstance(data, dict): 
             # Then assume that this is just to evaluate a sample: keep original here
@@ -842,6 +842,9 @@ class NDN(nn.Module):
             if data_inds is None:
                 data_inds = list(range(len(data)))
 
+            if self.block_sample:
+                data_inds = np.arange(len(data.block_inds))
+
             data_dl, _ = self.get_dataloaders(
                 data, batch_size=batch_size, num_workers=num_workers, 
                 train_inds=data_inds, val_inds=data_inds)
@@ -849,15 +852,21 @@ class NDN(nn.Module):
             LLsum, Tsum, Rsum = 0, 0, 0
             from tqdm import tqdm
             d = next(self.parameters()).device  # device the model is on
+            
+            # initialize the pred array
+            pred = []
+            
+            i = 0
             for data_sample in tqdm(data_dl, desc='Eval models'):
                 # data_sample = data[tt]
                 for dsub in data_sample.keys():
                     if data_sample[dsub].device != d:
                         data_sample[dsub] = data_sample[dsub].to(d)
                 with torch.no_grad():
-                    pred = self(data_sample)
+                    pred.append(self(data_sample))
+                i += 1
 
-            return pred  # end of the old method
+            return torch.vstack(pred)  # end of the old method
 
     def get_weights(self, ffnet_target=0, **kwargs):
         """passed down to layer call, with optional arguments conveyed"""
