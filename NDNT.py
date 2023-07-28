@@ -809,14 +809,30 @@ class NDN(nn.Module):
         return LLneuron.detach().cpu().numpy()
 
     ### NOTE THIS FUNCTION IS NOT DONE YET -- it would ideally step through all relevant batches like eval_model 
-    def generate_predictions( self, data, data_inds=None, batch_size=1000, num_workers=0, **kwargs ):
+    def generate_predictions( self, data, data_inds=None, batch_size=10, num_workers=0, **kwargs ):
         '''
         Note that data will be assumed to be a dataset, and data_inds will have to be specified batches
         from dataset.__get_item__()
         '''
         
         # Switch into evalulation mode
-        self.eval()            
+        self.eval()
+        
+        # handle the block_sample case separately
+        if self.block_sample:
+            import tqdm
+            num_cells = self.networks[-1].layers[-1].output_dims[0]
+            block_size = len(data.block_inds[0])
+            total = len(data.block_inds) # in blocks
+            assert total <= len(data.block_inds), 'total is larger than '+str(len(data.block_inds))
+            pred = torch.zeros((total*block_size, num_cells))
+            with torch.no_grad():
+                for i in tqdm.tqdm(range(0, total, batch_size)):
+                    if i+batch_size > total:
+                        pred[i*block_size:] = self(data[i:])
+                    else:
+                        pred[i*block_size:(i+batch_size)*block_size] = self(data[i:i+batch_size])
+            return pred
 
         if isinstance(data, dict): 
             # Then assume that this is just to evaluate a sample: keep original here
@@ -849,9 +865,6 @@ class NDN(nn.Module):
             # In this case, assume data is dataset
             if data_inds is None:
                 data_inds = list(range(len(data)))
-
-            if self.block_sample:
-                data_inds = np.arange(len(data.block_inds))
 
             data_dl, _ = self.get_dataloaders(
                 data, batch_size=batch_size, num_workers=num_workers, 

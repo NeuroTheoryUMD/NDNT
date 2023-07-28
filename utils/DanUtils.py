@@ -23,7 +23,7 @@ def ss( num_rows=1, num_cols=1, row_height=2.5, rh=None, fighandle=False):
         return h
     
 
-def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, axis_labels=True ):
+def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, axis_labels=True, ax=None ):
     """Modifications of plt.imshow that choose reasonable defaults"""
     if balanced is None:
         # Make defaults depending on img
@@ -49,9 +49,15 @@ def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, 
             aspect = 'auto'
 
     if colrow:  # then plot with first axis horizontal, second axis vertical
-        plt.imshow( img.T, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
+        if ax is None:
+            plt.imshow( img.T, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
+        else:
+            ax.imshow( img.T, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
     else:  # this is like imshow: row, column
-        plt.imshow( img, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
+        if ax is None:
+            plt.imshow( img, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
+        else:
+            ax.imshow( img, cmap=cmap, interpolation='none', aspect=aspect, vmin=imin, vmax=imax)
     if not axis_labels:
         figgy = plt.gca()
         figgy.axes.xaxis.set_ticklabels([])
