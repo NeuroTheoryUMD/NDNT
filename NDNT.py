@@ -284,7 +284,7 @@ class NDN(nn.Module):
             train_inds=None,
             val_inds=None,
             batch_size=10, 
-            num_workers=1,
+            num_workers=0,
             #is_fixation=False,
             is_multiexp=False,
             full_batch=False,
@@ -709,7 +709,7 @@ class NDN(nn.Module):
         
         # Switch into evalulation mode
         self.eval()
-
+        print('here2')
         if isinstance(data, dict): 
             # Then assume that this is just to evaluate a sample: keep original here
             assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
@@ -762,10 +762,18 @@ class NDN(nn.Module):
             if data_inds is None:
                 data_inds = list(range(len(data)))
 
-            data_dl, _ = self.get_dataloaders(
-                data, batch_size=batch_size, num_workers=num_workers, 
-                train_inds=data_inds, val_inds=data_inds)
+            from torch.utils.data import DataLoader
 
+            #data_dl, _ = self.get_dataloaders(
+            #    data, batch_size=batch_size, num_workers=num_workers, 
+            #    train_inds=data_inds, val_inds=data_inds)
+            train_sampler = torch.utils.data.sampler.BatchSampler(
+                data_inds,
+                batch_size=batch_size,
+                drop_last=False)
+            
+            data_dl = DataLoader(data, sampler=train_sampler, batch_size=batch_size, num_workers=num_workers)
+            print('here')
             LLsum, Tsum, Rsum = 0, 0, 0
             from tqdm import tqdm
             d = next(self.parameters()).device  # device the model is on

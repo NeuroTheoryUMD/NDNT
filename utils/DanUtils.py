@@ -308,8 +308,12 @@ def compute_binocular_filters(binoc_mod, to_plot=True, num_space=None, ffnet_n=N
     assert blayer is not None, 'biconv layer not found'
 
     if mfilters is None:
-        mfilters = compute_Mfilters(mod=binoc_mod, to_output=True, to_plot=False)
+        if (bnet == 0) & (blayer == 1): # then mfilters are just first layer
+            mfilters = binoc_mod.get_weights()
+        else:  # construct using tkerns
+            mfilters = compute_Mfilters(mod=binoc_mod, to_output=True, to_plot=False)            
     NXM, num_lags, NF = mfilters.shape
+    #print(NXM, num_lags, NF)
     ws = binoc_mod.get_weights(ffnet_target=bnet, layer_target=blayer)
     NF2, NXC, NBF = ws.shape
     assert NF2 == 2*NF, "Monocular filter number mismatch"
