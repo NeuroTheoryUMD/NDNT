@@ -36,6 +36,7 @@ class IterLayer(ConvLayer):
             output_norm=None,
             window=None,
             res_layer=True,
+            LN_reverse=False,
             **kwargs,
             ):
 
@@ -53,7 +54,10 @@ class IterLayer(ConvLayer):
             )
         
         self.num_iter = num_iter
-
+        self.LN_reverse = LN_reverse
+        if LN_reverse and self.pos_constraint:
+            print('WARNING: should not use pos_constraint with LN_reverse')
+            
         self.output_config = output_config
         if self.output_config != 'last':  # then 'full'
             self.output_dims[0] *= num_iter
@@ -78,7 +82,7 @@ class IterLayer(ConvLayer):
     # END IterLayer.Init
 
     @classmethod
-    def layer_dict(cls, filter_width=None, num_iter=1, output_config='last', res_layer=True, **kwargs):
+    def layer_dict(cls, filter_width=None, num_iter=1, output_config='last', res_layer=True, LN_reverse=False, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -96,6 +100,7 @@ class IterLayer(ConvLayer):
         Ldict['output_norm'] = None
         Ldict['window'] = None  # could be 'hamming'
         Ldict['res_layer'] = res_layer
+        Ldict['LN_reverse'] = LN_reverse
         #Ldict['stride'] = 1
         #Ldict['dilation'] = 1
         Ldict['output_config'] = output_config 
@@ -127,12 +132,16 @@ class IterLayer(ConvLayer):
         outputs = None
         for iter in range(self.num_iter):
 
+            if self.LN_reverse:
+                if self.NL is not None:
+                    x = self.NL(x)
+
             if self.is1D:
 
                 if self._fullpadding:
                     #s = F.pad(s, self._npads, "constant", 0)
                     y = F.conv1d(
-                        F.pad(s, self._npads, "constant", 0),
+                        F.pad(x, self._npads, "constant", 0),
                         w.view([-1, self.folded_dims, self.filter_dims[1]]), 
                         bias=self.bias,
                         stride=self.stride, dilation=self.dilation)
@@ -147,9 +156,9 @@ class IterLayer(ConvLayer):
             else:
 
                 if self._fullpadding:
-                    s = F.pad(s, self._npads, "constant", 0)
+                    x = F.pad(x, self._npads, "constant", 0)
                     y = F.conv2d(
-                        s, # we do our own padding
+                        x, # we do our own padding
                         w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
                         bias=self.bias,
                         stride=self.stride,
@@ -166,7 +175,7 @@ class IterLayer(ConvLayer):
 
 
             # Nonlinearity
-            if self.NL is not None:
+            if (self.NL is not None) &  (not self.LN_reverse):
                 y = self.NL(y)
 
             if self.res_layer:

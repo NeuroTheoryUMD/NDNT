@@ -706,10 +706,10 @@ class NDN(nn.Module):
         Note that data will be assumed to be a dataset, and data_inds will have to be specified batches
         from dataset.__get_item__()
         '''
-        
+
         # Switch into evalulation mode
         self.eval()
-        print('here2')
+
         if isinstance(data, dict): 
             # Then assume that this is just to evaluate a sample: keep original here
             assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
@@ -762,18 +762,14 @@ class NDN(nn.Module):
             if data_inds is None:
                 data_inds = list(range(len(data)))
 
-            from torch.utils.data import DataLoader
+            from torch.utils.data import DataLoader, Subset
 
-            #data_dl, _ = self.get_dataloaders(
-            #    data, batch_size=batch_size, num_workers=num_workers, 
-            #    train_inds=data_inds, val_inds=data_inds)
-            train_sampler = torch.utils.data.sampler.BatchSampler(
-                data_inds,
-                batch_size=batch_size,
-                drop_last=False)
-            
-            data_dl = DataLoader(data, sampler=train_sampler, batch_size=batch_size, num_workers=num_workers)
-            print('here')
+            data_dl, _ = self.get_dataloaders(
+                data, batch_size=batch_size, num_workers=num_workers, 
+                train_inds=data_inds, val_inds=data_inds)
+            #data_ds = Subset(data, data_inds)
+            #data_dl = DataLoader(data_ds, batch_size=batch_size, num_workers=num_workers)
+
             LLsum, Tsum, Rsum = 0, 0, 0
             from tqdm import tqdm
             d = next(self.parameters()).device  # device the model is on
@@ -935,7 +931,7 @@ class NDN(nn.Module):
         if filename is None:
             fn += self.model_name + '.pkl'
         else:
-            fn += filename
+            fn = filename
         print( '  Saving model at', fn)
 
         with open(fn, 'wb') as f:
