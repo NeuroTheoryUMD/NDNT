@@ -121,9 +121,9 @@ class NDNLayer(nn.Module):
             # How does this compare without explicit constraint? Maybe better, maybe worse...
 
         self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals, num_outputs=num_filters )
-        self.activity_reg = ActivityRegularization(reg_vals=reg_vals)
+        ##### self.activity_reg = ActivityRegularization(reg_vals=reg_vals)
         # place to store the activity regularization value to be used in the loss function
-        self.activity_regularization = 0.0
+        ##### self.activity_regularization = 0.0
 
         # Now taken care of in model properties
         self.num_inh = num_inh
@@ -283,16 +283,18 @@ class NDNLayer(nn.Module):
             x = x * self._ei_mask
 
         # store activity regularization to add to loss later
-        self.activity_regularization = self.activity_reg.regularize(x)
+        #self.activity_regularization = self.activity_reg.regularize(x)
+        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+            self.reg.compute_activity_regularization(y)
 
         return x
         # END NDNLayer.forward
 
     def compute_reg_loss(self):
-        weight_regularization = self.reg.compute_reg_loss(self.preprocess_weights())
-
+        #### weight_regularization = self.reg.compute_reg_loss(self.preprocess_weights())
+        return self.reg.compute_reg_loss(self.preprocess_weights())
         # combine these two types of regularization
-        return weight_regularization + self.activity_regularization
+        #### return weight_regularization + self.activity_regularization
 
     def get_weights(self, to_reshape=True, time_reverse=False, num_inh=0):
         """num-inh can take into account previous layer inhibition weights"""
