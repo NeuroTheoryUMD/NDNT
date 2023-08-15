@@ -715,7 +715,9 @@ class Tlayer(NDNLayer):
         #y = y.reshape((-1, self.num_outputs))
 
         # store activity regularization to add to loss later
-        self.activity_regularization = self.activity_reg.regularize(y)
+        #self.activity_regularization = self.activity_reg.regularize(y)
+        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+            self.reg.compute_activity_regularization(y)
 
         return y
     # END Tlayer.forward 
