@@ -62,7 +62,7 @@ class Regularization(nn.Module):
         self.folded_lags = folded_lags
         self.num_outputs = num_outputs
         self.boundary_conditions = None
-        self.activity_regmodules = None
+        self.activity_regmodule = None
 
         # read user input
         if vals is not None:
@@ -153,10 +153,6 @@ class Regularization(nn.Module):
                 reg_type=reg, reg_val=val, 
                 input_dims=self.input_dims, folded_lags=self.folded_lags, unit_reg=self.unit_reg, bc_val=BC)
             self.reg_modules.append(reg_obj)
-
-            if reg in ['activity', 'nonneg']:
-                self.activity_regmodule = self.reg_modules[-1]  # hoping this acts as a pointer (otherwise use explicit indexing)
-                # note this currently will only handle one activity reg type at once, otherwise make list 
     # END Regularization.build_reg_modules
 
     def compute_reg_loss(self, weights):
@@ -173,7 +169,7 @@ class Regularization(nn.Module):
 
     def compute_activity_regularization(self, layer_output):
         # first put wrapper so wont throw bug with older model
-        if hasattr(self, 'activity_regmodule'):
+        if isfield(self, 'activity_regmodule'):
             if self.activity_regmodule is not None:
                 self.activity_regmodule.compute_activity_penalty(layer_output)
 
@@ -213,8 +209,8 @@ class Regularization(nn.Module):
                      'edge_t': DiagonalReg,
                      'edge_t0': DiagonalReg,
                      'edge_x': DiagonalReg,
-                     'activity': ActivityReg,
-                     'nonneg': ActivityReg}
+                     'nonneg': ActivityReg
+                     'activity': ActivityReg}
         
         if reg_type is None:
             ret = reg_index.keys()
@@ -638,31 +634,4 @@ class Tikhanov(RegModule):
             return None
         else:
             return torch.Tensor(reg_mat)
-    # END Tikhanov.build_reg_mats
-
-class ActivityReg(RegModule):
-    """ Regularization to penalize activity separably for each dimension
-    Note that the penalty needs to be computed elsewhere and just stored here"""
-    
-    def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, **kwargs):
-        """Constructor for LocalityReg class"""
-
-        _valid_reg_types = ['activity', 'nonneg']
-        assert reg_type in _valid_reg_types, '{} is not a valid Locality Reg type'.format(reg_type)
-
-        super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
-        self.acitivity_penalty = 0.0
-    # END ActivityReg.__init__
-
-    def compute_activity_penalty(self, acts ):
-        """Computes activity penalty from activations -- called in layer forward"""
-        # Can put conditionals if there is more than one reg module
-        if self.reg_type == 'activity':
-            self.activity_penalty = torch.mean(torch.sum(acts**2, axis=1), axis=0)
-        elif self.reg_type == 'nonneg':
-            self.activity_penalty = torch.mean(torch.sum(torch.relu(-layer_output), axis=1), axis=0)
-
-    def compute_reg_penalty(self, weights):
-        """Compute regularization penalty for locality"""
-        return self.activity_penalty  # this is precomputed
-    # END ActivityReg.__init__
+    # END RegModule.build_reg_mats
