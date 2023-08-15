@@ -36,7 +36,7 @@ class Regularization(nn.Module):
             vals (dict, optional): key-value pairs specifying value for each type of regularization 
             
             Note: to pass in boundary_condition information, use a dict in vals with the values corresponding to
-            particular regularization, e,g., 'BCs':{'d2t':1, 'd2x':0} (1=on, 0=off), default is ON
+            particular regularization, e,g., 'BCs':{'d2t':1, 'd2x':0} (1=on, 0=off)i4
             
         Raises:
             TypeError: If `input_dims` is not specified
@@ -143,7 +143,7 @@ class Regularization(nn.Module):
         
         for reg, val in self.vals.items():
             # check for boundary conditions
-            BC = 1 # default boundary conditions on
+            BC = 1 # default padding for boundary conditions
             if self.boundary_conditions is not None:
                 if reg in self.boundary_conditions:
                     BC = self.boundary_conditions[reg]
@@ -153,6 +153,10 @@ class Regularization(nn.Module):
                 reg_type=reg, reg_val=val, 
                 input_dims=self.input_dims, folded_lags=self.folded_lags, unit_reg=self.unit_reg, bc_val=BC)
             self.reg_modules.append(reg_obj)
+
+            if reg == 'activity':
+                self.activity_regmodule = self.reg_modules[-1]  # hoping this acts as a pointer (otherwise use explicit indexing)
+                # note this currently will only handle one activity reg type at once, otherwise make list 
     # END Regularization.build_reg_modules
 
     def compute_reg_loss(self, weights):
@@ -209,7 +213,6 @@ class Regularization(nn.Module):
                      'edge_t': DiagonalReg,
                      'edge_t0': DiagonalReg,
                      'edge_x': DiagonalReg,
-                     'nonneg': ActivityReg,
                      'activity': ActivityReg}
         
         if reg_type is None:
@@ -634,4 +637,28 @@ class Tikhanov(RegModule):
             return None
         else:
             return torch.Tensor(reg_mat)
-    # END RegModule.build_reg_mats
+    # END Tikhanov.build_reg_mats
+
+class ActivityReg(RegModule):
+    """ Regularization to penalize activity separably for each dimension
+    Note that the penalty needs to be computed elsewhere and just stored here"""
+    
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, **kwargs):
+        """Constructor for LocalityReg class"""
+
+        _valid_reg_types = ['activity']
+        assert reg_type in _valid_reg_types, '{} is not a valid Locality Reg type'.format(reg_type)
+
+        super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
+        self.acitivity_penalty = 0.0
+    # END ActivityReg.__init__
+
+    def compute_activity_penalty(self, acts ):
+        """Computes activity penalty from activations -- called in layer forward"""
+        # Can put conditionals if there is more than one reg module
+        self.activity_penalty = torch.mean(torch.sum(acts**2, axis=1), axis=0)
+
+    def compute_reg_penalty(self, weights):
+        """Compute regularization penalty for locality"""
+        return self.activity_penalty  # this is precomputed
+    # END ActivityReg.__init__
