@@ -292,7 +292,7 @@ class NDNLayer(nn.Module):
 
     def compute_reg_loss(self):
         #### #### weight_regularization = self.reg.compute_reg_loss(self.preprocess_weights())
-        return self.reg.compute_reg_loss(self.preprocess_weights())        return self.reg.compute_reg_loss(self.preprocess_weights())
+        return self.reg.compute_reg_loss(self.preprocess_weights())        
         # combine these two types of regularization
         #### #### return weight_regularization + self.activity_regularization
 
