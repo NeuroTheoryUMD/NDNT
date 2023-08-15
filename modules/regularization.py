@@ -209,7 +209,7 @@ class Regularization(nn.Module):
                      'edge_t': DiagonalReg,
                      'edge_t0': DiagonalReg,
                      'edge_x': DiagonalReg,
-                     'nonneg': ActivityReg
+                     'nonneg': ActivityReg,
                      'activity': ActivityReg}
         
         if reg_type is None:
