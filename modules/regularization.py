@@ -173,9 +173,8 @@ class Regularization(nn.Module):
 
     def compute_activity_regularization(self, layer_output):
         # first put wrapper so wont throw bug with older model
-        if isfield(self, 'activity_regmodule'):
-            if self.activity_regmodule is not None:
-                self.activity_regmodule.compute_activity_penalty(layer_output)
+        if self.activity_regmodule is not None:
+            self.activity_regmodule.compute_activity_penalty(layer_output)
 
     def reg_copy(self):
         """Copy regularization to new structure"""
