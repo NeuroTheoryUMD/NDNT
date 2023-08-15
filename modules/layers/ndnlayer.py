@@ -283,7 +283,7 @@ class NDNLayer(nn.Module):
             x = x * self._ei_mask
 
         # store activity regularization to add to loss later
-        #self.activity_regularization = self.activity_reg.regularize(x)
+        # self.activity_regularization = self.activity_reg.regularize(x)
         if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
             self.reg.compute_activity_regularization(x)
 
