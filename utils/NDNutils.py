@@ -116,7 +116,93 @@ def default_save_dir():
 
 
 #################### GENERAL EMBEDDED UTILS ####################
-def create_time_embedding(stim, pdims, up_fac=1, tent_spacing=1):
+def create_time_embedding(stim, num_lags, up_fac=1, tent_spacing=1):
+    """
+    Takes a Txd stimulus matrix and creates a time-embedded matrix of size 
+    Tx(d*L), where L is the desired number of time lags, included as last (folded) dimension. 
+    If stim is a 3d array, its dimensions are folded into the 2nd dimension. 
+    
+    Assumes zero-padding.
+     
+    Optional up-sampling of stimulus and tent-basis representation for filter 
+    estimation.
+    
+    Note that xmatrix is formatted so that adjacent time lags are adjacent 
+    within a time-slice of the xmatrix, thus x(t, 1:nLags) gives all time lags 
+    of the first spatial pixel at time t.
+    
+    Args:
+        stim (type): simulus matrix (time must be in the first dim).
+        num_lags
+        up_fac (type): description
+        tent_spacing (type): description
+        
+    Returns:
+        numpy array: time-embedded stim matrix
+        
+    """
+    from scipy.linalg import toeplitz
+    # Note for myself: pdims[0] is nLags and the rest is spatial dimension
+
+    sz = list(np.shape(stim))
+
+    # If there are two spatial dims, fold them into one
+    if len(sz) > 2:
+        stim = np.reshape(stim, (sz[0], np.prod(sz[1:])))
+        print('Flattening stimulus to produce design matrix.')
+    elif len(sz) == 1:
+        stim = stim[:, None]
+    sz = list(np.shape(stim))
+
+    # No support for more than two spatial dimensions
+    #if len(sz) > 3:
+    #    print('More than two spatial dimensions not supported, but creating xmatrix anyways...')
+
+    modstim = deepcopy(stim)
+    # Up-sample stimulus if required
+    if up_fac > 1:
+        # Repeats the stimulus along the time dimension
+        modstim = np.repeat(modstim, up_fac, 0)
+        # Since we have a new value for time dimension
+        sz = list(np.shape(modstim))
+
+    # If using tent-basis representation
+    if tent_spacing > 1:
+        # Create a tent-basis (triangle) filter
+        tent_filter = np.append(
+            np.arange(1, tent_spacing) / tent_spacing,
+            1-np.arange(tent_spacing)/tent_spacing) / tent_spacing
+        # Apply to the stimulus
+        filtered_stim = np.zeros(sz)
+        for ii in range(len(tent_filter)):
+            filtered_stim = filtered_stim + shift_mat_zpad(modstim, ii-tent_spacing+1, 0) * tent_filter[ii]
+        modstim = filtered_stim
+
+    sz = list(np.shape(modstim))
+    lag_spacing = tent_spacing
+
+    # If tent_spacing is not given in input then manually put lag_spacing = 1
+    # For temporal-only stimuli (this method can be faster if you're not using
+    # tent-basis rep)
+    # For myself, add: & tent_spacing is empty (= & isempty...).
+    # Since isempty(tent_spa...) is equivalent to its value being 1 I added
+    # this condition to the if below temporarily:
+    if sz[1] == 1 and tent_spacing == 1:
+        xmat = toeplitz(np.reshape(modstim, (1, sz[0])),
+                        np.concatenate((modstim[0], np.zeros(num_lags - 1)),
+                                       axis=0))
+    else:  # Otherwise loop over lags and manually shift the stim matrix
+        xmat = np.zeros([sz[0], sz[1], num_lags])
+        for lag in range(num_lags):
+            for xx in range(sz[1]):
+                xmat[:, xx, lag] = shift_mat_zpad(modstim[:, xx], lag_spacing * lag, 0)
+        xmat = xmat.reshape([sz[0], -1])
+
+    return xmat
+# END create_time_embedding
+
+
+def create_time_embedding_NIM(stim, pdims, up_fac=1, tent_spacing=1):
     """All the arguments starting with a p are part of params structure which I 
     will fix later.
     
