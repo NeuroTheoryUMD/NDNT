@@ -399,7 +399,9 @@ class ConvLayer(NDNLayer):
         y = torch.reshape(y, (-1, self.num_outputs))
 
         # store activity regularization to add to loss later
-        self.activity_regularization = self.activity_reg.regularize(y)
+        #self.activity_regularization = self.activity_reg.regularize(y)
+        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+            self.reg.compute_activity_regularization(y)
         
         return y
     # END ConvLayer.forward
@@ -563,7 +565,9 @@ class TconvLayer(ConvLayer):
         y = y.view((-1, self.num_outputs))
 
         # store activity regularization to add to loss later
-        self.activity_regularization = self.activity_reg.regularize(y)
+        #self.activity_regularization = self.activity_reg.regularize(y)
+        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+            self.reg.compute_activity_regularization(y)
 
         return y
     #END TconvLayer.forward
@@ -712,7 +716,9 @@ class STconvLayer(TconvLayer):
         y = y.reshape((-1, self.num_outputs))
 
         # store activity regularization to add to loss later
-        self.activity_regularization = self.activity_reg.regularize(y)
+        #self.activity_regularization = self.activity_reg.regularize(y)
+        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+            self.reg.compute_activity_regularization(y)
 
         return y
     # END STconvLayer.forward 
