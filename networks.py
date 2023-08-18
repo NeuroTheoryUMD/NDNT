@@ -15,6 +15,7 @@ LayerTypes = {
     'stconv': layers.STconvLayer,
     'tlayer': layers.Tlayer,
     'biconv': layers.BiConvLayer1D,
+    'oolayer': layers.OnOffLayer,
     'iter': layers.IterLayer,
     'iterT': layers.IterTlayer,
     'iterST': layers.IterSTlayer,
