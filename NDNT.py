@@ -5,6 +5,7 @@ from functools import reduce
 
 
 import numpy as np # TODO: we can get rid of this and just use torch for math
+import tqdm
 
 from .metrics import poisson_loss as plosses
 from .metrics import mse_loss as glosses
@@ -804,72 +805,81 @@ class NDN(nn.Module):
 
         return LLneuron.detach().cpu().numpy()
 
-    ### NOTE THIS FUNCTION IS NOT DONE YET -- it would ideally step through all relevant batches like eval_model 
     def generate_predictions( self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0 ):
-        '''
-        Note that data will be assumed to be a dataset, and data_inds will have to be specified batches
-        from dataset.__get_item__()
-        '''
-        import tqdm
-
+        """
+        Generate predictions for a dataset.
+        :param data: the dataset
+        :param batch_size: how much data to process at each iteration. Reduce if running out of memory.
+        :return: predictions array (NT x NC) or (num_blocks x NC)
+        """
+    
         # Switch into evalulation mode
         self.eval()
-        
+    
         # handle the block_sample case separately
         num_cells = self.networks[-1].output_dims[0]
-
+    
         if self.block_sample:
             assert data_inds is None, "block_sample currently does not handle data_inds"
             if batch_size is None:
                 batch_size = 10   # default batch size for block_sample
             if block_inds is None:
                 block_inds = np.arange(len(data.block_inds))
-
-            block_size = len(data.block_inds[0])  # this could cause bug if not all blocks same length
-            total = len(block_inds) 
-            assert np.max(block_inds) <= len(data.block_inds), 'total is larger than '+str(len(data.block_inds))
-            pred = torch.zeros((total*block_size, num_cells))
+            
+            total = len(block_inds)
+            data_subset_NT = np.sum([len(data.block_inds[ii]) for ii in block_inds])
+            pred = torch.zeros((data_subset_NT, num_cells))
             with torch.no_grad():
+                accumulated_batch_block_inds_len = 0
                 for i in tqdm.tqdm(range(0, total, batch_size)):
-                    if i+batch_size > total:
-                        pred[i*block_size:] = self(data[block_inds[i:]])
-                    else:
-                        pred[i*block_size:(i+batch_size)*block_size] = self(data[block_inds[i:i+batch_size]])
+                    batch_block_inds = []
+                    # we can't just use block_inds[i:i+batch_size] because data.block_inds is a list of lists and not a numpy array
+                    # instead, we need to loop over the indices in block_inds and get the corresponding block_inds from data.block_inds
+                    # and then concatenate them into a single array
+                    for ii in range(i, i+batch_size):
+                        if ii < total:
+                            # get the length of the current block, and make indices for the pred array out of it
+                            batch_block_inds.append(np.arange(accumulated_batch_block_inds_len, len(data.block_inds[block_inds[ii]])))
+                            # update the latest index we are pointing to in the pred array for this batch
+                            # so that we can start here on the next batch
+                            accumulated_batch_block_inds_len += len(batch_block_inds)-1
+                    batch_block_inds = np.concatenate(batch_block_inds)
+                    pred_batch = self(data[i:i+batch_size])
+                    pred[batch_block_inds] = pred_batch
             return pred
-
-        if isinstance(data, dict): 
+    
+    
+        if isinstance(data, dict):
             # Then assume that this is just to evaluate a sample: keep original here
             assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
             dev0 = data['robs'].device
             m0 = self.to(dev0)
             with torch.no_grad():
                 pred = m0(data)
-
+    
         else:
             if batch_size is None:
                 batch_size = 2000   # default batch size for non-block_sample
             dev0 = data[0]['robs'].device
             m0 = self.to(dev0)
-
+    
             if data_inds is None:
                 data_inds = np.arange(len(data))
             NT = len(data_inds)
-
+    
             pred = torch.zeros([NT, num_cells])
-
+    
             # Must do contiguous sampling despite num_lags
             nblks = np.ceil(NT/batch_size).astype(int)
-            for bb in range(nblks):
+            for bb in tqdm.tqdm(range(nblks)):
                 trange = np.arange(batch_size*bb-num_lags, batch_size*(bb+1))
                 trange = trange[trange < NT]
                 with torch.no_grad():
                     pred_tmp = m0(data[data_inds[trange]])
                 pred[batch_size*bb + np.arange(len(trange)-num_lags), :] = pred_tmp[num_lags:, :]
-                if bb%100==99:
-                    print(bb+1, 'batches processed')
-
+    
         return pred.cpu()
-
+            
     def get_weights(self, ffnet_target=0, **kwargs):
         """passed down to layer call, with optional arguments conveyed"""
         assert ffnet_target < len(self.networks), "Invalid ffnet_target %d"%ffnet_target
