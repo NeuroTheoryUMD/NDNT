@@ -805,29 +805,36 @@ class NDN(nn.Module):
         return LLneuron.detach().cpu().numpy()
 
     ### NOTE THIS FUNCTION IS NOT DONE YET -- it would ideally step through all relevant batches like eval_model 
-    def generate_predictions( self, data, data_inds=None, batch_size=10, num_workers=0, **kwargs ):
+    def generate_predictions( self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0 ):
         '''
         Note that data will be assumed to be a dataset, and data_inds will have to be specified batches
         from dataset.__get_item__()
         '''
-        
+        import tqdm
+
         # Switch into evalulation mode
         self.eval()
         
         # handle the block_sample case separately
+        num_cells = self.networks[-1].output_dims[0]
+
         if self.block_sample:
-            import tqdm
-            num_cells = self.networks[-1].layers[-1].output_dims[0]
-            block_size = len(data.block_inds[0])
-            total = len(data.block_inds) # in blocks
-            assert total <= len(data.block_inds), 'total is larger than '+str(len(data.block_inds))
+            assert data_inds is None, "block_sample currently does not handle data_inds"
+            if batch_size is None:
+                batch_size = 10   # default batch size for block_sample
+            if block_inds is None:
+                block_inds = np.arange(len(data.block_inds))
+
+            block_size = len(data.block_inds[0])  # this could cause bug if not all blocks same length
+            total = len(block_inds) 
+            assert np.max(block_inds) <= len(data.block_inds), 'total is larger than '+str(len(data.block_inds))
             pred = torch.zeros((total*block_size, num_cells))
             with torch.no_grad():
                 for i in tqdm.tqdm(range(0, total, batch_size)):
                     if i+batch_size > total:
-                        pred[i*block_size:] = self(data[i:])
+                        pred[i*block_size:] = self(data[block_inds[i:]])
                     else:
-                        pred[i*block_size:(i+batch_size)*block_size] = self(data[i:i+batch_size])
+                        pred[i*block_size:(i+batch_size)*block_size] = self(data[block_inds[i:i+batch_size]])
             return pred
 
         if isinstance(data, dict): 
@@ -835,55 +842,33 @@ class NDN(nn.Module):
             assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
             dev0 = data['robs'].device
             m0 = self.to(dev0)
-            yhat = m0(data)
-            y = data['robs']
-            dfs = data['dfs']
-
-            if 'poisson' in m0.loss_type:
-                loss = m0.loss_module.lossNR
-            else:
-                print("This loss-type is not supported for eval_models.")
-                loss = None
-
             with torch.no_grad():
-                LLraw = torch.sum( 
-                    torch.multiply( 
-                        dfs, 
-                        loss(yhat, y)),
-                        axis=0).detach().cpu().numpy()
-                obscnt = torch.sum(
-                    torch.multiply(dfs, y), axis=0).detach().cpu().numpy()
-                
-            return pred  # end of the old method
+                pred = m0(data)
 
         else:
-            # This will be the 'modern' eval_models using already-defined self.loss_module
-            # In this case, assume data is dataset
+            if batch_size is None:
+                batch_size = 2000   # default batch size for non-block_sample
+            dev0 = data[0]['robs'].device
+            m0 = self.to(dev0)
+
             if data_inds is None:
-                data_inds = list(range(len(data)))
+                data_inds = np.arange(len(data))
+            NT = len(data_inds)
 
-            data_dl, _ = self.get_dataloaders(
-                data, batch_size=batch_size, num_workers=num_workers, 
-                train_inds=data_inds, val_inds=data_inds)
+            pred = torch.zeros([NT, num_cells])
 
-            LLsum, Tsum, Rsum = 0, 0, 0
-            from tqdm import tqdm
-            d = next(self.parameters()).device  # device the model is on
-            
-            # initialize the pred array
-            pred = []
-            
-            i = 0
-            for data_sample in tqdm(data_dl, desc='Eval models'):
-                # data_sample = data[tt]
-                for dsub in data_sample.keys():
-                    if data_sample[dsub].device != d:
-                        data_sample[dsub] = data_sample[dsub].to(d)
+            # Must do contiguous sampling despite num_lags
+            nblks = np.ceil(NT/batch_size).astype(int)
+            for bb in range(nblks):
+                trange = np.arange(batch_size*bb-num_lags, batch_size*(bb+1))
+                trange = trange[trange < NT]
                 with torch.no_grad():
-                    pred.append(self(data_sample))
-                i += 1
+                    pred_tmp = m0(data[data_inds[trange]])
+                pred[batch_size*bb + np.arange(len(trange)-num_lags), :] = pred_tmp[num_lags:, :]
+                if bb%100==99:
+                    print(bb+1, 'batches processed')
 
-            return torch.vstack(pred)  # end of the old method
+        return pred.cpu()
 
     def get_weights(self, ffnet_target=0, **kwargs):
         """passed down to layer call, with optional arguments conveyed"""
