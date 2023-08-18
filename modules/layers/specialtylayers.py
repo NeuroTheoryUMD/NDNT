@@ -222,13 +222,13 @@ class OnOffLayer(Tlayer):
     def forward(self, x):
         # Reshape stim matrix LACKING temporal dimension [bcwh] 
 
-        x2 = torch.cat( (x, abs(x)), axis=1)
+        #x2 = torch.cat( (x, abs(x)), axis=1)
 
         #### After that (above), it is the same forward as Tlayer (until after the lin-conv)
-        s = (x2.T)[None, :, :] # [B,dims]->[1,dims,B]
+        s = (x.T)[None, :, :] # [B,dims]->[1,dims,B]
 
         w = self.preprocess_weights()
-        w = w.reshape([self.folded_dims, self.filter_dims[3], -1]).permute(2,0,1) # [C,T,N]->[N,C,T]
+        w = w.reshape([2, self.folded_dims//2, self.filter_dims[3], -1]).permute(3,0,1,2) # [C,T,N]->[N,C,T]
 
         # pad the batch dimension
         pad = (self.filter_dims[-1]-1, 0)
@@ -236,10 +236,16 @@ class OnOffLayer(Tlayer):
 
         y = F.conv1d(
             s,
-            w, 
+            w[:,0, ...], 
             bias=self.bias,
             stride=1, dilation=1)
-        
+
+        y += F.conv1d(
+            abs(s),
+            w[:,1, ...], 
+            bias=self.bias,
+            stride=1, dilation=1)
+
         y = y.permute(2,1,0)[:, :, 0] # [1,N,B] -> [B,N,1] -> [B, N]
     
         if self.output_norm is not None:
