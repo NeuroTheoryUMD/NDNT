@@ -480,21 +480,38 @@ class NDN(nn.Module):
                     if hasattr(dataset, 'train_blks'):
                         if dataset.train_blks is not None:
                             train_inds = dataset.train_blks
-                        if dataset.val_inds is not None:
-                            val_inds = dataset.val_blks
+                        else:
+                            print( "Warning: no train_bkls specified in dataset (block_sample)")
                     else:
                         print( "Warning: no train_bkls specified (block_sample)")                
                 else:
                     if hasattr(dataset, 'train_inds'):
                         if dataset.train_inds is not None:
                             train_inds = dataset.train_inds
-                        if dataset.val_inds is not None:
-                            val_inds = dataset.val_inds
+                        else:
+                            print( "Warning: no train_inds specified in dataset" )
                     else:
                         train_inds = range(len(dataset))
                         if 'verbose' in kwargs.keys():
                             if kwargs['verbose'] > 0:
                                 print( "Warning: no train_inds specified. Using full dataset passed in.")
+            if val_inds is None:
+                if self.block_sample:
+                    if hasattr(dataset, 'val_blks'):
+                        if dataset.val_inds is not None:
+                            val_inds = dataset.val_blks
+                        else:
+                            print( "Warning: no val_bkls specified in dataset (block_sample)")
+                    else:
+                        print( "Warning: no val_bkls specified (block_sample)")
+                else:
+                    if hasattr(dataset, 'val_inds'):
+                        if dataset.val_inds is not None:
+                            val_inds = dataset.val_inds
+                        else:
+                            print( "Warning: no val_inds specified in dataset." )
+                    else:
+                        print( "No val_inds specified.")
 
         if force_dict_training:
             batch_size = len(train_inds)
