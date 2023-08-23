@@ -16,3 +16,5 @@ from .reslayers import IterTlayer
 from .reslayers import IterSTlayer
 from .specialtylayers import Tlayer
 from .specialtylayers import OnOffLayer
+from .orilayers import OriLayer
+from .orilayers import OriConvLayer
