@@ -180,8 +180,8 @@ class Trainer:
             out = self.train_one_epoch(model, train_loader, self.epoch)
             self.logger.add_scalar('Loss/Train (Epoch)', out['train_loss'], self.epoch)
             train_loss = out['train_loss']
-            if self.verbose > 1:
-                print('Train loss: %0.8f'%out['train_loss'])
+            #if self.verbose > 1:
+            #    print('Train loss: %0.8f'%out['train_loss'])
             if np.isnan(train_loss):
                 self.graceful_exit(model)
 
