@@ -822,11 +822,15 @@ class NDN(nn.Module):
 
         return LLneuron.detach().cpu().numpy()
 
-    def generate_predictions( self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0 ):
+    def generate_predictions(self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0, device=None):
         """
         Generate predictions for a dataset.
         :param data: the dataset
+        :param data_inds: which indices to use from the dataset
+        :param block_inds: which blocks to use from the dataset (if block_sample)
         :param batch_size: how much data to process at each iteration. Reduce if running out of memory.
+        :param num_lags: how many lags to use for prediction
+        :param device: which device to use for prediction
         :return: predictions array (NT x NC) or (num_blocks x NC)
         """
     
@@ -837,6 +841,9 @@ class NDN(nn.Module):
         num_cells = self.networks[-1].output_dims[0]
     
         if self.block_sample:
+            if device is not None:
+                self.to(device)
+
             assert data_inds is None, "block_sample currently does not handle data_inds"
             if batch_size is None:
                 batch_size = 10   # default batch size for block_sample
@@ -845,23 +852,16 @@ class NDN(nn.Module):
             
             total = len(block_inds)
             data_subset_NT = np.sum([len(data.block_inds[ii]) for ii in block_inds])
-            pred = torch.zeros((data_subset_NT, num_cells))
+            pred = torch.zeros((data_subset_NT, num_cells)).to(device)
             with torch.no_grad():
-                accumulated_batch_block_inds_len = 0
                 for i in tqdm.tqdm(range(0, total, batch_size)):
-                    batch_block_inds = []
-                    # we can't just use block_inds[i:i+batch_size] because data.block_inds is a list of lists and not a numpy array
-                    # instead, we need to loop over the indices in block_inds and get the corresponding block_inds from data.block_inds
-                    # and then concatenate them into a single array
-                    for ii in range(i, i+batch_size):
-                        if ii < total:
-                            # get the length of the current block, and make indices for the pred array out of it
-                            batch_block_inds.append(np.arange(accumulated_batch_block_inds_len, len(data.block_inds[block_inds[ii]])))
-                            # update the latest index we are pointing to in the pred array for this batch
-                            # so that we can start here on the next batch
-                            accumulated_batch_block_inds_len += len(batch_block_inds)-1
+                    batch_block_inds = [data.block_inds[ii] for ii in block_inds[i:i+batch_size]]
                     batch_block_inds = np.concatenate(batch_block_inds)
-                    pred_batch = self(data[i:i+batch_size])
+                    data_batch = data[i:i+batch_size]
+                    if device is not None:
+                        for key in data_batch.keys():
+                            data_batch[key] = data_batch[key].to(device)
+                    pred_batch = self(data_batch)
                     pred[batch_block_inds] = pred_batch
             return pred
     
