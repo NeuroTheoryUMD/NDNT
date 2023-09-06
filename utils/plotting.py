@@ -2,7 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_filters_1D(ws, cmaps='gray', num_cols=8, row_height=2, fix_scale=True, **kwargs):
+def plot_filters_1D(ws, cmap='gray', num_cols=8, row_height=2, fix_scale=True, **kwargs):
     """function to plot 1-D spatiotemporal filters (so, 2-d images) by passing in weights of multiple filters"""
     num_filters = ws.shape[-1]
     if num_filters < 8:
@@ -24,7 +24,7 @@ def plot_filters_1D(ws, cmaps='gray', num_cols=8, row_height=2, fix_scale=True, 
     plt.show()
 
 
-def plot_filters_ST1D(ws, cmaps='gray', num_cols=None, row_height=2, fix_scale=True, **kwargs):
+def plot_filters_ST1D(ws, cmap='gray', num_cols=None, row_height=2, fix_scale=True, **kwargs):
     """function to plot 1-D spatiotemporal filters (so, 2-d images) by passing in weights of multiple filters"""
     num_filters = ws.shape[-1]
     if num_cols is None:
@@ -38,9 +38,9 @@ def plot_filters_ST1D(ws, cmaps='gray', num_cols=None, row_height=2, fix_scale=T
     for cc in range(num_filters):
         ax = plt.subplot(num_rows, num_cols, cc+1)
         if fix_scale:
-            plt.imshow(ws[:,:,cc].T, cmap=cmaps, aspect='auto', interpolation='none', vmin=-m, vmax=m)
+            plt.imshow(ws[:,:,cc].T, cmap=cmap, aspect='auto', interpolation='none', vmin=-m, vmax=m)
         else:
-            plt.imshow(ws[:,:,cc].T, cmap=cmaps, aspect='auto', interpolation='none')
+            plt.imshow(ws[:,:,cc].T, cmap=cmap, aspect='auto', interpolation='none')
         ax.set_yticklabels([])
         ax.set_xticklabels([])
     plt.show()

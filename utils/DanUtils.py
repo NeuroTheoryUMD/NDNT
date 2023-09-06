@@ -292,7 +292,8 @@ def compute_Mfilters( tkerns=None, filts=None, mod=None, to_plot=True, to_output
         return Mfilts
 
 
-def compute_binocular_filters(binoc_mod, to_plot=True, num_space=None, ffnet_n=None, mfilters=None):
+def compute_binocular_filters(binoc_mod, to_plot=True, cmap=None,
+                              num_space=None, ffnet_n=None, mfilters=None):
     """using standard binocular model, compute filters. defaults to first ffnet and
     num_space = 36. Set num_space=None to go to minimum given convolutional constraints"""
 
@@ -351,9 +352,42 @@ def compute_binocular_filters(binoc_mod, to_plot=True, num_space=None, ffnet_n=N
     bifilts = np.concatenate((Bfilts[:, :, 0, :], Bfilts[:, :, 1, :]), axis=0)
     if to_plot:
         from NDNT.utils import plot_filters_ST1D
-        plot_filters_ST1D( bifilts, num_cols=4)
+        plot_filters_ST1D( bifilts, num_cols=4, cmap=cmap)
     else:
         return bifilts
+
+
+def iterate_lbfgs(mod, dat, lbfgs_pars, train_inds=None, val_inds=None, 
+                  tol=0.0001, max_iter = 20, verbose=True ):
+    
+    if train_inds is None:
+        train_inds = dat.train_inds
+    if val_inds is None:
+        val_inds = dat.val_inds
+
+    cont = True
+    iter = 0
+    while cont and (iter < max_iter):
+        LLprev = mod.eval_models(dat[val_inds], null_adjusted=False)[0]
+        save_mod = deepcopy(mod)
+        mod.fit(dat, train_inds=train_inds, val_inds=val_inds,
+                force_dict_training=True, **lbfgs_pars, version=9, verbose=0, seed=iter)
+        LLcur = mod.eval_models(dat[val_inds], null_adjusted=False)[0]
+        if LLprev-LLcur < tol:
+            cont = False
+            if LLprev < LLcur:
+                mod = save_mod
+                LLcur = LLprev
+                if verbose:
+                    print("    Reverting")
+            else:
+                if verbose:
+                    print("    Below tolerance", LLprev-LLcur)
+        else:
+            if verbose:
+                print( "  Iter %d: %0.6f"%(iter, LLcur) )
+        iter += 1
+    return mod, LLcur
 
 
 def binocular_data_import( datadir, expt_num ):
