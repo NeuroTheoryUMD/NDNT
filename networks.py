@@ -15,6 +15,7 @@ LayerTypes = {
     'stconv': layers.STconvLayer,
     'tlayer': layers.Tlayer,
     'biconv': layers.BiConvLayer1D,
+    'channelconv': layers.ChannelConvLayer,
     'ori': layers.OriLayer,
     'oriconv': layers.OriConvLayer,
     'oolayer': layers.OnOffLayer,

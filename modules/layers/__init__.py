@@ -11,6 +11,7 @@ from .dimlayers import ChannelLayer
 from .laglayers import LagLayer
 from .lvlayers import LVLayer
 from .bilayers import BiConvLayer1D
+from .bilayers import ChannelConvLayer
 from .reslayers import IterLayer
 from .reslayers import IterTlayer
 from .reslayers import IterSTlayer
