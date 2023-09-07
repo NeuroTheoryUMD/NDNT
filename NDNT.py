@@ -822,7 +822,7 @@ class NDN(nn.Module):
 
         return LLneuron.detach().cpu().numpy()
 
-    def generate_predictions(self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0, device=None):
+    def generate_predictions(self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
         """
         Generate predictions for a dataset.
         :param data: the dataset
@@ -830,6 +830,7 @@ class NDN(nn.Module):
         :param block_inds: which blocks to use from the dataset (if block_sample)
         :param batch_size: how much data to process at each iteration. Reduce if running out of memory.
         :param num_lags: how many lags to use for prediction
+        :param ffnet_target: index for the feedforward network to use for prediction (default is the whole model)
         :param device: which device to use for prediction
         :return: predictions array (NT x NC) or (num_blocks x NC)
         """
@@ -861,7 +862,10 @@ class NDN(nn.Module):
                     if device is not None:
                         for key in data_batch.keys():
                             data_batch[key] = data_batch[key].to(device)
-                    pred_batch = self(data_batch)
+                    if ffnet_target is not None:
+                        pred_batch = self.networks[ffnet_target](data_batch)
+                    else:
+                        pred_batch = self(data_batch)
                     pred[batch_block_inds] = pred_batch
             return pred
     
@@ -872,7 +876,10 @@ class NDN(nn.Module):
             dev0 = data['robs'].device
             m0 = self.to(dev0)
             with torch.no_grad():
-                pred = m0(data)
+                if ffnet_target is not None:
+                    pred = m0.networks[ffnet_target](data)
+                else:
+                    pred = m0(data)
     
         else:
             if batch_size is None:
@@ -892,7 +899,10 @@ class NDN(nn.Module):
                 trange = np.arange(batch_size*bb-num_lags, batch_size*(bb+1))
                 trange = trange[trange < NT]
                 with torch.no_grad():
-                    pred_tmp = m0(data[data_inds[trange]])
+                    if ffnet_target is not None:
+                        pred_tmp = m0.networks[ffnet_target](data[data_inds[trange]])
+                    else:
+                        pred_tmp = m0(data[data_inds[trange]])
                 pred[batch_size*bb + np.arange(len(trange)-num_lags), :] = pred_tmp[num_lags:, :]
     
         return pred.cpu()
