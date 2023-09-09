@@ -8,11 +8,20 @@ from .convlayers import ConvLayer
 import numpy as np
 
 class OriLayer(NDNLayer):
-    """Documentation"""
+    """
+    Orientation layer.
+    """
 
     def __init__(
             self, input_dims=None, num_filters=None,
             filter_dims=None, angles=None, **kwargs): 
+        """
+        Initialize orientation layer.
+        :param input_dims: input dimensions
+        :param num_filters: number of filters
+        :param filter_dims: filter dimensions
+        :param angles: angles for rotation (in degrees)
+        """
 
         assert input_dims is not None, "OriLayer: Must specify input dimensions"
         assert num_filters is not None, "OriLayer: Must specify number of filters"
@@ -149,6 +158,8 @@ class OriConvLayer(ConvLayer):
                  filter_dims=None, padding="valid", output_norm=None, angles=None, **kwargs): 
         
         assert input_dims is not None, "OriConvLayer: Must specify input dimensions"
+        assert len(input_dims) == 4, "OriConvLayer: Stimulus must be 2-D"
+        assert input_dims[3] == 1, "OriConvLayer: Stimulus must be 2-D"
         assert num_filters is not None, "OriConvLayer: Must specify number of filters"
         assert angles is not None, "OriConvLayer: Must specify angles for rotation"
 
@@ -157,6 +168,9 @@ class OriConvLayer(ConvLayer):
             filter_dims=filter_dims, padding=padding, 
             output_norm=output_norm, **kwargs)
         
+        # TODO: adjust the EI mask here to account for the number of angles
+        #       filt0 (5 ori), filt2 (5 ori), etc...
+
         self.is1D = (self.input_dims[2] == 1)
         assert not self.is1D, "OriConvLayer: Stimulus must be 2-D"#What are we inheriting from the convlayer?
         self.angles=angles
@@ -164,9 +178,9 @@ class OriConvLayer(ConvLayer):
         rotation_matrices=self.rotation_matrix_tensor(self.filter_dims, self.angles)
         self.register_buffer('rotation_matrices', rotation_matrices) 
 
-        #self.num_lags=self.input_dims[3] #Also do something with padding?       
-        #self.folded_dims = self.input_dims[0]*self.input_dims[3]   
-        #self.output_dims=self.num_filters*(len(self.angles)+1) #necessary for passing into conv2d 
+        # folded_dims is num_channels * num_angles
+        self.folded_dims = self.input_dims[0]*self.input_dims[3]
+        self.output_dims[3] = len(self.angles)+1
     # END OriConvLayer.__init__
 
     def rotation_matrix_tensor(self, filter_dims, theta_list):
@@ -210,6 +224,16 @@ class OriConvLayer(ConvLayer):
 
         rotation_matrix_tensor = torch.sparse_coo_tensor(
             torch.tensor(indices).t(), torch.ones(len(indices)), size=(len(theta_list), N**2, N**2))
+        
+        self.register_buffer('_ei_mask',
+                             torch.cat(
+                                 (torch.ones(self.num_filters-self._num_inh), 
+                                  -torch.ones(self._num_inh))
+                             ).repeat(len(self.angles)+1)
+                            )
+        
+        print('ei_mask', self._ei_mask.shape)
+
         return rotation_matrix_tensor 
     # END OriConvLayer.rotation_matrix_tensor
 
@@ -222,10 +246,12 @@ class OriConvLayer(ConvLayer):
         s = x.reshape([-1]+self.input_dims).permute(0, 1, 4, 2, 3)
         s_flattened = torch.reshape(s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2])) 
 
+        # TODO: remove the device hack
         rotated_ws = torch.zeros(
             (self.filter_dims[1]*self.filter_dims[2], 
              self.filter_dims[0]*self.filter_dims[3]*self.num_filters, 
-             len(self.angles)+1))
+             len(self.angles)+1), device=torch.device('cuda:0'))
+        print('ws', rotated_ws.shape)
         
         rotated_ws[:, :, 0] = w_flattened
 
@@ -245,14 +271,16 @@ class OriConvLayer(ConvLayer):
                          padding=(self._npads[2], self._npads[0]), 
                          bias=self.bias.repeat_interleave(len(self.angles)+1), 
                          stride=self.stride, dilation=self.dilation)
-            
+        
         if not self.res_layer:
             if self.output_norm is not None:
                 y = self.output_norm(y)
         if self.NL is not None:
             y = self.NL(y)
-        if self._ei_mask is not None: 
-            y = y*self._ei_mask[None, :, None, None]
+        print('y', y.shape)
+        # if self._ei_mask is not None: 
+        #     # TODO: filt0 (5 ori), filt2 (5 ori), etc...
+        #     y = y*self._ei_mask[None, :, None, None]
 
         if self.res_layer:
             y = y+torch.reshape(s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )

@@ -328,6 +328,7 @@ class ScaffoldNetwork(FFnetwork):
 
         # Construct output dimensions
         self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [self.num_lags_out]
+        print('Scaffold output dims:', self.output_dims)
     # END ScaffoldNetwork.__init__
 
     def forward(self, inputs):
