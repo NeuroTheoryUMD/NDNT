@@ -39,20 +39,17 @@ class OriLayer(NDNLayer):
 
         new_output_dims=[self.num_filters, 1, 1, len(self.angles)+1]  
         self.output_dims=new_output_dims 
-    # END OriLayer.__init__
 
     def rotation_matrix_tensor(self, filter_dims, theta_list):
-
         assert self.filter_dims[2] != 1, "OriLayer: Stimulus must be 2-D"
 
-        N = filter_dims[1]
-        if N%2 == 1:             
-            x_pos = np.repeat(np.linspace(-np.floor(N/2), np.floor(N/2), N), N)
-            y_pos = np.tile(np.linspace(-np.floor(N/2), np.floor(N/2), N), N)
-        #if N % 2 ==0: 
+        w = filter_dims[1]
+        if w%2 == 1:             
+            x_pos = np.repeat(np.linspace(-np.floor(w/2), np.floor(w/2), w), w)
+            y_pos = np.tile(np.linspace(-np.floor(w/2), np.floor(w/2), w), w)
         else:
-            x_pos = np.repeat((np.linspace(-(N-1), N-1, N)), N)
-            y_pos = np.tile((np.linspace(-(N-1), N-1, N)), N)
+            x_pos = np.repeat((np.linspace(-(w-1), w-1, w)), w)
+            y_pos = np.tile((np.linspace(-(w-1), w-1, w)), w)
 
         indices=[]
         for k in range(len(theta_list)):
@@ -63,11 +60,11 @@ class OriLayer(NDNLayer):
                 [np.cos(theta), -np.sin(theta), np.sin(theta), np.cos(theta)]).reshape(2, 2)
             
             for i in range(len(x_pos)):
-                vector=np.array([x_pos[i], y_pos[i]]).reshape(2, 1)
-                rotated_vector=np.matmul(rotation_matrix, vector)     
-                integer_center=np.round(rotated_vector)
+                vector = np.array([x_pos[i], y_pos[i]]).reshape(2, 1)
+                rotated_vector = np.matmul(rotation_matrix, vector)     
+                integer_center = np.round(rotated_vector)
 
-                if N%2 == 0: 
+                if w%2 == 0: 
                     frac_part,_ =np.modf(integer_center)
                     for j in range(2):
                         if integer_center[j]%2==0:
@@ -76,27 +73,27 @@ class OriLayer(NDNLayer):
                             else:
                                 integer_center[j]-=np.sign(integer_center[j])
 
-                x_loc=np.argwhere(x_pos==integer_center[0])
-                if len(x_loc)==N:
-                    x_search=x_loc.reshape(N)
-                    y_loc=x_search[np.argwhere(y_pos[x_search]==integer_center[1])]
+                x_loc = np.argwhere(x_pos == integer_center[0])
+                if len(x_loc) == w:
+                    x_search = x_loc.reshape(w)
+                    y_loc = x_search[np.argwhere(y_pos[x_search] == integer_center[1])]
 
-                    if len(y_loc)==0:
+                    if len(y_loc) == 0:
                         continue
                     else:
-                        #large_rotation_matrix[i, y_loc[:, 0]]=1 #Hmm? No
                         indices.append([k, i, int(y_loc[0, 0])])
                 else:
-                    continue 
+                    continue
+        
         rotation_matrix_tensor=torch.sparse_coo_tensor(
-            torch.tensor(indices).t(), torch.ones(len(indices)), size=(len(theta_list), N**2, N**2))
+            torch.tensor(indices).t(), torch.ones(len(indices)), size=(len(theta_list), w**2, w**2))
+        
         return rotation_matrix_tensor 
+    
     #Minor issue: Einstein summation does not seem to work with sparse tensors?
     #This is actually a major problem as the tensors are 3600 by 3600 by other stuff.
-    # END OriLayer.rotation_matrix_tensor
 
     def forward(self, x):
-
         w = self.preprocess_weights() #What shape is this? (whatever self.shape is)
         #You still need the original! w is NC*NXY*NT by NF 
         x_0 = torch.matmul(x, w) #linearity 
@@ -116,26 +113,24 @@ class OriLayer(NDNLayer):
         if self._ei_mask is not None:
             x_0 = x_0 * self._ei_mask
         
-        x_hats=torch.zeros(tuple([x_0.shape[0], x_0.shape[1], len(self.angles)+1])) 
-        x_hats[:, :, 0] = x_0 # Wrangle shapes now. 
-        #x_hat=torch.tensor(len(angles), torch.shape(x)) 
+        x_hats = torch.zeros(tuple([x_0.shape[0], x_0.shape[1], len(self.angles)+1])) 
+        x_hats[:,:,0] = x_0 # Wrangle shapes now. 
         w_slicing = w.reshape(self.filter_dims[0], self.filter_dims[1], self.filter_dims[2], self.filter_dims[3], self.num_filters)
-        w_flattened=w_slicing.reshape(self.filter_dims[1]*self.filter_dims[2], self.filter_dims[0]*self.filter_dims[3]*self.num_filters) 
+        w_flattened = w_slicing.reshape(self.filter_dims[1]*self.filter_dims[2], self.filter_dims[0]*self.filter_dims[3]*self.num_filters) 
 
         for i in range(len(self.angles)):
-            #w_theta=torch.zeros(w_slices.shape)
-            w_theta=torch.sparse.mm(self.rotation_matrices[i], w_flattened)
-            w_reshaped=w_theta.reshape(self.shape) #NC*NXY*NT by NF 
-            x_theta=torch.sparse.mm(x, w_reshaped) #Dimensionality! (x is B by NC*NXY*NT)
-            if self.norm_type==2:
-                x_theta= x_theta / self.weight_scale 
+            w_theta = torch.sparse.mm(self.rotation_matrices[i], w_flattened)
+            w_reshaped = w_theta.reshape(self.shape) #NC*NXY*NT by NF 
+            x_theta = torch.sparse.mm(x, w_reshaped) #Dimensionality! (x is B by NC*NXY*NT)
+            if self.norm_type == 2:
+                x_theta = x_theta / self.weight_scale 
             x_theta = x_theta + self.bias
             if self.NL is not None:
                 x_theta = self.NL(x_theta)
             if self._ei_mask is not None:
                 x_theta = x_theta * self._ei_mask
             #self.activity_regularization = self.activity_reg.regularize(x_theta) #Do we need to change that? 
-            x_hats[:, :, i+1]=x_theta
+            x_hats[:,:,i+1] = x_theta
 
         # store activity regularization to add to loss later
         if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
@@ -153,10 +148,21 @@ class OriLayer(NDNLayer):
 
 
 class OriConvLayer(ConvLayer):
+    """
+    Orientation layer.
+    """
 
     def __init__(self, input_dims=None, num_filters=None,
                  filter_dims=None, padding="valid", output_norm=None, angles=None, **kwargs): 
-        
+        """
+        Initialize orientation layer.
+        :param input_dims: input dimensions
+        :param num_filters: number of filters
+        :param filter_dims: filter dimensions
+        :param angles: angles for rotation (in degrees)
+        """
+
+        # input validation
         assert input_dims is not None, "OriConvLayer: Must specify input dimensions"
         assert len(input_dims) == 4, "OriConvLayer: Stimulus must be 2-D"
         assert input_dims[3] == 1, "OriConvLayer: Stimulus must be 2-D"
@@ -167,91 +173,108 @@ class OriConvLayer(ConvLayer):
             input_dims=input_dims, num_filters=num_filters, 
             filter_dims=filter_dims, padding=padding, 
             output_norm=output_norm, **kwargs)
-        
-        # TODO: adjust the EI mask here to account for the number of angles
-        #       filt0 (5 ori), filt2 (5 ori), etc...
 
         self.is1D = (self.input_dims[2] == 1)
-        assert not self.is1D, "OriConvLayer: Stimulus must be 2-D"#What are we inheriting from the convlayer?
-        self.angles=angles
+        assert not self.is1D, "OriConvLayer: Stimulus must be 2-D"
 
-        rotation_matrices=self.rotation_matrix_tensor(self.filter_dims, self.angles)
-        self.register_buffer('rotation_matrices', rotation_matrices) 
+        print('input_dims', self.input_dims)
 
-        # folded_dims is num_channels * num_angles
-        self.folded_dims = self.input_dims[0]*self.input_dims[3]
-        self.output_dims[3] = len(self.angles)+1
-    # END OriConvLayer.__init__
+        self.angles = angles
 
-    def rotation_matrix_tensor(self, filter_dims, theta_list):
+        # make the rotation matrices and store them as a buffer
+        rotation_matrices = self.rotation_matrix_tensor(self.filter_dims, self.angles)
+        self.register_buffer('rotation_matrices', rotation_matrices)
 
-        N = filter_dims[1]
-        if N%2 == 1: 
-            x_pos = np.repeat(np.linspace(-np.floor(N/2), np.floor(N/2), N), N)
-            y_pos = np.tile(np.linspace(-np.floor(N/2), np.floor(N/2), N), N)
-        if N%2 == 0: 
-            x_pos=np.repeat((np.linspace(-(N-1), N-1, N)), N)
-            y_pos=np.tile((np.linspace(-(N-1), N-1, N)), N)
-        
-        indices = []
-        for k in range(len(theta_list)):
-            assert theta_list[k]==int(theta_list[k]), "OriLayer: All angles must be in degrees!"
-            theta=theta_list[k]*np.pi/180
-            rotation_matrix=rotation_matrix=np.array([np.cos(theta), -np.sin(theta), np.sin(theta), np.cos(theta)]).reshape(2, 2)
-            
-            for i in range(len(x_pos)):
-                vector=np.array([x_pos[i], y_pos[i]]).reshape(2, 1)
-                rotated_vector=np.matmul(rotation_matrix, vector)     
-                integer_center=np.round(rotated_vector)
-                if N % 2==0: 
-                    frac_part,_ =np.modf(integer_center)
-                    for j in range(2):
-                        if integer_center[j]%2==0:
-                            if abs(frac_part[j])<0.5:
-                                integer_center[j]+=np.sign(integer_center[j])
-                            else:
-                                integer_center[j]-=np.sign(integer_center[j])
-                x_loc=np.argwhere(x_pos==integer_center[0])
-                if len(x_loc)==N:
-                    x_search=x_loc.reshape(N)
-                    y_loc=x_search[np.argwhere(y_pos[x_search]==integer_center[1])] 
-                    if len(y_loc)==0:
-                        continue
-                    else:
-                        indices.append([k, i, int(y_loc[0, 0])])
-                else:
-                    continue 
-
-        rotation_matrix_tensor = torch.sparse_coo_tensor(
-            torch.tensor(indices).t(), torch.ones(len(indices)), size=(len(theta_list), N**2, N**2))
-        
+        # make the ei mask and store it as a buffer,
+        # repeat it for each orientation (plus one for the original orientation)
         self.register_buffer('_ei_mask',
                              torch.cat(
                                  (torch.ones(self.num_filters-self._num_inh), 
                                   -torch.ones(self._num_inh))
-                             ).repeat(len(self.angles)+1)
-                            )
+                             ).repeat(len(self.angles)+1))
         
         print('ei_mask', self._ei_mask.shape)
+
+        # folded_dims is num_channels * num_angles
+        self.folded_dims = self.input_dims[0]*self.input_dims[3]
+        self.output_dims[3] = len(self.angles)+1
+
+    def rotation_matrix_tensor(self, filter_dims, theta_list):
+        w = filter_dims[1] # width
+        # if the width is odd, then the center is at the floor of the center
+        if w%2 == 1:
+            x_pos = np.repeat(np.linspace(-np.floor(w/2), np.floor(w/2), w), w)
+            y_pos = np.tile(np.linspace(-np.floor(w/2), np.floor(w/2), w), w)
+        # if the width is even, then the center is at the center
+        if w%2 == 0:
+            x_pos = np.repeat((np.linspace(-(w-1), w-1, w)), w)
+            y_pos = np.tile((np.linspace(-(w-1), w-1, w)), w)
+        
+        indices = []
+        for k in range(len(theta_list)):
+            assert theta_list[k] == int(theta_list[k]), "OriLayer: All angles must be in degrees!"
+            theta = theta_list[k]*np.pi/180
+            rotation_matrix = np.array([np.cos(theta), 
+                                        -np.sin(theta), 
+                                        np.sin(theta), 
+                                        np.cos(theta)]).reshape(2, 2)
+            
+            for i in range(len(x_pos)):
+                vector = np.array([x_pos[i], y_pos[i]]).reshape(2, 1)
+                rotated_vector = np.matmul(rotation_matrix, vector)     
+                integer_center = np.round(rotated_vector)
+                if w%2 == 0:
+                    frac_part, _ = np.modf(integer_center)
+                    for j in range(2):
+                        if integer_center[j]%2 == 0:
+                            if abs(frac_part[j]) < 0.5:
+                                integer_center[j] += np.sign(integer_center[j])
+                            else:
+                                integer_center[j] -= np.sign(integer_center[j])
+                x_loc = np.argwhere(x_pos == integer_center[0])
+                if len(x_loc) == w:
+                    x_search = x_loc.reshape(w)
+                    y_loc = x_search[np.argwhere(y_pos[x_search] == integer_center[1])] 
+                    if len(y_loc) == 0:
+                        continue
+                    else:
+                        indices.append([k, i, int(y_loc[0,0])])
+                else:
+                    continue 
+
+        rotation_matrix_tensor = torch.sparse_coo_tensor(
+            torch.tensor(indices).t(), torch.ones(len(indices)), size=(len(theta_list), w**2, w**2))
 
         return rotation_matrix_tensor 
     # END OriConvLayer.rotation_matrix_tensor
 
     def forward(self, x):
-
+        # print()
+        # print('==== FORWARD ====')
+        # print('input dims', self.input_dims)
+        # print('x', x.shape)
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4, 0, 3, 1, 2)
+        #print('w', w.shape)
         w_flattened = w.reshape(
             self.filter_dims[1]*self.filter_dims[2], self.filter_dims[0]*self.filter_dims[3]*self.num_filters) 
-        
+        #print('w\'', w_flattened.shape)
+        # TODO: this might not work, b/c it is flattening the
+        #       4 incoming filters onto the first dimension,
+        #       not exactly sure, though
         s = x.reshape([-1]+self.input_dims).permute(0, 1, 4, 2, 3)
+        #print('s', s.shape)
         s_flattened = torch.reshape(s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2])) 
+        #print('s\'', s_flattened.shape)
 
         # TODO: remove the device hack
+        # TODO: it turns out we can't create a new tensor here
+        #       b/c it will be on the CPU, and we need it on the GPU
+        #       so we need to resize and repeat the existing tensor
         rotated_ws = torch.zeros(
             (self.filter_dims[1]*self.filter_dims[2], 
              self.filter_dims[0]*self.filter_dims[3]*self.num_filters, 
              len(self.angles)+1), device=torch.device('cuda:0'))
-        print('ws', rotated_ws.shape)
+        #print('ws_rot', rotated_ws.shape)
         
         rotated_ws[:, :, 0] = w_flattened
 
@@ -277,23 +300,32 @@ class OriConvLayer(ConvLayer):
                 y = self.output_norm(y)
         if self.NL is not None:
             y = self.NL(y)
-        print('y', y.shape)
-        # if self._ei_mask is not None: 
-        #     # TODO: filt0 (5 ori), filt2 (5 ori), etc...
-        #     y = y*self._ei_mask[None, :, None, None]
+        if self._ei_mask is not None: 
+            y = y*self._ei_mask[None, :, None, None]
 
-        if self.res_layer:
-            y = y+torch.reshape(s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
-            if self.output_norm is not None:
-                y = self.output_norm(y)
+        # if self.res_layer:
+        #     y = y+torch.reshape(s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
+        #     if self.output_norm is not None:
+        #         y = self.output_norm(y)
         
-        # store activity regularization to add to loss later
-        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
-            self.reg.compute_activity_regularization(y)
+        # # store activity regularization to add to loss later
+        # if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+        #     self.reg.compute_activity_regularization(y)
 
-        y = y.reshape(-1, self.num_filters, 
-                      len(self.angles)+1, self.output_dims[1], self.output_dims[2]).permute(0, 1, 3, 4, 2)
+        # TODO: we need to reshape y to have the orientiations in the last column
+        # reshape y to have the orientiations in the last column
+        y = y.reshape(-1, len(self.angles)+1, self.num_filters,
+                             self.output_dims[1], self.output_dims[2]).permute(0, 2, 3, 4, 1)
+        #print('y\'', y.shape)
+        #print('=================')
         return y.reshape(-1, self.num_filters*(len(self.angles)+1)*self.output_dims[1]*self.output_dims[2])
+
+
+        # y = y.reshape(-1, self.num_filters, 
+        #               len(self.angles)+1, self.output_dims[1], self.output_dims[2]).permute(0, 1, 3, 4, 2)
+        # return y.reshape(-1, self.num_filters*(len(self.angles)+1)*self.output_dims[1]*self.output_dims[2])
+    
+
     # OriConvLayer.forward
 
     @classmethod
