@@ -249,39 +249,28 @@ class OriConvLayer(ConvLayer):
     # END OriConvLayer.rotation_matrix_tensor
 
     def forward(self, x):
-        # print()
-        # print('==== FORWARD ====')
-        # print('input dims', self.input_dims)
-        # print('x', x.shape)
+        print()
+        print('==== FORWARD ====')
+        print('input dims', self.input_dims)
+        print('x', x.shape)
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4, 0, 3, 1, 2)
-        #print('w', w.shape)
+        print('w', w.shape)
         w_flattened = w.reshape(
             self.filter_dims[1]*self.filter_dims[2], self.filter_dims[0]*self.filter_dims[3]*self.num_filters) 
-        #print('w\'', w_flattened.shape)
+        print('w\'', w_flattened.shape)
         # TODO: this might not work, b/c it is flattening the
         #       4 incoming filters onto the first dimension,
         #       not exactly sure, though
         s = x.reshape([-1]+self.input_dims).permute(0, 1, 4, 2, 3)
-        #print('s', s.shape)
+        print('s', s.shape)
         s_flattened = torch.reshape(s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2])) 
-        #print('s\'', s_flattened.shape)
+        print('s\'', s_flattened.shape)
 
         # TODO: remove the device hack
         # TODO: it turns out we can't create a new tensor here
         #       b/c it will be on the CPU, and we need it on the GPU
         #       so we need to resize and repeat the existing tensor
-        rotated_ws = torch.zeros(
-            (self.filter_dims[1]*self.filter_dims[2], 
-             self.filter_dims[0]*self.filter_dims[3]*self.num_filters, 
-             len(self.angles)+1), device=torch.device('cuda:0'))
-        #print('ws_rot', rotated_ws.shape)
-        
-        rotated_ws[:, :, 0] = w_flattened
-
-        for k in range(len(self.angles)):
-            w_theta = torch.sparse.mm(self.rotation_matrices[k], w_flattened)
-            rotated_ws[:, :, k+1] = w_theta
-        rotated_ws = rotated_ws.reshape(
+        rotated_ws = w_flattened.repeat(1, 1, len(self.angles)+1).reshape(
             self.filter_dims[1], self.filter_dims[2], 
             self.folded_dims, self.num_filters*(len(self.angles)+1)).permute(3, 2, 0, 1)
         
@@ -314,10 +303,11 @@ class OriConvLayer(ConvLayer):
 
         # TODO: we need to reshape y to have the orientiations in the last column
         # reshape y to have the orientiations in the last column
+        print('y', y.shape)
         y = y.reshape(-1, len(self.angles)+1, self.num_filters,
                              self.output_dims[1], self.output_dims[2]).permute(0, 2, 3, 4, 1)
-        #print('y\'', y.shape)
-        #print('=================')
+        print('y\'', y.shape)
+        print('=================')
         return y.reshape(-1, self.num_filters*(len(self.angles)+1)*self.output_dims[1]*self.output_dims[2])
 
 
