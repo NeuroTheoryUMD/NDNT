@@ -276,12 +276,13 @@ class FFnetwork(nn.Module):
         return self.layers[layer_target].get_weights(**kwargs)
 
     @classmethod
-    def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', scaffold_levels=None, **kwargs):
+    def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', scaffold_levels=None, num_lags_out=1, **kwargs):
         return {
             'ffnet_type': ffnet_type,
             'xstim_n':xstim_n, 'ffnet_n':ffnet_n,
             'layer_list': deepcopy(layer_list),
-            'scaffold_levels': scaffold_levels}
+            'scaffold_levels': scaffold_levels,
+            'num_lags_out': num_lags_out}
     # END FFnetwork class
 
 
@@ -304,6 +305,7 @@ class ScaffoldNetwork(FFnetwork):
         self.network_type = 'scaffold'
 
         self.num_lags_out = num_lags_out
+        print('Scaffold: num_lags_out =', num_lags_out)
 
         num_layers = len(self.layers)
         if scaffold_levels is None:
@@ -327,7 +329,17 @@ class ScaffoldNetwork(FFnetwork):
             self.filter_count[ii] = self.layers[self.scaffold_levels[ii]].output_dims[0]
 
         # Construct output dimensions
-        self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [self.num_lags_out]
+        if self.num_lags_out is not None:
+            self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [self.num_lags_out]
+        else:
+            # TODO: taking the max of the lag/orientation dims is not the right thing to do
+            print('scaffold levels', self.scaffold_levels)
+            scaffold_lags = [self.layers[self.scaffold_levels[ii]].output_dims[3] for ii in range(len(self.scaffold_levels))]
+            print('scaffold lags', scaffold_lags)
+            max_lag = int(np.max(scaffold_lags))
+            print('Scaffold: max lag =', max_lag)
+            filter_x_lag = int(np.sum(self.filter_count)) * max_lag
+            self.output_dims = [filter_x_lag] + self.spatial_dims + [1]
         print('Scaffold output dims:', self.output_dims)
     # END ScaffoldNetwork.__init__
 
@@ -341,7 +353,16 @@ class ScaffoldNetwork(FFnetwork):
         for layer in self.layers:
             x = layer(x)
             nt = x.shape[0]
-            if layer.output_dims[3] > self.num_lags_out:
+            # TODO: temporary hack to handle the orilayer,
+            # which has a different number of lags than the other layers
+            if self.num_lags_out is not None and layer.output_dims[3] > 1:
+                # reshape y to combine the filters and lags in the second dimension
+                y = x.reshape([nt, -1, layer.output_dims[3]])
+                # move the lag dimension to the first
+                y = y.permute(0, 2, 1)
+                # flatten the filter and lag dimensions to be filters x lags
+                y = y.reshape([nt, -1])
+            elif self.num_lags_out is not None and layer.output_dims[3] > self.num_lags_out:
                 # Need to return just first lag (lag0) -- 'chomp'
                 y = x.reshape([nt, -1, layer.output_dims[3]])[..., :(self.num_lags_out)]
                 out.append( y.reshape((nt, -1) ))

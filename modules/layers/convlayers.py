@@ -319,6 +319,11 @@ class ConvLayer(NDNLayer):
         return w
 
     def forward(self, x):
+        # print()
+        # print('==== FORWARD ====')
+        # print('input dims', self.input_dims)
+        # print('x', x.shape)
+        
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
 
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3) # B, C, T, X, Y

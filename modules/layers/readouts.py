@@ -30,6 +30,7 @@ class ReadoutLayer(NDNLayer):
         
         filter_dims[1:3] = [1,1]
         
+        # TODO: handle temporal filter dims
         assert filter_dims[3] == 1, 'Cant handle temporal filter dims here, yet.'
         
         super().__init__(input_dims,
@@ -89,7 +90,6 @@ class ReadoutLayer(NDNLayer):
 
     @property
     def features(self):
-
         if self.pos_constraint:
             #feat = F.relu(self.weight)
             feat = self.weight**2
