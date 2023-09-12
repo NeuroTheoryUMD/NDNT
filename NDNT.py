@@ -958,7 +958,7 @@ class NDN(nn.Module):
     def plot_filters(self, ffnet_target=0, **kwargs):
         self.networks[ffnet_target].plot_filters(**kwargs)
 
-    def save_model(self, filename=None ):
+    def save_model(self, filename=None, pt=False ):
         """Models will be saved using dill/pickle in as the filename, which can contain
         the directory information. Will be put in the CPU first"""
 
@@ -967,10 +967,19 @@ class NDN(nn.Module):
             fn += self.model_name + '.pkl'
         else:
             fn = filename
+
+        # Eliminate nested objects
+        if self.trainer is not None:
+            del self.trainer
+            self.trainer = None
+
         print( '  Saving model at', fn)
 
         with open(fn, 'wb') as f:
-            dill.dump(self.to(torch.device('cpu')), f)
+            if pt:
+                torch.save(self.to(torch.device('cpu')), f)
+            else:
+                dill.dump(self.to(torch.device('cpu')), f)
 
     def save_model_chk(self, filename=None, alt_dirname=None):
         """Models will be saved using dill/pickle in the directory above the version
@@ -1054,7 +1063,7 @@ class NDN(nn.Module):
         # just for checking -- but not definitive/great to do in general, apparently
 
     @classmethod
-    def load_model(cls, filename=None ):
+    def load_model(cls, filename=None, pt=False ):
         '''
             Load a pickled model from disk.
             Arguments:
@@ -1064,7 +1073,11 @@ class NDN(nn.Module):
         '''
         from NDNT.utils.NDNutils import CPU_Unpickler as unpickler
 
+        #import dill 
+        #model = dill.load(filename)
         with open(filename, 'rb') as f:
+            if pt:
+                model = torch.load(f)
             model = unpickler(f).load()
         
         return model
