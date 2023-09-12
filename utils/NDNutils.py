@@ -8,6 +8,7 @@ import shutil
 from collections import OrderedDict
 # for unpickler
 import pickle
+import json
 import io
 
 
@@ -964,3 +965,15 @@ def get_max_samples(dataset, device,
     maxsamples = int(free - mempercell*num_cells - buffer_bytes) // mempersample
     print("# samples that can fit on device: {} K".format(maxsamples/1000))
     return maxsamples
+
+
+# for JSON serialization
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)

@@ -12,7 +12,7 @@ import os
 
 from .metrics import poisson_loss as plosses
 from .metrics import mse_loss as glosses
-from .utils import create_optimizer_params
+from .utils import create_optimizer_params, NpEncoder
 from .modules.experiment_sampler import ExperimentSampler
 
 from . import networks as NDNnetworks
@@ -967,22 +967,45 @@ class NDN(nn.Module):
     def plot_filters(self, ffnet_target=0, **kwargs):
         self.networks[ffnet_target].plot_filters(**kwargs)
 
-    def save_model_zip(self, filename):
+    def save_model_zip(self, 
+                       filename,
+                       ffnet_list=None,
+                       ffnet_out=None,
+                       loss_type='poisson',
+                       model_name=None,
+                       working_dir='./checkpoints'):
         """
         Save the model as a zip file containing a json file with the model parameters
-        and a .ckpt file with the state_dict
+        and a .ckpt file with the state_dict.
+        :param filename: the name of the zip file to save
+        :param ffnet_list: the list of feedforward networks (if this is set, it uses the ffnet_list, ffnet_out, loss_type, model_name, and working_dir arguments)
+        :param ffnet_out: the output layer of the feedforward network
+        :param loss_type: the loss type
+        :param model_name: the name of the model
+        :param working_dir: the working directory
         """
         if filename.endswith('.zip'):
             filename = filename[:-4]
+
+        # package params
+        if ffnet_list is None:
+            ndn_params = {'ffnet_list': self.ffnet_list, 
+                          'loss_type':self.loss_type,
+                          'ffnet_out': self.ffnet_out,
+                          'model_name': self.model_name,
+                          'working_dir': self.working_dir}
+        else:
+            ndn_params = {'ffnet_list': ffnet_list, 
+                          'loss_type':loss_type,
+                          'ffnet_out': ffnet_out,
+                          'model_name': model_name,
+                          'working_dir': working_dir}
+
         # make zip_filename and ckpt_filename in the same directory as the filename
         json_filename = filename + '.json'
         ckpt_filename = filename + '.ckpt'
         with open(json_filename, 'w') as f:
-            json.dump({'ffnet_list': self.ffnet_list, 
-                       'loss_type':self.loss_type,
-                       'ffnet_out': self.ffnet_out,
-                       'model_name': self.model_name,
-                       'working_dir': self.working_dir}, f, cls=NpEncoder)
+            json.dump(ndn_params, f, cls=NpEncoder)
         torch.save(self.state_dict(), ckpt_filename)
         # zip up the two files
         with zipfile.ZipFile(filename + '.zip', 'w') as myzip:
@@ -1184,18 +1207,4 @@ class NDN(nn.Module):
                 else:
                     name += 'X'
         return name
-
-
-
-# for serialization
-class NpEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super(NpEncoder, self).default(obj)
-    
 
