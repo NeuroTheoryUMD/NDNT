@@ -6,6 +6,9 @@ from functools import reduce
 
 import numpy as np # TODO: we can get rid of this and just use torch for math
 import tqdm
+import json
+import zipfile
+import os
 
 from .metrics import poisson_loss as plosses
 from .metrics import mse_loss as glosses
@@ -35,6 +38,11 @@ class NDN(nn.Module):
         working_dir='./checkpoints'):
 
         super().__init__()
+
+        # save the ffnet_list for serialization purposes
+        self.ffnet_list = ffnet_list
+        self.loss_type = loss_type
+        self.ffnet_out = ffnet_out
         
         if ffnet_list is None:
             # then must be a single ffnet specified by layer_list
@@ -45,6 +53,7 @@ class NDN(nn.Module):
             assert layer_list is None, "NDN: cannot specify ffnet_list and layer_list at same time."
  
         assert type(ffnet_list) is list, 'FFnetwork list in NDN constructor must be a list.'
+
 
         if (ffnet_out is None) or (ffnet_out == -1):
             ffnet_out = len(ffnet_list)-1
@@ -958,6 +967,64 @@ class NDN(nn.Module):
     def plot_filters(self, ffnet_target=0, **kwargs):
         self.networks[ffnet_target].plot_filters(**kwargs)
 
+    def save_model_zip(self, filename):
+        """
+        Save the model as a zip file containing a json file with the model parameters
+        and a .ckpt file with the state_dict
+        """
+        if filename.endswith('.zip'):
+            filename = filename[:-4]
+        # make zip_filename and ckpt_filename in the same directory as the filename
+        json_filename = filename + '.json'
+        ckpt_filename = filename + '.ckpt'
+        with open(json_filename, 'w') as f:
+            json.dump({'ffnet_list': self.ffnet_list, 
+                       'loss_type':self.loss_type,
+                       'ffnet_out': self.ffnet_out,
+                       'model_name': self.model_name,
+                       'working_dir': self.working_dir}, f, cls=NpEncoder)
+        torch.save(self.state_dict(), ckpt_filename)
+        # zip up the two files
+        with zipfile.ZipFile(filename + '.zip', 'w') as myzip:
+            myzip.write(json_filename)
+            myzip.write(ckpt_filename)
+        # remove the two files
+        os.remove(json_filename)
+        os.remove(ckpt_filename)
+
+    @classmethod
+    def load_model_zip(cls, filename):
+        """
+        Load the model from a zip file containing a json file with the model parameters
+        and a .ckpt file with the state_dict
+        """
+        if filename.endswith('.zip'):
+            filename = filename[:-4]
+        # open the zip file
+        with zipfile.ZipFile(filename + '.zip', 'r') as myzip:
+            myzip.extractall()
+        with open(filename + '.json', 'r') as f:
+            params = json.load(f)
+        ffnet_list = params['ffnet_list']
+        loss_type = params['loss_type']
+        ffnet_out = params['ffnet_out']
+        model_name = params['model_name']
+        working_dir = params['working_dir']
+        # make an NDN object with the ffnet_list
+        model = cls(ffnet_list=ffnet_list, 
+                    loss_type=loss_type,
+                    ffnet_out=ffnet_out,
+                    model_name=model_name,
+                    working_dir=working_dir)
+        model.prepare_regularization() # this will build the reg_modules
+        # load the state_dict
+        state_dict = torch.load(filename + '.ckpt')
+        model.load_state_dict(state_dict)
+        # remove the two files
+        os.remove(filename + '.json')
+        os.remove(filename + '.ckpt')
+        return model
+
     def save_model(self, filename=None ):
         """Models will be saved using dill/pickle in as the filename, which can contain
         the directory information. Will be put in the CPU first"""
@@ -1117,3 +1184,18 @@ class NDN(nn.Module):
                 else:
                     name += 'X'
         return name
+
+
+
+# for serialization
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
+    
+
