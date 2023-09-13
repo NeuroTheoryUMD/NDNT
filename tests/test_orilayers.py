@@ -33,20 +33,20 @@ def construct_test_data(batch_size=1):
     return data
 
 
-def test_layer_happypath():
+def test_layer_forward_batch_1():
     # TODO: test that the output weights are transformed correctly
     
     # get the test data
-    stim = construct_test_stim()
+    stim = construct_test_stim(batch_size=1)
 
     # define a basic layer and confirm that data passes through it
     oriconv_layer = OriConvLayer.layer_dict(
         input_dims = stim_dims,
-        num_filters=32,
+        num_filters=4,
         bias=True,
         norm_type=1,
-        num_inh=32//2,
-        filter_dims=17,
+        num_inh=2,
+        filter_dims=7,
         NLtype='relu',
         initialize_center=True,
         angles=[0, 90, 180, 270])
@@ -58,10 +58,36 @@ def test_layer_happypath():
 
     # run the data through the layer
     output = cnn.networks[0](stim)
-    assert output.shape == (1, 576000) # 32 filters x 5 angles x 3600 stim_dims
+    assert output.shape == (1, 57600) # 4 filters x 4 angles x 3600 stim_dims
 
+def test_layer_forward_batch_10():
+    # TODO: test that the output weights are transformed correctly
+    
+    # get the test data
+    stim = construct_test_stim(batch_size=10)
 
-def test_combined_network():
+    # define a basic layer and confirm that data passes through it
+    oriconv_layer = OriConvLayer.layer_dict(
+        input_dims = stim_dims,
+        num_filters=4,
+        bias=True,
+        norm_type=1,
+        num_inh=2,
+        filter_dims=7,
+        NLtype='relu',
+        initialize_center=True,
+        angles=[0, 90, 180, 270])
+    oriconv_layer['window']='hamming'
+
+    cnn = NDN.NDN(layer_list=[oriconv_layer],
+                    loss_type='poisson')
+    cnn.block_sample = True
+
+    # run the data through the layer
+    output = cnn.networks[0](stim)
+    assert output.shape == (10, 57600) # 4 filters x 4 angles x 3600 stim_dims
+
+def test_cnn_forward():
     data = construct_test_data()
     
     lgn_layer = STconvLayer.layer_dict(
