@@ -1052,7 +1052,7 @@ class NDN(nn.Module):
         os.remove(filename + '.ckpt')
         return model
 
-    def save_model(self, filename=None ):
+    def save_model(self, filename=None, pt=False ):
         """Models will be saved using dill/pickle in as the filename, which can contain
         the directory information. Will be put in the CPU first"""
 
