@@ -174,6 +174,8 @@ class OriConvLayer(ConvLayer):
             filter_dims=filter_dims, padding=padding,
             output_norm=output_norm, **kwargs)
 
+        print('init w', self.weight.shape)
+
         self.is1D = (self.input_dims[2] == 1)
         assert not self.is1D, "OriConvLayer: Stimulus must be 2-D"
 
@@ -190,13 +192,13 @@ class OriConvLayer(ConvLayer):
 
         # make the ei mask and store it as a buffer,
         # repeat it for each orientation (plus one for the original orientation)
-        self.register_buffer('_ei_mask',
-                             torch.cat(
-                                 (torch.ones(self.num_filters-self._num_inh), 
-                                  -torch.ones(self._num_inh))
-                             ).repeat(len(self.angles)))
-        
-        print('ei_mask', self._ei_mask.shape)
+        if self._ei_mask is not None: 
+            self.register_buffer('_ei_mask',
+                                torch.cat(
+                                    (torch.ones(self.num_filters-self._num_inh), 
+                                    -torch.ones(self._num_inh))
+                                ).repeat(len(self.angles)))
+            print('ei_mask', self._ei_mask.shape)
 
         # folded_dims is num_channels * num_angles
         self.folded_dims = self.num_filters*(len(self.angles))
@@ -256,40 +258,52 @@ class OriConvLayer(ConvLayer):
         print('==== FORWARD ====')
         print('input dims', self.input_dims)
         print('x', x.shape)
-        w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4, 0, 3, 1, 2)
+        print('w0', self.weight.shape)
+        w = self.preprocess_weights()
+        print('w', w.shape)
+        w = w.reshape(self.filter_dims+[self.num_filters]).permute(4, 0, 3, 1, 2)
         print('w', w.shape)
         w_flattened = w.reshape(self.num_filters, self.filter_dims[1]*self.filter_dims[2]) 
-        print('w\'', w_flattened.shape)
+        print('wf', w_flattened.shape)
         s = x.reshape(-1, self.input_dims[0], self.input_dims[1], self.input_dims[2])
         print('s', s.shape)
 
-        rotated_ws = w_flattened.repeat(1, 1, len(self.angles)).reshape(
-            self.folded_dims,    # num_filters * num_angles
-            self.filter_dims[1]*self.filter_dims[2]) # width*height
+        # repeat weights for each angle along a new dimension
+        # 1, 1 specifies to keep the filters and width*height dimensions the same
+        rotated_ws = w_flattened.repeat(len(self.angles), 1, 1).permute(1, 2, 0)
         print('wr', rotated_ws.shape)
         
         # use torch.sparse.mm to multiply the rotation matrices by the weights
         for i in range(len(self.angles)):
-            # get a view of the weights for the given angle
-            w_theta = rotated_ws[i*self.num_filters:(i+1)*self.num_filters, :]
+            # get the weights for the given angle
+            w_theta = rotated_ws[:, :, i]
             print('w_theta', w_theta.shape)
 
             # rotate the weight matrix for the given angle
             print('rotation_matrix', self.rotation_matrices[i].shape)
-            # we need to transpose w_theta to multiple with the rotation matrix,
-            # then transpose it back
-            w_theta = torch.sparse.mm(self.rotation_matrices[i], w_theta.T).T
+            w_theta = torch.sparse.mm(w_theta, self.rotation_matrices[i])
             print('w_theta\'', w_theta.shape)
 
             # put w_theta back into the full weight matrix
-            rotated_ws[i*self.num_filters:(i+1)*self.num_filters, :] = w_theta
+            rotated_ws[:, :, i] = w_theta
             print('rotated_ws\'', rotated_ws.shape)
         
-        # TODO: update to use the right batch size
-        # TODO: we hack to make put folded_dims in the batch dimension
-        #       this lets us convolve all the filters at once
-        #       but we need to reshape the output to have the folded_dims in the channel dimension again
-        rotated_ws_reshaped = rotated_ws.reshape((self.folded_dims, -1, self.filter_dims[1], self.filter_dims[2]))
+        # reshape the weights so we can put the angles in the second dimension
+        rotated_ws_reshaped = rotated_ws.reshape((self.num_filters, 
+                                                  self.filter_dims[1], 
+                                                  self.filter_dims[2], 
+                                                  len(self.angles)))
+        print('wr\'', rotated_ws_reshaped.shape)
+        # move the angles to the second dimension
+        rotated_ws_reshaped = rotated_ws_reshaped.permute(0, 3, 1, 2)
+        print('wr\'', rotated_ws_reshaped.shape)
+        # and combine the filters and angles into the folded_dims dimension
+        # put a 1 in the second dimension to match the input
+        # since we are convolving in the folded_dims dimension to do all filters at once
+        rotated_ws_reshaped = rotated_ws_reshaped.reshape((self.folded_dims,
+                                                           1,
+                                                           self.filter_dims[1],
+                                                           self.filter_dims[2]))
         print('wr\'', rotated_ws_reshaped.shape)
 
         if self._fullpadding:
@@ -320,13 +334,19 @@ class OriConvLayer(ConvLayer):
         # if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
         #     self.reg.compute_activity_regularization(y)
 
-        # reshape y to have the orientiations in the last column
+        # pull the filters and angles apart again
         print('y', y.shape)
-        y = y.reshape(-1, len(self.angles), self.num_filters,
-                             self.output_dims[1], self.output_dims[2]).permute(0, 2, 3, 4, 1)
+        y = y.reshape(-1, # the batch dimension
+                      self.num_filters,
+                      len(self.angles),
+                      self.output_dims[1], 
+                      self.output_dims[2])
+        # reshape y to have the orientiations in the last column
+        y = y.permute(0, 1, 3, 4, 2)
         print('y\'', y.shape)
         print('=================')
-        return y.reshape(-1, self.num_filters*(len(self.angles))*self.output_dims[1]*self.output_dims[2])
+        return y.reshape(-1, # the batch dimension
+                         self.folded_dims*self.output_dims[1]*self.output_dims[2])
     # OriConvLayer.forward
 
     @classmethod

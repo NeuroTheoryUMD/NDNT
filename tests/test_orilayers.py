@@ -7,7 +7,9 @@ import NDNT.NDNT as NDN
 from NDNT.modules.layers import *
 from NDNT.networks import *
 
-stim_dims = [1,60,60,1]
+stim_width = 4
+stim_height = 4
+stim_dims = [1,stim_width,stim_height,1]
 NCv = 10
 NA = 44 # drift terms
 # some good starting parameters
@@ -18,8 +20,11 @@ Creg = None
 Dreg = 0.5
 
 
-def construct_test_stim(batch_size=1):
-    stim = torch.FloatTensor(batch_size, 3600).uniform_(-1,1)
+def construct_test_stim(batch_size=1, all_ones=False):
+    if all_ones:
+        stim = torch.ones(batch_size, stim_width*stim_height)
+    else:
+        stim = torch.FloatTensor(batch_size, stim_width*stim_height).uniform_(-1,1)
     return stim
 
 def construct_test_Xdrift(batch_size=1):
@@ -33,61 +38,400 @@ def construct_test_data(batch_size=1):
     return data
 
 
-def test_layer_forward_batch_1():
-    # TODO: test that the output weights are transformed correctly
-    
+def test_layer_forward_2_angle_1_filter_1_batch():
     # get the test data
-    stim = construct_test_stim(batch_size=1)
+    stim = construct_test_stim(batch_size=1, all_ones=True)
+
+    # define a basic layer and confirm that data passes through it
+    oriconv_layer = OriConvLayer.layer_dict(
+        input_dims = stim_dims,
+        num_filters=1,
+        bias=True,
+        norm_type=0,
+        filter_dims=3,
+        NLtype='relu',
+        initialize_center=True,
+        angles=[0, 90])
+
+    cnn = NDN.NDN(layer_list=[oriconv_layer],
+                    loss_type='poisson')
+    cnn.block_sample = True
+
+    # set the weights to be a linspace
+    print('weight', cnn.networks[0].layers[0].weight.shape)
+    weight = cnn.networks[0].layers[0].weight
+    ascending_weights = torch.arange(0,9, dtype=torch.float32)
+    print('ascending_weights', ascending_weights)
+    cnn.networks[0].layers[0].weight.data = ascending_weights.reshape(1,9).T
+    print('weight', cnn.networks[0].layers[0].weight)
+
+    # run the data through the layer
+    output = cnn.networks[0](stim)
+    assert output.shape == (1, 2*stim_width*stim_height) # 1 filter x 2 angles x 9 stim_dims
+    output = output.reshape(1,stim_width,stim_height,2).permute(3,0,1,2)
+    assert torch.allclose(output, torch.tensor(
+                          [[[[24., 33., 33., 20.],
+                            [27., 36., 36., 21.],
+                            [27., 36., 36., 21.],
+                            [12., 15., 15.,  8.]]],
+                            [[[20., 21., 21.,  8.],
+                            [33., 36., 36., 15.],
+                            [33., 36., 36., 15.],
+                            [24., 27., 27., 12.]]]]))
+
+
+def test_layer_forward_4_angle_1_filter_1_batch():
+    # get the test data
+    stim = construct_test_stim(batch_size=1, all_ones=True)
+
+    # define a basic layer and confirm that data passes through it
+    oriconv_layer = OriConvLayer.layer_dict(
+        input_dims = stim_dims,
+        num_filters=1,
+        bias=True,
+        norm_type=0,
+        filter_dims=3,
+        NLtype='relu',
+        initialize_center=True,
+        angles=[0, 90, 180, 270])
+
+    cnn = NDN.NDN(layer_list=[oriconv_layer],
+                    loss_type='poisson')
+    cnn.block_sample = True
+
+    # set the weights to be a linspace
+    print('weight', cnn.networks[0].layers[0].weight.shape)
+    weight = cnn.networks[0].layers[0].weight
+    ascending_weights = torch.arange(0,9, dtype=torch.float32)
+    print('ascending_weights', ascending_weights)
+    cnn.networks[0].layers[0].weight.data = ascending_weights.reshape(1,9).T
+    print('weight', cnn.networks[0].layers[0].weight)
+
+    # run the data through the layer
+    output = cnn.networks[0](stim)
+    assert output.shape == (1, 4*stim_width*stim_height) # 1 filter x 2 angles x 9 stim_dims
+    output = output.reshape(1,stim_width,stim_height,4).permute(3,0,1,2)
+    assert torch.allclose(output, torch.tensor(
+                          [[[[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]]],
+                           [[[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]]],
+                           [[[ 8., 15., 15., 12.],
+                             [21., 36., 36., 27.],
+                             [21., 36., 36., 27.],
+                             [20., 33., 33., 24.]]],
+                           [[[12., 27., 27., 24.],
+                             [15., 36., 36., 33.],
+                             [15., 36., 36., 33.],
+                             [ 8., 21., 21., 20.]]]]))
+
+
+def test_layer_forward_2_angle_2_filter_1_batch():
+    # get the test data
+    stim = construct_test_stim(batch_size=1, all_ones=True)
+
+    # define a basic layer and confirm that data passes through it
+    oriconv_layer = OriConvLayer.layer_dict(
+        input_dims = stim_dims,
+        num_filters=2,
+        bias=True,
+        norm_type=0,
+        filter_dims=3,
+        NLtype='relu',
+        initialize_center=True,
+        angles=[0, 90])
+
+    cnn = NDN.NDN(layer_list=[oriconv_layer],
+                    loss_type='poisson')
+    cnn.block_sample = True
+
+    # set the weights to be a linspace
+    print('weight', cnn.networks[0].layers[0].weight.shape)
+    ascending_weights = torch.arange(0,9, dtype=torch.float32)
+    # repeat the weights for each filter
+    ascending_weights = ascending_weights.repeat(2)
+    print('ascending_weights', ascending_weights)
+    cnn.networks[0].layers[0].weight.data = ascending_weights.reshape(2,9).T
+    print('weight', cnn.networks[0].layers[0].weight)
+
+    # run the data through the layer
+    output = cnn.networks[0](stim)
+    assert output.shape == (1, 2*2*stim_width*stim_height) # 2 filters x 2 angles x 9 stim_dims
+    # reshape and put the filters first and angles second (batch is size 1)
+    output = output.reshape(1,2,stim_width,stim_height,2).permute(0,1,4,2,3)
+    print(output)
+    assert torch.allclose(output, torch.tensor(
+                          [[[[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]]],
+                            [[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]]]]]))
+
+
+def test_layer_forward_2_angle_1_filter_10_batch():
+    # get the test data
+    stim = construct_test_stim(batch_size=10, all_ones=True)
+
+    # define a basic layer and confirm that data passes through it
+    oriconv_layer = OriConvLayer.layer_dict(
+        input_dims = stim_dims,
+        num_filters=1,
+        bias=True,
+        norm_type=0,
+        filter_dims=3,
+        NLtype='relu',
+        initialize_center=True,
+        angles=[0, 90])
+
+    cnn = NDN.NDN(layer_list=[oriconv_layer],
+                    loss_type='poisson')
+    cnn.block_sample = True
+
+    # set the weights to be a linspace
+    print('weight', cnn.networks[0].layers[0].weight.shape)
+    weight = cnn.networks[0].layers[0].weight
+    ascending_weights = torch.arange(0,9, dtype=torch.float32)
+    print('ascending_weights', ascending_weights)
+    cnn.networks[0].layers[0].weight.data = ascending_weights.reshape(1,9).T
+    print('weight', cnn.networks[0].layers[0].weight)
+
+    # run the data through the layer
+    output = cnn.networks[0](stim)
+    assert output.shape == (10, 2*stim_width*stim_height) # 1 filter x 2 angles x 9 stim_dims
+    output = output.reshape(10,stim_width,stim_height,2).permute(3,0,1,2)
+    print(output)
+    assert torch.allclose(output, torch.tensor(
+                          [[[[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]],
+                            [[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]],
+                            [[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]],
+                            [[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]],
+                            [[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]],
+                            [[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]],
+                            [[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]],
+                            [[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]],
+                            [[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]],
+                            [[24., 33., 33., 20.],
+                             [27., 36., 36., 21.],
+                             [27., 36., 36., 21.],
+                             [12., 15., 15.,  8.]]],
+                            [[[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]],
+                            [[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]],
+                            [[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]],
+                            [[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]],
+                            [[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]],
+                            [[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]],
+                            [[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]],
+                            [[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]],
+                            [[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]],
+                            [[20., 21., 21.,  8.],
+                             [33., 36., 36., 15.],
+                             [33., 36., 36., 15.],
+                             [24., 27., 27., 12.]]]]))
+
+
+def test_layer_forward_3_angle_4_filter_2_batch():
+    # get the test data
+    stim = construct_test_stim(batch_size=2, all_ones=True)
 
     # define a basic layer and confirm that data passes through it
     oriconv_layer = OriConvLayer.layer_dict(
         input_dims = stim_dims,
         num_filters=4,
         bias=True,
-        norm_type=1,
-        num_inh=2,
-        filter_dims=7,
+        norm_type=0,
+        filter_dims=3,
         NLtype='relu',
         initialize_center=True,
-        angles=[0, 90, 180, 270])
-    oriconv_layer['window']='hamming'
+        angles=[0, 90, 180])
 
     cnn = NDN.NDN(layer_list=[oriconv_layer],
                     loss_type='poisson')
     cnn.block_sample = True
 
-    # run the data through the layer
-    output = cnn.networks[0](stim)
-    assert output.shape == (1, 57600) # 4 filters x 4 angles x 3600 stim_dims
-
-def test_layer_forward_batch_10():
-    # TODO: test that the output weights are transformed correctly
-    
-    # get the test data
-    stim = construct_test_stim(batch_size=10)
-
-    # define a basic layer and confirm that data passes through it
-    oriconv_layer = OriConvLayer.layer_dict(
-        input_dims = stim_dims,
-        num_filters=4,
-        bias=True,
-        norm_type=1,
-        num_inh=2,
-        filter_dims=7,
-        NLtype='relu',
-        initialize_center=True,
-        angles=[0, 90, 180, 270])
-    oriconv_layer['window']='hamming'
-
-    cnn = NDN.NDN(layer_list=[oriconv_layer],
-                    loss_type='poisson')
-    cnn.block_sample = True
+    # set the weights to be a linspace
+    print('weight', cnn.networks[0].layers[0].weight.shape)
+    ascending_weights = torch.arange(0,9, dtype=torch.float32)
+    # repeat the weights for each filter
+    ascending_weights = ascending_weights.repeat(4)
+    print('ascending_weights', ascending_weights)
+    cnn.networks[0].layers[0].weight.data = ascending_weights.reshape(4,9).T
+    print('weight', cnn.networks[0].layers[0].weight)
 
     # run the data through the layer
     output = cnn.networks[0](stim)
-    assert output.shape == (10, 57600) # 4 filters x 4 angles x 3600 stim_dims
+    assert output.shape == (2, 4*3*stim_width*stim_height) # 5 filters x 3 angles x 9 stim_dims
+    # reshape and put the filters first after the batch and angles second (batch is size 2)
+    output = output.reshape(2,4,stim_width,stim_height,3).permute(0,1,4,2,3)
+    print(output)
+    assert torch.allclose(output, torch.tensor(
+                          [[[[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]],
+                             [[ 8., 15., 15., 12.], 
+                              [21., 36., 36., 27.],
+                              [21., 36., 36., 27.],
+                              [20., 33., 33., 24.]]],
+                            [[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]],
+                             [[ 8., 15., 15., 12.],
+                              [21., 36., 36., 27.],
+                              [21., 36., 36., 27.],
+                              [20., 33., 33., 24.]]],
+                            [[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]],
+                             [[ 8., 15., 15., 12.],
+                              [21., 36., 36., 27.],
+                              [21., 36., 36., 27.],
+                              [20., 33., 33., 24.]]],
+                            [[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]],
+                             [[ 8., 15., 15., 12.],
+                              [21., 36., 36., 27.],
+                              [21., 36., 36., 27.],
+                              [20., 33., 33., 24.]]]],
+                           [[[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]],
+                             [[ 8., 15., 15., 12.],
+                              [21., 36., 36., 27.],
+                              [21., 36., 36., 27.],
+                              [20., 33., 33., 24.]]],
+                            [[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]],
+                             [[ 8., 15., 15., 12.],
+                              [21., 36., 36., 27.],
+                              [21., 36., 36., 27.],
+                              [20., 33., 33., 24.]]],
+                            [[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]],
+                             [[ 8., 15., 15., 12.],
+                              [21., 36., 36., 27.],
+                              [21., 36., 36., 27.],
+                              [20., 33., 33., 24.]]],
+                            [[[24., 33., 33., 20.],
+                              [27., 36., 36., 21.],
+                              [27., 36., 36., 21.],
+                              [12., 15., 15.,  8.]],
+                             [[20., 21., 21.,  8.],
+                              [33., 36., 36., 15.],
+                              [33., 36., 36., 15.],
+                              [24., 27., 27., 12.]],
+                             [[ 8., 15., 15., 12.],
+                              [21., 36., 36., 27.],
+                              [21., 36., 36., 27.],
+                              [20., 33., 33., 24.]]]]]))
 
-def test_cnn_forward():
+
+def test_big_cnn_forward_smoke():
     data = construct_test_data()
     
     lgn_layer = STconvLayer.layer_dict(
