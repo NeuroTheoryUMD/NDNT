@@ -10,7 +10,7 @@ from NDNT.networks import *
 stim_width = 4
 stim_height = 4
 stim_dims = [1,stim_width,stim_height,1]
-NCv = 10
+NCv = 7
 NA = 44 # drift terms
 # some good starting parameters
 Treg = 0.01
@@ -20,7 +20,9 @@ Creg = None
 Dreg = 0.5
 
 
-def construct_test_stim(batch_size=1, all_ones=False):
+def construct_test_stim(batch_size=1, all_ones=False, stim_dims=stim_dims):
+    stim_width = stim_dims[1]
+    stim_height = stim_dims[2]
     if all_ones:
         stim = torch.ones(batch_size, stim_width*stim_height)
     else:
@@ -31,8 +33,8 @@ def construct_test_Xdrift(batch_size=1):
     Xdrift = torch.FloatTensor(batch_size, 44).uniform_(0,1)
     return Xdrift
 
-def construct_test_data(batch_size=1):
-    stim = construct_test_stim(batch_size=batch_size)
+def construct_test_data(batch_size=1, stim_dims=stim_dims):
+    stim = construct_test_stim(batch_size=batch_size, stim_dims=stim_dims)
     Xdrift = construct_test_Xdrift(batch_size=batch_size)
     data = {'stim': stim, 'Xdrift': Xdrift}
     return data
@@ -46,7 +48,7 @@ def test_layer_forward_2_angle_1_filter_1_batch():
     oriconv_layer = OriConvLayer.layer_dict(
         input_dims = stim_dims,
         num_filters=1,
-        bias=True,
+        bias=False,
         norm_type=0,
         filter_dims=3,
         NLtype='relu',
@@ -67,17 +69,19 @@ def test_layer_forward_2_angle_1_filter_1_batch():
 
     # run the data through the layer
     output = cnn.networks[0](stim)
+    print('num outputs', cnn.networks[0].layers[0].num_outputs, np.prod(cnn.networks[0].layers[0].output_dims))
     assert output.shape == (1, 2*stim_width*stim_height) # 1 filter x 2 angles x 9 stim_dims
-    output = output.reshape(1,stim_width,stim_height,2).permute(3,0,1,2)
+    output = output.reshape(1,1,stim_width,stim_height,2).permute(4,0,1,2,3)
+    print(output)
     assert torch.allclose(output, torch.tensor(
-                          [[[[24., 33., 33., 20.],
+                          [[[[[24., 33., 33., 20.],
                             [27., 36., 36., 21.],
                             [27., 36., 36., 21.],
-                            [12., 15., 15.,  8.]]],
-                            [[[20., 21., 21.,  8.],
+                            [12., 15., 15.,  8.]]]],
+                            [[[[20., 21., 21.,  8.],
                             [33., 36., 36., 15.],
                             [33., 36., 36., 15.],
-                            [24., 27., 27., 12.]]]]))
+                            [24., 27., 27., 12.]]]]]))
 
 
 def test_layer_forward_4_angle_1_filter_1_batch():
@@ -88,7 +92,7 @@ def test_layer_forward_4_angle_1_filter_1_batch():
     oriconv_layer = OriConvLayer.layer_dict(
         input_dims = stim_dims,
         num_filters=1,
-        bias=True,
+        bias=False,
         norm_type=0,
         filter_dims=3,
         NLtype='relu',
@@ -110,24 +114,27 @@ def test_layer_forward_4_angle_1_filter_1_batch():
     # run the data through the layer
     output = cnn.networks[0](stim)
     assert output.shape == (1, 4*stim_width*stim_height) # 1 filter x 2 angles x 9 stim_dims
-    output = output.reshape(1,stim_width,stim_height,4).permute(3,0,1,2)
-    assert torch.allclose(output, torch.tensor(
-                          [[[[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]]],
-                           [[[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]]],
-                           [[[ 8., 15., 15., 12.],
-                             [21., 36., 36., 27.],
-                             [21., 36., 36., 27.],
-                             [20., 33., 33., 24.]]],
-                           [[[12., 27., 27., 24.],
-                             [15., 36., 36., 33.],
-                             [15., 36., 36., 33.],
-                             [ 8., 21., 21., 20.]]]]))
+    output = output.reshape(1,1,stim_width,stim_height,4).permute(4,0,1,2,3)
+    print(output)
+    expected = torch.tensor(
+        [[[[[24., 33., 33., 20.],
+           [27., 36., 36., 21.],
+           [27., 36., 36., 21.],
+           [12., 15., 15.,  8.]]]],
+        [[[[20., 21., 21.,  8.],
+           [33., 36., 36., 15.],
+           [33., 36., 36., 15.],
+           [24., 27., 27., 12.]]]],
+        [[[[ 8., 15., 15., 12.],
+           [21., 36., 36., 27.],
+           [21., 36., 36., 27.],
+           [20., 33., 33., 24.]]]],
+        [[[[12., 27., 27., 24.],
+           [15., 36., 36., 33.],
+           [15., 36., 36., 33.],
+           [ 8., 21., 21., 20.]]]]])
+    print(output.shape, expected.shape)
+    assert torch.allclose(output, expected)
 
 
 def test_layer_forward_2_angle_2_filter_1_batch():
@@ -138,7 +145,7 @@ def test_layer_forward_2_angle_2_filter_1_batch():
     oriconv_layer = OriConvLayer.layer_dict(
         input_dims = stim_dims,
         num_filters=2,
-        bias=True,
+        bias=False,
         norm_type=0,
         filter_dims=3,
         NLtype='relu',
@@ -162,36 +169,36 @@ def test_layer_forward_2_angle_2_filter_1_batch():
     output = cnn.networks[0](stim)
     assert output.shape == (1, 2*2*stim_width*stim_height) # 2 filters x 2 angles x 9 stim_dims
     # reshape and put the filters first and angles second (batch is size 1)
-    output = output.reshape(1,2,stim_width,stim_height,2).permute(0,1,4,2,3)
+    output = output.reshape(1,2,stim_width,stim_height,2).permute(1,4,0,2,3)
     print(output)
     assert torch.allclose(output, torch.tensor(
                           [[[[[24., 33., 33., 20.],
-                              [27., 36., 36., 21.],
-                              [27., 36., 36., 21.],
-                              [12., 15., 15.,  8.]],
-                             [[20., 21., 21.,  8.],
-                              [33., 36., 36., 15.],
-                              [33., 36., 36., 15.],
-                              [24., 27., 27., 12.]]],
-                            [[[24., 33., 33., 20.],
-                              [27., 36., 36., 21.],
-                              [27., 36., 36., 21.],
-                              [12., 15., 15.,  8.]],
-                             [[20., 21., 21.,  8.],
-                              [33., 36., 36., 15.],
-                              [33., 36., 36., 15.],
-                              [24., 27., 27., 12.]]]]]))
+           [27., 36., 36., 21.],
+           [27., 36., 36., 21.],
+           [12., 15., 15.,  8.]]],
+         [[[20., 21., 21.,  8.],
+           [33., 36., 36., 15.],
+           [33., 36., 36., 15.],
+           [24., 27., 27., 12.]]]],
+        [[[[24., 33., 33., 20.],
+           [27., 36., 36., 21.],
+           [27., 36., 36., 21.],
+           [12., 15., 15.,  8.]]],
+         [[[20., 21., 21.,  8.],
+           [33., 36., 36., 15.],
+           [33., 36., 36., 15.],
+           [24., 27., 27., 12.]]]]]))
 
 
-def test_layer_forward_2_angle_1_filter_10_batch():
+def test_layer_forward_2_angle_1_filter_5_batch():
     # get the test data
-    stim = construct_test_stim(batch_size=10, all_ones=True)
+    stim = construct_test_stim(batch_size=5, all_ones=True)
 
     # define a basic layer and confirm that data passes through it
     oriconv_layer = OriConvLayer.layer_dict(
         input_dims = stim_dims,
         num_filters=1,
-        bias=True,
+        bias=False,
         norm_type=0,
         filter_dims=3,
         NLtype='relu',
@@ -212,90 +219,50 @@ def test_layer_forward_2_angle_1_filter_10_batch():
 
     # run the data through the layer
     output = cnn.networks[0](stim)
-    assert output.shape == (10, 2*stim_width*stim_height) # 1 filter x 2 angles x 9 stim_dims
-    output = output.reshape(10,stim_width,stim_height,2).permute(3,0,1,2)
+    assert output.shape == (5, 2*stim_width*stim_height) # 1 filter x 2 angles x 9 stim_dims
+    output = output.reshape(5,1,stim_width,stim_height,2).permute(4,0,1,2,3)
     print(output)
     assert torch.allclose(output, torch.tensor(
-                          [[[[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]],
-                            [[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]],
-                            [[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]],
-                            [[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]],
-                            [[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]],
-                            [[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]],
-                            [[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]],
-                            [[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]],
-                            [[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]],
-                            [[24., 33., 33., 20.],
-                             [27., 36., 36., 21.],
-                             [27., 36., 36., 21.],
-                             [12., 15., 15.,  8.]]],
-                            [[[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]],
-                            [[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]],
-                            [[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]],
-                            [[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]],
-                            [[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]],
-                            [[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]],
-                            [[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]],
-                            [[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]],
-                            [[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]],
-                            [[20., 21., 21.,  8.],
-                             [33., 36., 36., 15.],
-                             [33., 36., 36., 15.],
-                             [24., 27., 27., 12.]]]]))
+                          [[[[[24., 33., 33., 20.],
+           [27., 36., 36., 21.],
+           [27., 36., 36., 21.],
+           [12., 15., 15.,  8.]]],
+         [[[24., 33., 33., 20.],
+           [27., 36., 36., 21.],
+           [27., 36., 36., 21.],
+           [12., 15., 15.,  8.]]],
+         [[[24., 33., 33., 20.],
+           [27., 36., 36., 21.],
+           [27., 36., 36., 21.],
+           [12., 15., 15.,  8.]]],
+         [[[24., 33., 33., 20.],
+           [27., 36., 36., 21.],
+           [27., 36., 36., 21.],
+           [12., 15., 15.,  8.]]],
+         [[[24., 33., 33., 20.],
+           [27., 36., 36., 21.],
+           [27., 36., 36., 21.],
+           [12., 15., 15.,  8.]]]],
+        [[[[20., 21., 21.,  8.],
+           [33., 36., 36., 15.],
+           [33., 36., 36., 15.],
+           [24., 27., 27., 12.]]],
+         [[[20., 21., 21.,  8.],
+           [33., 36., 36., 15.],
+           [33., 36., 36., 15.],
+           [24., 27., 27., 12.]]],
+         [[[20., 21., 21.,  8.],
+           [33., 36., 36., 15.],
+           [33., 36., 36., 15.],
+           [24., 27., 27., 12.]]],
+         [[[20., 21., 21.,  8.],
+           [33., 36., 36., 15.],
+           [33., 36., 36., 15.],
+           [24., 27., 27., 12.]]],
+         [[[20., 21., 21.,  8.],
+           [33., 36., 36., 15.],
+           [33., 36., 36., 15.],
+           [24., 27., 27., 12.]]]]]))
 
 
 def test_layer_forward_3_angle_4_filter_2_batch():
@@ -306,7 +273,7 @@ def test_layer_forward_3_angle_4_filter_2_batch():
     oriconv_layer = OriConvLayer.layer_dict(
         input_dims = stim_dims,
         num_filters=4,
-        bias=True,
+        bias=False,
         norm_type=0,
         filter_dims=3,
         NLtype='relu',
@@ -431,8 +398,61 @@ def test_layer_forward_3_angle_4_filter_2_batch():
                               [20., 33., 33., 24.]]]]]))
 
 
+def test_network_forward_2_angle_5_filter_7_batch():
+    # get the test data
+    stim = construct_test_stim(batch_size=7, all_ones=True)
+
+    lgn_layer = STconvLayer.layer_dict(
+        input_dims = stim_dims,
+        num_filters=4,
+        num_inh=2,
+        bias=False,
+        norm_type=1,
+        filter_dims=[1,  # channels
+                     3,  # width
+                     3,  # height
+                     2], # lags
+        NLtype='relu',
+        initialize_center=True)
+    lgn_layer['output_norm']='batch'
+    lgn_layer['window']='hamming'
+    lgn_layer['reg_vals'] = {'d2x': Xreg,
+                            'd2t': Treg,
+                            'center': Creg, # None
+                            'edge_t': 100} # just pushes the edge to be sharper
+
+    # define a basic layer and confirm that data passes through it
+    oriconv_layer = OriConvLayer.layer_dict(
+        num_filters=5,
+        bias=False,
+        norm_type=0,
+        filter_dims=3,
+        NLtype='relu',
+        initialize_center=True,
+        angles=[0, 90])
+
+    cnn = NDN.NDN(layer_list=[lgn_layer, oriconv_layer],
+                    loss_type='poisson')
+    cnn.block_sample = True
+
+    # set the weights to be a linspace
+    print('weight', cnn.networks[0].layers[1].weight.shape)
+    weight = cnn.networks[0].layers[1].weight
+    ascending_weights = torch.arange(0,9, dtype=torch.float32)
+    # repeat the weights for each filter
+    ascending_weights = ascending_weights.repeat(5,4)
+    print('ascending_weights', ascending_weights)
+    cnn.networks[0].layers[1].weight.data = ascending_weights.reshape(5,36).T
+    print('weight', cnn.networks[0].layers[1].weight)
+
+    # run the data through the layer
+    output = cnn.networks[0](stim)
+    assert output.shape == (7, 5*2*stim_width*stim_height) # 5 filter x 2 angles x 9 stim_dims
+
+
 def test_big_cnn_forward_smoke():
-    data = construct_test_data()
+    stim_dims = [1, 60, 60, 1]
+    data = construct_test_data(10, stim_dims=stim_dims)
     
     lgn_layer = STconvLayer.layer_dict(
         input_dims = stim_dims,
@@ -543,4 +563,4 @@ def test_big_cnn_forward_smoke():
 
     # test the model
     out = cnn(data)
-    assert out.shape == (1, 10)
+    assert out.shape == (10, 7)
