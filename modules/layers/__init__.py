@@ -19,3 +19,4 @@ from .specialtylayers import Tlayer
 from .specialtylayers import OnOffLayer
 from .orilayers import OriLayer
 from .orilayers import OriConvLayer
+from .orilayers import ConvLayer3D

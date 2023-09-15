@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import torch.nn as nn
 
 from .ndnlayer import NDNLayer
-from .convlayers import ConvLayer
+from .convlayers import ConvLayer, TconvLayer
 import numpy as np
 
 class OriLayer(NDNLayer):
@@ -177,12 +177,12 @@ class OriConvLayer(ConvLayer):
         if 'bias' in kwargs.keys():
             assert kwargs['bias'] == False, "OriConvLayer: bias is partially implemented, but not debugged"
 
-        print('init w', self.weight.shape)
+        #print('init w', self.weight.shape)
 
         self.is1D = (self.input_dims[2] == 1)
         assert not self.is1D, "OriConvLayer: Stimulus must be 2-D"
 
-        print('input_dims', self.input_dims)
+        #print('input_dims', self.input_dims)
 
         self.angles = angles
 
@@ -198,7 +198,7 @@ class OriConvLayer(ConvLayer):
                                     (torch.ones(self.num_filters-self._num_inh), 
                                     -torch.ones(self._num_inh))
                                 ).repeat(len(self.angles)))
-            print('ei_mask', self._ei_mask.shape)
+            #print('ei_mask', self._ei_mask.shape)
 
         # folded_dims is num_filter * num_angles * num_incoming_filters
         self.folded_dims = self.filter_dims[0] # input filters * lags
@@ -255,41 +255,41 @@ class OriConvLayer(ConvLayer):
     # END OriConvLayer.rotation_matrix_tensor
 
     def forward(self, x):
-        print()
-        print('==== FORWARD ====')
-        print('input dims', self.input_dims)
-        print('x', x.shape)
-        print('w0', self.weight.shape)
+        #print()
+        #print('==== FORWARD ====')
+        #print('input dims', self.input_dims)
+        #print('x', x.shape)
+        #print('w0', self.weight.shape)
         w = self.preprocess_weights()
-        print('w', w.shape)
+        #print('w', w.shape)
         # permute num_filters, input_dims[0], width, height, (no lag)
         w = w.reshape(self.filter_dims[:3]+[self.num_filters]).permute(3, 0, 1, 2)
-        print('w', w.shape)
+        #print('w', w.shape)
         # combine num_filters*input_dims[0] and width*height into one dimension
         w_flattened = w.reshape(self.num_filters*self.filter_dims[0], self.filter_dims[1]*self.filter_dims[2]) 
-        print('wf', w_flattened.shape)
+        #print('wf', w_flattened.shape)
         s = x.reshape(-1, self.input_dims[0], self.input_dims[1], self.input_dims[2])
-        print('s', s.shape)
+        #print('s', s.shape)
 
         # repeat weights for each angle along a new dimension
         # 1, 1 specifies to keep the filters and width*height dimensions the same
         rotated_ws = w_flattened.repeat(len(self.angles), 1, 1).permute(1, 2, 0)
-        print('wr', rotated_ws.shape)
+        #print('wr', rotated_ws.shape)
         
         # use torch.sparse.mm to multiply the rotation matrices by the weights
         for i in range(len(self.angles)):
             # get the weights for the given angle
             #w_theta = rotated_ws[:, :, i]
-            #print('w_theta', w_theta.shape)
+            ##print('w_theta', w_theta.shape)
 
             # rotate the weight matrix for the given angle
-            print('rotation_matrix', self.rotation_matrices[i].shape)
+            #print('rotation_matrix', self.rotation_matrices[i].shape)
             w_theta = torch.sparse.mm(w_flattened, self.rotation_matrices[i])
-            print('w_theta', w_theta.shape)
+            #print('w_theta', w_theta.shape)
 
             # put w_theta back into the full weight matrix
             rotated_ws[:, :, i] = w_theta
-            print('rotated_ws\'', rotated_ws.shape)
+            #print('rotated_ws\'', rotated_ws.shape)
         
         # reshape the weights so we can put the angles in the second dimension
         rotated_ws_reshaped = rotated_ws.reshape((self.num_filters,
@@ -297,10 +297,10 @@ class OriConvLayer(ConvLayer):
                                                   self.filter_dims[1], # width
                                                   self.filter_dims[2], # height
                                                   len(self.angles)))
-        print('wr\'', rotated_ws_reshaped.shape)
+        #print('wr\'', rotated_ws_reshaped.shape)
         # move the angles to the second dimension
         rotated_ws_reshaped = rotated_ws_reshaped.permute(0, 4, 1, 2, 3)
-        print('wr\'', rotated_ws_reshaped.shape)
+        #print('wr\'', rotated_ws_reshaped.shape)
         # and combine the filters and angles into the folded_dims dimension
         # put a 1 in the second dimension to match the input
         # since we are convolving in the folded_dims dimension to do all filters at once
@@ -308,7 +308,7 @@ class OriConvLayer(ConvLayer):
                                                            self.filter_dims[0],
                                                            self.filter_dims[1],
                                                            self.filter_dims[2]))
-        print('wr\'', rotated_ws_reshaped.shape)
+        #print('wr\'', rotated_ws_reshaped.shape)
 
         if self._fullpadding:
             s_padded = F.pad(s, self.npads, "constant", 0)
@@ -338,7 +338,7 @@ class OriConvLayer(ConvLayer):
         #     self.reg.compute_activity_regularization(y)
 
         # pull the filters and angles apart again
-        print('y', y.shape)
+        #print('y', y.shape)
         y = y.reshape(-1, # the batch dimension
                       self.num_filters,
                       len(self.angles),
@@ -346,8 +346,8 @@ class OriConvLayer(ConvLayer):
                       self.output_dims[2])
         # reshape y to have the orientiations in the last column
         y = y.permute(0, 1, 3, 4, 2)
-        print('y\'', y.shape)
-        print('=================')
+        #print('y\'', y.shape)
+        #print('=================')
         # flatten the last dimensions
         return y.reshape(-1, # the batch dimension
                          self.num_outputs)
@@ -359,3 +359,121 @@ class OriConvLayer(ConvLayer):
         Ldict["layer_type"]="oriconv"
         Ldict["angles"]=angles
         return Ldict
+
+
+
+class ConvLayer3D(ConvLayer):
+    """
+    This layer convolves over the 3D output of the OriConvLayer.
+    It preserves the orientation information, but convolves over the space dimension.
+
+    Args:
+        input_dims (list of ints): input dimensions [C, W, H, T]
+            This is, of course, not the real input dimensions, because the batch dimension is assumed to be contiguous.
+            The real input dimensions are [B, C, W, H, 1], T specifies the number of lags
+        num_filters (int): number of filters
+        filter_dims (list of ints): filter dimensions [C, w, h, T]
+            w < W, h < H
+        stride (int): stride of convolution
+    """ 
+
+    def __init__(self,
+        input_dims=None, # [C, W, H, T]
+        num_filters=None, # int
+        output_norm=None,
+        **kwargs):
+        
+        assert input_dims is not None, "STConvLayer: input_dims must be specified"
+        assert num_filters is not None, "STConvLayer: num_filters must be specified"
+        # assert (conv_dims is not None) or (filter_dims is not None), "STConvLayer: conv_dims or filter_dims must be specified"
+
+        # All parameters of filter (weights) should be correctly fit in layer_params
+        super().__init__(input_dims,
+            num_filters, output_norm=output_norm, **kwargs)
+
+        self.input_dims[3] = self.filter_dims[3]  # num_lags for convolution specified in filter_dims (not input_dims)
+        self.num_lags = self.input_dims[3]
+        self.input_dims[3] = 1  # take lag info and use for temporal convolution
+        self.output_dims[-1] = 1
+        self.output_dims = self.output_dims # annoying fix for the num_outputs dependency on all output_dims values being updated
+
+    def forward(self, x):
+        # Reshape stim matrix LACKING temporal dimension [bcwh] 
+        # and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        # pytorch likes 3D convolutions to be [B,C,T,W,H].
+        # I benchmarked this and it'sd a 20% speedup to put the "Time" dimension first.
+
+        w = self.preprocess_weights()
+        s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
+        w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
+        
+        if self.padding:
+            pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
+        else:
+            # still need to pad the batch dimension
+            pad = (0,0,0,0,self.filter_dims[-1]-1,0)
+
+        s = F.pad(s, pad, "constant", 0)
+
+        y = F.conv3d(
+            s,
+            w, 
+            bias=self.bias,
+            stride=self.stride, dilation=self.dilation)
+
+        y = y.permute(2,1,3,4,0) # [1,N,B,W,H] -> [B,N,W,H,1]
+        
+        if not self.res_layer:
+            if self.output_norm is not None:
+                y = self.output_norm(y)
+
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+        
+        if self._ei_mask is not None:
+            if self.is1D:
+                y = y * self._ei_mask[None,:,None,None]
+            else:
+                y = y * self._ei_mask[None,:,None,None,None]
+        
+        if self.res_layer:
+            # s is with dimensions: B, C, T, X, Y 
+            if self.is1D:
+                y = y + torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) )
+            else:
+                y = y + torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
+                 
+            if self.output_norm is not None:
+                y = self.output_norm(y)
+        
+        y = y.reshape((-1, self.num_outputs))
+
+        # store activity regularization to add to loss later
+        #self.activity_regularization = self.activity_reg.regularize(y)
+        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+            self.reg.compute_activity_regularization(y)
+
+        return y
+
+    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
+        # Overload plot_filters to automatically time_reverse
+        super().plot_filters( 
+            cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
+            time_reverse=time_reverse)
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'conv3d'
+        return Ldict
+

@@ -18,6 +18,7 @@ LayerTypes = {
     'channelconv': layers.ChannelConvLayer,
     'ori': layers.OriLayer,
     'oriconv': layers.OriConvLayer,
+    'conv3d': layers.ConvLayer3D,
     'oolayer': layers.OnOffLayer,
     'iter': layers.IterLayer,
     'iterT': layers.IterTlayer,
@@ -355,13 +356,15 @@ class ScaffoldNetwork(FFnetwork):
             nt = x.shape[0]
             # TODO: temporary hack to handle the orilayer,
             # which has a different number of lags than the other layers
-            if self.num_lags_out is not None and layer.output_dims[3] > 1:
+            if self.num_lags_out is None and layer.output_dims[3] > 1:
                 # reshape y to combine the filters and lags in the second dimension
-                y = x.reshape([nt, -1, layer.output_dims[3]])
-                # move the lag dimension to the first
-                y = y.permute(0, 2, 1)
+                # batch x filters x (width x height) x lags
+                y = x.reshape([nt, layer.output_dims[0], -1, layer.output_dims[3]])
+                # move the lag dimension after the filters
+                y = y.permute(0, 1, 3, 2)
                 # flatten the filter and lag dimensions to be filters x lags
                 y = y.reshape([nt, -1])
+                out.append(y)
             elif self.num_lags_out is not None and layer.output_dims[3] > self.num_lags_out:
                 # Need to return just first lag (lag0) -- 'chomp'
                 y = x.reshape([nt, -1, layer.output_dims[3]])[..., :(self.num_lags_out)]
@@ -369,6 +372,7 @@ class ScaffoldNetwork(FFnetwork):
             else:
                 out.append(x)
         
+        # this concatentates across the filter dimension
         return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
     # END ScaffoldNetwork.forward()
 
