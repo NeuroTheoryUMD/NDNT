@@ -363,66 +363,54 @@ class OriConvLayer(ConvLayer):
 
 
 class ConvLayer3D(ConvLayer):
-    """
-    This layer convolves over the 3D output of the OriConvLayer.
-    It preserves the orientation information, but convolves over the space dimension.
-
-    Args:
-        input_dims (list of ints): input dimensions [C, W, H, T]
-            This is, of course, not the real input dimensions, because the batch dimension is assumed to be contiguous.
-            The real input dimensions are [B, C, W, H, 1], T specifies the number of lags
-        num_filters (int): number of filters
-        filter_dims (list of ints): filter dimensions [C, w, h, T]
-            w < W, h < H
-        stride (int): stride of convolution
-    """ 
-
     def __init__(self,
-        input_dims=None, # [C, W, H, T]
-        num_filters=None, # int
-        output_norm=None,
+        input_dims:list=None, # [C, W, H, T]
+        filter_width:int=None,
+        num_filters:int=None,
+        output_norm:int=None,
         **kwargs):
+
+        print('input_dims', input_dims)
+        print('num_filters', num_filters)
         
-        assert input_dims is not None, "STConvLayer: input_dims must be specified"
-        assert num_filters is not None, "STConvLayer: num_filters must be specified"
-        # assert (conv_dims is not None) or (filter_dims is not None), "STConvLayer: conv_dims or filter_dims must be specified"
+        assert input_dims is not None, "ConvLayer3D: input_dims must be specified"
+        assert num_filters is not None, "ConvLayer3D: num_filters must be specified"
+        assert filter_width is not None, "ConvLayer3D: filter_width must be specified"
 
-        # All parameters of filter (weights) should be correctly fit in layer_params
-        super().__init__(input_dims,
-            num_filters, output_norm=output_norm, **kwargs)
-
-        self.input_dims[3] = self.filter_dims[3]  # num_lags for convolution specified in filter_dims (not input_dims)
-        self.num_lags = self.input_dims[3]
-        self.input_dims[3] = 1  # take lag info and use for temporal convolution
-        self.output_dims[-1] = 1
-        self.output_dims = self.output_dims # annoying fix for the num_outputs dependency on all output_dims values being updated
+        full_filter_dims = [input_dims[0], filter_width, filter_width, 1]
+        input_dims_2D = [input_dims[0], input_dims[1], input_dims[2], 1]
+        super().__init__(input_dims_2D, num_filters, filter_dims=full_filter_dims, output_norm=output_norm, **kwargs)
+        self.input_dims = input_dims
 
     def forward(self, x):
-        # Reshape stim matrix LACKING temporal dimension [bcwh] 
-        # and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
-        # pytorch likes 3D convolutions to be [B,C,T,W,H].
-        # I benchmarked this and it'sd a 20% speedup to put the "Time" dimension first.
+        # print()
+        # print('==== FORWARD ====')
+        # print('input dims', self.input_dims)
+        # print('x', x.shape)
 
-        w = self.preprocess_weights()
-        s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
-        w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
-        
-        if self.padding:
-            pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
+        s = x.reshape([-1]+self.input_dims)
+
+        w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters])
+        # puts output_dims first, as required for conv
+
+        if self._fullpadding:
+            s = F.pad(s, self._npads, "constant", 0)
+            y = F.conv3d(
+                s, # we do our own padding
+                w.permute(4,0,1,2,3), # num_filters is first
+                bias=self.bias,
+                stride=self.stride,
+                dilation=self.dilation)
         else:
-            # still need to pad the batch dimension
-            pad = (0,0,0,0,self.filter_dims[-1]-1,0)
+            # functional pads since padding is simple
+            y = F.conv3d(
+                s, 
+                w.permute(4,0,1,2,3), # num_filters is first,
+                padding=(self._npads[2], self._npads[0], 1),
+                bias=self.bias,
+                stride=self.stride,
+                dilation=self.dilation)
 
-        s = F.pad(s, pad, "constant", 0)
-
-        y = F.conv3d(
-            s,
-            w, 
-            bias=self.bias,
-            stride=self.stride, dilation=self.dilation)
-
-        y = y.permute(2,1,3,4,0) # [1,N,B,W,H] -> [B,N,W,H,1]
-        
         if not self.res_layer:
             if self.output_norm is not None:
                 y = self.output_norm(y)
@@ -430,31 +418,26 @@ class ConvLayer3D(ConvLayer):
         # Nonlinearity
         if self.NL is not None:
             y = self.NL(y)
-        
+
         if self._ei_mask is not None:
-            if self.is1D:
-                y = y * self._ei_mask[None,:,None,None]
-            else:
-                y = y * self._ei_mask[None,:,None,None,None]
-        
+            y = y * self._ei_mask[None, :, None, None]
+
         if self.res_layer:
             # s is with dimensions: B, C, T, X, Y 
-            if self.is1D:
-                y = y + torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) )
-            else:
-                y = y + torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
+            y = y + s
                  
             if self.output_norm is not None:
                 y = self.output_norm(y)
-        
-        y = y.reshape((-1, self.num_outputs))
+
+        y = torch.reshape(y, (-1, self.num_outputs))
 
         # store activity regularization to add to loss later
         #self.activity_regularization = self.activity_reg.regularize(y)
         if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
             self.reg.compute_activity_regularization(y)
-
+        
         return y
+    # END ConvLayer3D.forward
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
         # Overload plot_filters to automatically time_reverse
@@ -463,7 +446,7 @@ class ConvLayer3D(ConvLayer):
             time_reverse=time_reverse)
 
     @classmethod
-    def layer_dict(cls, **kwargs):
+    def layer_dict(cls, filter_width, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -473,7 +456,9 @@ class ConvLayer3D(ConvLayer):
         """
 
         Ldict = super().layer_dict(**kwargs)
+        del Ldict['filter_dims'] # remove this since we are manually setting it
         # Added arguments
         Ldict['layer_type'] = 'conv3d'
+        Ldict['filter_width'] = filter_width
         return Ldict
 
