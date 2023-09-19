@@ -564,3 +564,11 @@ def test_big_cnn_forward_smoke():
     # test the model
     out = cnn(data)
     assert out.shape == (10, 7)
+
+
+def test_stimulus_rotation():
+    assert(False) # not implemented yet
+
+
+def test_conv3D_layer():
+    assert(False) # not implemented yet

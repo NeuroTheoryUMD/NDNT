@@ -333,13 +333,13 @@ class ScaffoldNetwork(FFnetwork):
         if self.num_lags_out is not None:
             self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [self.num_lags_out]
         else:
-            # TODO: taking the max of the lag/orientation dims is not the right thing to do
             print('scaffold levels', self.scaffold_levels)
             scaffold_lags = [self.layers[self.scaffold_levels[ii]].output_dims[3] for ii in range(len(self.scaffold_levels))]
             print('scaffold lags', scaffold_lags)
-            max_lag = int(np.max(scaffold_lags))
-            print('Scaffold: max lag =', max_lag)
-            filter_x_lag = int(np.sum(self.filter_count)) * max_lag
+            # assert that all scaffold_lags are the same
+            assert np.all(np.array(scaffold_lags) == scaffold_lags[0]), "Scaffold: cannot currently handle different lag dimensions"
+            print('Scaffold: max lag =', scaffold_lags[0])
+            filter_x_lag = int(np.sum(self.filter_count)) * scaffold_lags[0]
             self.output_dims = [filter_x_lag] + self.spatial_dims + [1]
         print('Scaffold output dims:', self.output_dims)
     # END ScaffoldNetwork.__init__
@@ -354,13 +354,11 @@ class ScaffoldNetwork(FFnetwork):
         for layer in self.layers:
             x = layer(x)
             nt = x.shape[0]
-            # TODO: temporary hack to handle the orilayer,
-            # which has a different number of lags than the other layers
             if self.num_lags_out is None and layer.output_dims[3] > 1:
                 # reshape y to combine the filters and lags in the second dimension
                 # batch x filters x (width x height) x lags
                 y = x.reshape([nt, layer.output_dims[0], -1, layer.output_dims[3]])
-                # move the lag dimension after the filters
+                # move the lag dimension after the filters (batch, filter, lag, width x height)
                 y = y.permute(0, 1, 3, 2)
                 # flatten the filter and lag dimensions to be filters x lags
                 y = y.reshape([nt, -1])

@@ -6,6 +6,7 @@ import torch.nn as nn
 from .ndnlayer import NDNLayer
 from .convlayers import ConvLayer, TconvLayer
 import numpy as np
+import torchvision.transforms.functional as TF
 
 class OriLayer(NDNLayer):
     """
@@ -252,7 +253,21 @@ class OriConvLayer(ConvLayer):
             torch.tensor(indices).t(), torch.ones(len(indices)), size=(len(theta_list), w**2, w**2))
 
         return rotation_matrix_tensor 
-    # END OriConvLayer.rotation_matrix_tensor
+
+    def get_rot_mat(self, theta, device):
+        theta = torch.tensor(theta)
+        return torch.tensor([[torch.cos(theta), torch.sin(theta), 0],
+                            [torch.sin(theta), torch.cos(theta), 0]]).to(device)
+
+    def rotate_tensor(self, x, theta, dtype):
+        # repeate along the batch dimension
+        rot_mat = self.get_rot_mat(theta, x.device)[None, ...].type(dtype).repeat(x.shape[0],1,1)
+
+        grid = F.affine_grid(rot_mat, x.size()).type(dtype)
+        x = F.grid_sample(x, grid)
+        # Remove the added dimensions
+        x = x.squeeze(0).squeeze(0)
+        return x
 
     def forward(self, x):
         #print()
@@ -261,6 +276,7 @@ class OriConvLayer(ConvLayer):
         #print('x', x.shape)
         #print('w0', self.weight.shape)
         w = self.preprocess_weights()
+        #w = self.weight
         #print('w', w.shape)
         # permute num_filters, input_dims[0], width, height, (no lag)
         w = w.reshape(self.filter_dims[:3]+[self.num_filters]).permute(3, 0, 1, 2)
@@ -282,10 +298,14 @@ class OriConvLayer(ConvLayer):
             #w_theta = rotated_ws[:, :, i]
             ##print('w_theta', w_theta.shape)
 
+            # sparse matmul method, but causes artifacting at non 90 degree angles
             # rotate the weight matrix for the given angle
             #print('rotation_matrix', self.rotation_matrices[i].shape)
-            w_theta = torch.sparse.mm(w_flattened, self.rotation_matrices[i])
+            #w_theta = torch.sparse.mm(w_flattened, self.rotation_matrices[i])
             #print('w_theta', w_theta.shape)
+
+            # rotate using torchvision transform
+            w_theta = TF.rotate(w_flattened.reshape(-1, self.filter_dims[1], self.filter_dims[2]), self.angles[i]).reshape(-1, self.filter_dims[1]*self.filter_dims[2])
 
             # put w_theta back into the full weight matrix
             rotated_ws[:, :, i] = w_theta
@@ -297,6 +317,13 @@ class OriConvLayer(ConvLayer):
                                                   self.filter_dims[1], # width
                                                   self.filter_dims[2], # height
                                                   len(self.angles)))
+
+        # import matplotlib.pyplot as plt
+        # for angle in range(len(self.angles)):
+        #     plt.subplot(1, len(self.angles), angle+1)
+        #     plt.imshow(rotated_ws_reshaped[0, 0, :, :, angle].detach().numpy())
+        # plt.show()
+
         #print('wr\'', rotated_ws_reshaped.shape)
         # move the angles to the second dimension
         rotated_ws_reshaped = rotated_ws_reshaped.permute(0, 4, 1, 2, 3)
@@ -325,7 +352,7 @@ class OriConvLayer(ConvLayer):
                 y = self.output_norm(y)
         if self.NL is not None:
             y = self.NL(y)
-        if self._ei_mask is not None: 
+        if self._ei_mask is not None:
             y = y*self._ei_mask[None, :, None, None]
 
         # if self.res_layer:
@@ -381,20 +408,21 @@ class ConvLayer3D(ConvLayer):
         input_dims_2D = [input_dims[0], input_dims[1], input_dims[2], 1]
         super().__init__(input_dims_2D, num_filters, filter_dims=full_filter_dims, output_norm=output_norm, **kwargs)
         self.input_dims = input_dims
+        self.output_dims = [num_filters, input_dims[1], input_dims[2], input_dims[3]]
+
+        if self.res_layer:
+            assert False, 'res_layer not implemented for ConvLayer3D'
 
     def forward(self, x):
-        # print()
-        # print('==== FORWARD ====')
-        # print('input dims', self.input_dims)
-        # print('x', x.shape)
-
         s = x.reshape([-1]+self.input_dims)
+        #print('s', s.shape)
 
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters])
-        # puts output_dims first, as required for conv
+        #print('w', w.shape)
 
         if self._fullpadding:
             s = F.pad(s, self._npads, "constant", 0)
+            #print('s\'', s.shape)
             y = F.conv3d(
                 s, # we do our own padding
                 w.permute(4,0,1,2,3), # num_filters is first
@@ -403,38 +431,54 @@ class ConvLayer3D(ConvLayer):
                 dilation=self.dilation)
         else:
             # functional pads since padding is simple
+            #print('_npads', self._npads)
             y = F.conv3d(
                 s, 
                 w.permute(4,0,1,2,3), # num_filters is first,
-                padding=(self._npads[2], self._npads[0], 1),
+                padding=(self._npads[2], self._npads[0], 0),
                 bias=self.bias,
                 stride=self.stride,
                 dilation=self.dilation)
-
-        if not self.res_layer:
-            if self.output_norm is not None:
-                y = self.output_norm(y)
-
+        
+        #print('y0', y.shape)
         # Nonlinearity
         if self.NL is not None:
             y = self.NL(y)
 
+        # EI mask
         if self._ei_mask is not None:
-            y = y * self._ei_mask[None, :, None, None]
+            #print('y', y.shape)
+            #print('ei_mask', self._ei_mask.shape)
+            #print('output_dims', self.output_dims)
+            # move the orientiation dimension after the filter dim
+            #y = y.permute(0, 1, 4, 2, 3)
+            # combine the filter and orientation dimensions
+            #y = y.reshape(-1, self.num_filters, self.output_dims[1], self.output_dims[2])
+            #print('y\'', y.shape)
+            # we just want to multiply the second dimension here
+            y = y * self._ei_mask[None, :, None, None, None]
+            # split the filter and orientation dimensions again
+            #y = y.reshape(-1, self.num_filters, self.output_dims[3], self.output_dims[1], self.output_dims[2])
+            #y = y.permute(0, 1, 3, 4, 2)
+            #print('y', y.shape)
 
-        if self.res_layer:
-            # s is with dimensions: B, C, T, X, Y 
-            y = y + s
-                 
-            if self.output_norm is not None:
-                y = self.output_norm(y)
+        # TODO: this is not tested yet
+        # if self.res_layer:
+        #     # s is with dimensions: B, C, T, X, Y 
+        #     y = y + s                 
 
+        # output norm (e.g. batch norm)
+        if self.output_norm is not None:
+            y = self.output_norm(y)
+
+        # flatten the output
         y = torch.reshape(y, (-1, self.num_outputs))
 
-        # store activity regularization to add to loss later
-        #self.activity_regularization = self.activity_reg.regularize(y)
-        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
-            self.reg.compute_activity_regularization(y)
+        # TODO: this is not tested yet
+        # # store activity regularization to add to loss later
+        # #self.activity_regularization = self.activity_reg.regularize(y)
+        # if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+        #     self.reg.compute_activity_regularization(y)
         
         return y
     # END ConvLayer3D.forward
