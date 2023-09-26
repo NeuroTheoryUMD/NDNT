@@ -1172,7 +1172,8 @@ class NDN(nn.Module):
         with open(filename, 'rb') as f:
             if pt:
                 model = torch.load(f)
-            model = unpickler(f).load()
+            else:
+                model = unpickler(f).load()
         
         return model
 
