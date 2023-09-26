@@ -175,7 +175,6 @@ class ConvLayer(NDNLayer):
                 self.output_norm = nn.BatchNorm1d(self.num_filters, affine=affine)
             else:
                 self.output_norm = nn.BatchNorm2d(self.num_filters, affine=affine)
-                #self.output_norm = nn.BatchNorm2d(self.folded_dims, affine=False)
         else:
             self.output_norm = None
 

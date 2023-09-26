@@ -373,7 +373,17 @@ class ConvLayer3D(ConvLayer):
 
         full_filter_dims = [input_dims[0], filter_width, filter_width, 1]
         input_dims_2D = [input_dims[0], input_dims[1], input_dims[2], 1]
-        super().__init__(input_dims_2D, num_filters, filter_dims=full_filter_dims, output_norm=output_norm, **kwargs)
+        
+        super().__init__(input_dims_2D, num_filters, filter_dims=full_filter_dims, output_norm=None, **kwargs)
+
+        # output_norm will be the wrong dimensionality, so define here
+        if output_norm in ['batch', 'batchX']:
+            if output_norm == 'batchX':
+                affine = False
+            else:
+                affine = True
+            self.output_norm = nn.BatchNorm3d(self.num_filters, affine=affine)
+
         self.input_dims = input_dims
         self.output_dims = [num_filters, input_dims[1], input_dims[2], input_dims[3]]
 
