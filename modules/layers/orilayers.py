@@ -152,7 +152,7 @@ class OriConvLayer(ConvLayer):
     Orientation layer.
     """
 
-    def __init__(self, input_dims=None, num_filters=None,
+    def __init__(self, input_dims=None, num_filters=None, res_layer=False,
                  filter_dims=None, padding="valid", output_norm=None, angles=None, **kwargs): 
         """
         Initialize orientation layer.
@@ -168,19 +168,28 @@ class OriConvLayer(ConvLayer):
         assert input_dims[3] == 1, "OriConvLayer: Stimulus must be 2-D"
         assert num_filters is not None, "OriConvLayer: Must specify number of filters"
         assert angles is not None, "OriConvLayer: Must specify angles for rotation"
+        assert not res_layer, "OriConvLayer: res_layer not yet supported"
 
         super().__init__(
             input_dims=input_dims, num_filters=num_filters,
-            filter_dims=filter_dims, padding=padding,
-            output_norm=output_norm, **kwargs)
-        
+            filter_dims=filter_dims, padding=padding, res_layer=False,
+            output_norm=None, **kwargs)
+
         if 'bias' in kwargs.keys():
             assert kwargs['bias'] == False, "OriConvLayer: bias is partially implemented, but not debugged"
 
-        self.is1D = (self.input_dims[2] == 1)
+        #self.is1D = (self.input_dims[2] == 1)
         assert not self.is1D, "OriConvLayer: Stimulus must be 2-D"
 
         self.angles = angles
+
+        # Fix output norm to be 3d
+        if output_norm in ['batch', 'batchX']:
+            if output_norm == 'batchX':
+                affine = False
+            else:
+                affine = True
+            self.output_norm = nn.BatchNorm2d(self.num_filters*len(angles), affine=affine)
 
         # make the rotation matrices and store them as a buffer
         rotation_matrices = self.rotation_matrix_tensor(self.filter_dims, self.angles)
@@ -195,6 +204,17 @@ class OriConvLayer(ConvLayer):
                                     -torch.ones(self._num_inh))
                                 ).repeat(len(self.angles)))
             #print('ei_mask', self._ei_mask.shape)
+
+        # Make additional window function to preserve rotations  
+        L = self.filter_dims[1]
+        xs = np.arange(L)+0.5-L/2
+        rs = np.sqrt(np.repeat(xs[:,None]**2, L, axis=1) + np.repeat(xs[None,:]**2, L, axis=0))
+        win_circle = np.ones([L,L], dtype=np.float32)
+        win_circle[rs > L/2] = 0.0
+        if self.window:
+            self.window_function *= torch.tensor(win_circle, dtype=torch.float32)
+        else:
+            self.register_buffer('window_function', torch.tensor(win_circle, dtype=torch.float32))
 
         # folded_dims is num_filter * num_angles * num_incoming_filters
         self.folded_dims = self.filter_dims[0] # input filters * lags
@@ -323,6 +343,7 @@ class OriConvLayer(ConvLayer):
         if not self.res_layer:
             if self.output_norm is not None:
                 y = self.output_norm(y)
+        
         if self.NL is not None:
             y = self.NL(y)
         if self._ei_mask is not None:
