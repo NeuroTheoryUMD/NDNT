@@ -18,6 +18,7 @@ LayerTypes = {
     'channelconv': layers.ChannelConvLayer,
     'ori': layers.OriLayer,
     'oriconv': layers.OriConvLayer,
+    'conv3d': layers.ConvLayer3D,
     'oolayer': layers.OnOffLayer,
     'iter': layers.IterLayer,
     'iterT': layers.IterTlayer,
@@ -276,12 +277,13 @@ class FFnetwork(nn.Module):
         return self.layers[layer_target].get_weights(**kwargs)
 
     @classmethod
-    def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', scaffold_levels=None, **kwargs):
+    def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', scaffold_levels=None, num_lags_out=1, **kwargs):
         return {
             'ffnet_type': ffnet_type,
             'xstim_n':xstim_n, 'ffnet_n':ffnet_n,
             'layer_list': deepcopy(layer_list),
-            'scaffold_levels': scaffold_levels}
+            'scaffold_levels': scaffold_levels,
+            'num_lags_out': num_lags_out}
     # END FFnetwork class
 
 
@@ -327,7 +329,14 @@ class ScaffoldNetwork(FFnetwork):
             self.filter_count[ii] = self.layers[self.scaffold_levels[ii]].output_dims[0]
 
         # Construct output dimensions
-        self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [self.num_lags_out]
+        if self.num_lags_out is not None:
+            self.output_dims = [int(np.sum(self.filter_count))] + self.spatial_dims + [self.num_lags_out]
+        else:
+            scaffold_lags = [self.layers[self.scaffold_levels[ii]].output_dims[3] for ii in range(len(self.scaffold_levels))]
+            # assert that all scaffold_lags are the same
+            assert np.all(np.array(scaffold_lags) == scaffold_lags[0]), "Scaffold: cannot currently handle different lag dimensions"
+            filter_x_lag = int(np.sum(self.filter_count)) * scaffold_lags[0]
+            self.output_dims = [filter_x_lag] + self.spatial_dims + [1]
     # END ScaffoldNetwork.__init__
 
     def forward(self, inputs):
@@ -340,13 +349,23 @@ class ScaffoldNetwork(FFnetwork):
         for layer in self.layers:
             x = layer(x)
             nt = x.shape[0]
-            if layer.output_dims[3] > self.num_lags_out:
+            if self.num_lags_out is None and layer.output_dims[3] > 1:
+                # reshape y to combine the filters and lags in the second dimension
+                # batch x filters x (width x height) x lags
+                y = x.reshape([nt, layer.output_dims[0], -1, layer.output_dims[3]])
+                # move the lag dimension after the filters (batch, filter, lag, width x height)
+                y = y.permute(0, 1, 3, 2)
+                # flatten the filter and lag dimensions to be filters x lags
+                y = y.reshape([nt, -1])
+                out.append(y)
+            elif self.num_lags_out is not None and layer.output_dims[3] > self.num_lags_out:
                 # Need to return just first lag (lag0) -- 'chomp'
                 y = x.reshape([nt, -1, layer.output_dims[3]])[..., :(self.num_lags_out)]
                 out.append( y.reshape((nt, -1) ))
             else:
                 out.append(x)
         
+        # this concatentates across the filter dimension
         return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
     # END ScaffoldNetwork.forward()
 
