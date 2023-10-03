@@ -36,7 +36,7 @@ class Regularization(nn.Module):
             vals (dict, optional): key-value pairs specifying value for each type of regularization 
             
             Note: to pass in boundary_condition information, use a dict in vals with the values corresponding to
-            particular regularization, e,g., 'BCs':{'d2t':1, 'd2x':0} (1=on, 0=off)i4
+            particular regularization, e,g., 'BCs':{'d2t':1, 'd2x':0} (1=on, 0=off)
             
         Raises:
             TypeError: If `input_dims` is not specified
@@ -257,8 +257,10 @@ class LocalityReg(RegModule):
         assert reg_type in _valid_reg_types, '{} is not a valid Locality Reg type'.format(reg_type)
 
         super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
-
+        
         self.build_reg_mats()
+        # normalized weights mean w ~ 1/sqrt(N), so \sum w^2 = 1. but w^4 => 1/N^2 so multiply by N
+        #self.multiplier = np.prod(input_dims)
 
     def compute_reg_penalty(self, weights):
         """Compute regularization penalty for locality"""
@@ -591,7 +593,7 @@ class Tikhanov(RegModule):
 
         super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, bc_val=bc_val, **kwargs)
         
-        _valid_reg_types = ['local', 'glocal', 'max', 'max_filt']
+        _valid_reg_types = ['local', 'glocal', 'max', 'max_filt', 'max_space']
         assert reg_type in _valid_reg_types, "{} is not a valid Tikhanov regularization type".format(reg_type)
         
         # the "input_dims" are ordered differently for matrix implementations,

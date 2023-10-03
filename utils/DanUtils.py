@@ -364,7 +364,7 @@ def compute_binocular_filters(binoc_mod, to_plot=True, cmap=None, time_reverse=T
     bifilts = np.concatenate((Bfilts[:, :, 0, :], Bfilts[:, :, 1, :]), axis=0)
     if to_plot:
         from NDNT.utils import plot_filters_ST1D
-        plot_filters_ST1D( bifilts, num_cols=4, cmap=cmap, )
+        plot_filters_ST1D( bifilts, num_cols=5, cmap=cmap, )
     else:
         return bifilts
 
