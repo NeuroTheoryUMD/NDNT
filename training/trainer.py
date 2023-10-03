@@ -272,7 +272,7 @@ class Trainer:
                 runningloss += out['val_loss'].item()
 
                 if self.verbose > 1:
-                    pbar.set_postfix({'val_loss': runningloss/(batch_idx+1)})
+                    pbar.set_postfix({'val_loss': str(np.round(runningloss/(batch_idx+1), 6))})
 
         return {'val_loss': runningloss/nsteps}
             
@@ -303,7 +303,7 @@ class Trainer:
             runningloss += out['train_loss']
             if self.verbose > 1:
                 # update progress bar
-                pbar.set_postfix({'train_loss': runningloss/(batch_idx + 1)})
+                pbar.set_postfix({'train_loss': str(np.round(runningloss/(batch_idx + 1), 6))})
 
         return {'train_loss': runningloss/(batch_idx + 1)} # should this be an aggregate out?
 
@@ -536,7 +536,7 @@ class LBFGSTrainer(Trainer):
                     torch.cuda.empty_cache()
                     if self.verbose > 1:
                         # update progress bar
-                        pbar.set_postfix({'train_loss': loss.detach().item()/(batch_idx + 1),
+                        pbar.set_postfix({'train_loss': str(np.round(loss.detach().item()/(batch_idx + 1), 6)),
                             'fevals': self.optimizer.state_dict()['state'][0]['func_evals'],
                             'n_iter': self.optimizer.state_dict()['state'][0]['n_iter']})
 
