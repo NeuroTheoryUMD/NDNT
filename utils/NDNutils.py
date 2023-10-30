@@ -30,6 +30,7 @@ def fit_lbfgs(mod, data, val_data=None,
     data: Dictionary to used with Model.training_step(data)
     '''
 
+    mod.prepare_regularization()
     mod.train()
     if parameters is None:
         parameters = mod.parameters()

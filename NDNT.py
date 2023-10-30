@@ -436,7 +436,7 @@ class NDN(nn.Module):
     def prepare_regularization(self):
 
         for network in self.networks:
-            network.prepare_regularization()
+            network.prepare_regularization(device=self.device)
 
     def fit(self,
         dataset,
