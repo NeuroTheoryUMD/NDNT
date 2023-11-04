@@ -166,21 +166,6 @@ class ReadoutLayer(NDNLayer):
                 return (torch.einsum('ancd,bnid->bnic', self.sigma[None, :, None, :]**2, norm) + self.mu[None, :, None, :]).clamp_(-1,1) # grid locations in feature space sampled randomly around the mean self.mu
     # END ReadoutLayer.sample_grid() 
 
-    def passive_readout(self):
-        """This will not fit mu and std, but set them to zero. It will pass identities in,
-        so number of input filters must equal number of readout units"""
-
-        assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
-        # Set parameters for default readout
-        self.sigma.data.fill_(0)
-        self.mu.data.fill_(0)
-        self.weight.data.fill_(0)
-        for nn in range(self.num_filters):
-            self.weight.data[nn,nn] = 1
-
-        self.set_parameters(val=False)
-        self.sample = False
-
     def get_weights(self, to_reshape=True, time_reverse=None, num_inh=None):
         """overloaded to read not use preprocess weights but instead use layer property features"""
 
@@ -277,6 +262,7 @@ class ReadoutLayer(NDNLayer):
             self.weight.data[nn,nn] = 1
 
         self.set_parameters(val=False)
+        self.sample = False
 
     @classmethod
     def layer_dict(cls, NLtype='softplus', **kwargs):
@@ -302,6 +288,118 @@ class ReadoutLayer(NDNLayer):
 
         return Ldict
     # END [classmethod] ReadoutLayer.layer_dict
+
+
+class ReadoutLayer3d(ReadoutLayer):
+
+    def __init__(self, 
+            input_dims=None,
+            **kwargs):
+
+        assert input_dims[3] > 1, "ReadoutLayer3d: should not be using this layer if no 3rd dimension of input"
+
+        # Need to tuck lag dimension into channel-dims so parent constructor makes the right filter shape
+        input_dims_mod = deepcopy(input_dims)
+        input_dims_mod[0] *= input_dims[3]
+        input_dims_mod[3] = 1
+                
+        super().__init__(input_dims=input_dims_mod, **kwargs)
+        self.input_dims = input_dims
+        #print('OLD FILTER DIMS', self.filter_dims)
+        self.filter_dims = [input_dims[0], input_dims[3], 1, 1]  # making spatial so max_space can be used
+        #print('NEW FILTER DIMS', self.filter_dims)
+        # Redo regularization with new filter_dims
+      
+        from ...modules.regularization import Regularization
+        reg_vals = self.reg.vals
+        self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals, num_outputs=self.num_filters )
+
+    # END ReadoutLayer3d.__init__
+
+    def forward(self, x, shift=None):
+        """
+        Propagates the input forwards through the readout
+        Args:
+            x: input data
+            sample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(mu,sigma), defined per neuron
+                            or use the mean, mu, of the Gaussian distribution without sampling.
+                           if sample is None (default), samples from the N(mu,sigma) during training phase and
+                             fixes to the mean, mu, during evaluation phase.
+                           if sample is True/False, overrides the model_state (i.e training or eval) and does as instructed
+            shift (bool): shifts the location of the grid (from eye-tracking data)
+            out_idx (bool): index of neurons to be predicted
+
+        Returns:
+            y: neuronal activity
+        """
+        x = x.reshape([-1]+self.input_dims)  # 3d change -- has extra dimension at end
+        N, c, w, h, T = x.size()   # N is number of time points -- note that its full dimensional....
+        c *= T
+        # get those last filter dims up before spatial
+        x = x.permute(0,1,4,2,3).reshape([N, c, w, h]) 
+
+        #c_in, w_in, h_in = self.input_dims[:3]
+        #if (c_in, w_in, h_in) != (c, w, h):
+        #    raise ValueError("the specified feature map dimension is not the readout's expected input dimension")
+        
+        feat = self.features  # this is the filter weights for each unit
+        feat = feat.reshape(1, -1, self.num_filters)  # 3d change -- this is num_chan x num_angles now
+
+        bias = self.bias
+        outdims = self.num_filters
+
+        if self.batch_sample:
+            # sample the grid_locations separately per sample per batch
+            grid = self.sample_grid(batch_size=N, sample=self.sample)  # sample determines sampling from Gaussian
+        else:
+            # use one sampled grid_locations for all sample in the batch
+            grid = self.sample_grid(batch_size=1, sample=self.sample).expand(N, outdims, 1, self.num_space_dims)
+        
+        if shift is not None:
+            # shifter is run outside the readout forward
+            grid = grid + shift[:, None, None, :]
+
+        y = F.grid_sample(x, grid, mode=self.sample_mode, align_corners=self.align_corners, padding_mode='border')
+        # note I switched this from the default 'zeros' so that it wont try to go past the border
+
+        y = (y.squeeze(-1) * feat).sum(1).view(N, outdims)
+
+        if self.bias is not None:
+            y = y + bias
+        
+        if self.NL is not None:
+            y = self.NL(y)
+        
+        return y
+    # END ReadoutLayer3d.forward
+
+    def passive_readout(self):
+        """This might have to be redone for readout3d to take into account extra filter dim"""
+        print("WARNING: SCAF3d: this function is not vetted and likely will clunk")
+        assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
+        # Set parameters for default readout
+        self.sigma.data.fill_(0)
+        self.mu.data.fill_(0)
+        self.weight.data.fill_(0)
+        for nn in range(self.num_filters):
+            self.weight.data[nn,nn] = 1
+
+        self.set_parameters(val=False)
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        Ldict['layer_type'] = 'readout3d'
+        return Ldict
+    # END [classmethod] ReadoutLayer3d.layer_dict
 
 
 class FixationLayer(NDNLayer):

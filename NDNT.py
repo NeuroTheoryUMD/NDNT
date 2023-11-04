@@ -22,6 +22,7 @@ FFnets = {
     'add': NDNnetworks.FFnetwork,  # just controls how inputs are concatenated
     'mult': NDNnetworks.FFnetwork, # just controls how inputs are concatenated
     'scaffold': NDNnetworks.ScaffoldNetwork, # forward concatenates all layers (default: convolutional)
+    'scaffold3d': NDNnetworks.ScaffoldNetwork3d, # forward concatenates all layers (default: convolutional)
     'readout': NDNnetworks.ReadoutNetwork
 }
 

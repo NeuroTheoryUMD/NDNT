@@ -24,6 +24,7 @@ LayerTypes = {
     'iterT': layers.IterTlayer,
     'iterST': layers.IterSTlayer,
     'readout': layers.ReadoutLayer,
+    'readout3d': layers.ReadoutLayer3d,
     'fixation': layers.FixationLayer,
     'lag': layers.LagLayer,
     'time': layers.TimeLayer,
@@ -36,7 +37,7 @@ LayerTypes = {
     #'res': layers.ResLayer,
 }
 
-_valid_ffnet_types = ['normal', 'add', 'mult', 'readout', 'scaffold']
+_valid_ffnet_types = ['normal', 'add', 'mult', 'readout', 'scaffold', 'scaffold3d']
       
 class FFnetwork(nn.Module):
 
@@ -376,6 +377,69 @@ class ScaffoldNetwork(FFnetwork):
         ffnet_dict['scaffold_levels'] = scaffold_levels
         ffnet_dict['num_lags_out'] = num_lags_out
         return ffnet_dict
+# END ScaffoldNetwork
+
+
+class ScaffoldNetwork3d(ScaffoldNetwork):
+    """Like scaffold network above, but preserves the third dimension"""
+
+    def __repr__(self):
+        s = super().__repr__()
+        # Add information about module to print out
+        s += self.__class__.__name__
+        return s
+
+    def __init__(self, num_lags_out=None, **kwargs):
+        """
+        This essentially used the constructor for Point1DGaussian, with dicationary input.
+        Currently there is no extra code required at the network level. I think the constructor
+        can be left off entirely, but leaving in in case want to add something.
+        """
+        assert num_lags_out is not None, "should be using num_lags_out with the scaffold3d network"
+
+        super().__init__(**kwargs)
+        self.network_type = 'scaffold3d'
+
+        self.num_lags_out = num_lags_out  # Makes output equal to number of lags
+        self.output_dims[-1] = self.num_lags_out
+    # END ScaffoldNetwork3d.__init__
+
+    def forward(self, inputs):
+        if self.layers is None:
+            raise ValueError("Scaffold: no layers defined.")
+        
+        out = [] # returned 
+        x = self.preprocess_input(inputs)
+
+        for layer in self.layers:
+            x = layer(x)
+            nt = x.shape[0]
+            #if self.num_lags_out is None and layer.output_dims[3] > 1:
+                # reshape y to combine the filters and lags in the second dimension
+                # batch x filters x (width x height) x lags
+            #    y = x.reshape([nt, layer.output_dims[0], -1, layer.output_dims[3]])
+                # move the lag dimension after the filters (batch, filter, lag, width x height)
+            #    y = y.permute(0, 1, 3, 2)
+                # flatten the filter and lag dimensions to be filters x lags
+            #    y = y.reshape([nt, -1])
+            #    out.append(y)
+            #elif self.num_lags_out is not None and layer.output_dims[3] > self.num_lags_out:
+                # Need to return just first lag (lag0) -- 'chomp'
+            #    y = x.reshape([nt, -1, layer.output_dims[3]])[..., :(self.num_lags_out)]
+            #    out.append( y.reshape((nt, -1) ))
+            #else:
+            out.append(x)
+        
+        # this concatentates across the filter dimension
+        return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
+    # END ScaffoldNetwork3d.forward()
+
+    @classmethod
+    def ffnet_dict( cls, **kwargs):
+        ffnet_dict = super().ffnet_dict(**kwargs)
+        ffnet_dict['ffnet_type'] = 'scaffold3d'
+        return ffnet_dict
+# END ScaffoldNetwork3d
 
 
 class ReadoutNetwork(FFnetwork):
