@@ -136,11 +136,13 @@ class Regularization(nn.Module):
             self.set_reg_val(self, reg_type, reg_val=new_val)
     # END Regularization.unit_reg_convert
 
-    def build_reg_modules(self):
+    def build_reg_modules(self, device=None):
         """Prepares regularization modules in train based on current regularization values"""
         
         self.reg_modules = nn.ModuleList()  # this clears old modules (better way?)
-        
+        if device is None:
+            device=torch.device('cpu')
+            
         for reg, val in self.vals.items():
             # check for boundary conditions
             BC = 1 # default padding for boundary conditions
@@ -152,7 +154,7 @@ class Regularization(nn.Module):
             reg_obj = self.get_reg_class(reg)(
                 reg_type=reg, reg_val=val, 
                 input_dims=self.input_dims, folded_lags=self.folded_lags, unit_reg=self.unit_reg, bc_val=BC)
-            self.reg_modules.append(reg_obj)
+            self.reg_modules.append(reg_obj.to(device))
 
             if reg == 'activity':
                 self.activity_regmodule = self.reg_modules[-1]  # hoping this acts as a pointer (otherwise use explicit indexing)

@@ -66,6 +66,8 @@ class NDN(nn.Module):
             self.loss_type = loss_type
             if loss_type == 'poisson' or loss_type == 'poissonT':
                 self.loss_module = plosses.PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
+            elif loss_type in ['simple', 'poissonS']:
+                self.loss_module = plosses.SimplePoissonLoss()
             elif loss_type in ['gaussian', 'mse']:
                 self.loss_module = glosses.MseLoss_datafilter()
             else:
@@ -435,7 +437,7 @@ class NDN(nn.Module):
     def prepare_regularization(self):
 
         for network in self.networks:
-            network.prepare_regularization()
+            network.prepare_regularization(device=self.device)
 
     def fit(self,
         dataset,

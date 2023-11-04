@@ -227,14 +227,14 @@ class FFnetwork(nn.Module):
                     layer_reg_list[nn][kk] = vv[nn]
         return layer_reg_list
 
-    def prepare_regularization(self):
+    def prepare_regularization(self, device=None):
         """
         Makes regularization modules with current requested values.
         This is done immediately before training, because it can change during training and tuning.
         """
         for layer in self.layers:
             if hasattr(layer, 'reg'):
-                layer.reg.build_reg_modules()
+                layer.reg.build_reg_modules(device=device)
             
     def compute_reg_loss(self):
         rloss = []

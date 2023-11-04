@@ -12,6 +12,53 @@ import json
 import io
 
 
+########### LBFGS TRAINER (just a function!) #################
+def fit_lbfgs(mod, data, val_data=None,
+              parameters=None,
+              optimizer=None,
+              verbose=True,
+              max_iter=1000,
+              lr=1,
+              line_search='strong_wolfe',
+              history_size=10,
+              tolerance_change=1e-14,
+              tolerance_grad=1e-14):
+    '''
+    Runs fullbatch LBFGS on a Pytorch model and data dictionary
+    Inputs:
+    Model: Pytorch model
+    data: Dictionary to used with Model.training_step(data)
+    '''
+
+    mod.prepare_regularization()
+    mod.train()
+    if parameters is None:
+        parameters = mod.parameters()
+    if optimizer is None:
+        optimizer = torch.optim.LBFGS(parameters,
+                                      lr=lr,
+                          history_size=history_size,
+                          max_iter=max_iter,
+                          tolerance_change=tolerance_change,
+                          line_search_fn=line_search,
+                          tolerance_grad=tolerance_grad)
+    def closure():
+        optimizer.zero_grad()
+        out = mod.training_step(data)
+        loss = out['loss']
+        if np.isnan(loss.item()):
+            return loss
+        if loss.requires_grad:
+            loss.backward()
+        if verbose > 0:
+            print('Iteration: {} | Loss: {}'.format(optimizer.state_dict()['state'][0]['n_iter'], loss.cpu().item()))
+        return loss
+    loss = optimizer.step(closure)
+    optimizer.zero_grad()
+    torch.cuda.empty_cache()
+    return loss
+
+
 #################### CREATE OTHER PARAMETER-DICTS ####################
 def create_optimizer_params(
         optimizer_type='AdamW',
