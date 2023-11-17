@@ -210,6 +210,9 @@ class Regularization(nn.Module):
                      'max': Tikhanov,
                      'max_filt': Tikhanov,
                      'max_space': Tikhanov,
+                     'gmax_t': TikhanovC,
+                     'gmax_space': TikhanovC,
+                     'gmax_filter': TikhanovC,
                      'center': DiagonalReg,
                      'edge_t': DiagonalReg,
                      'edge_t0': DiagonalReg,
@@ -641,6 +644,63 @@ class Tikhanov(RegModule):
         else:
             return torch.Tensor(reg_mat)
     # END Tikhanov.build_reg_mats
+
+
+class TikhanovC(RegModule):
+    """Regularization module for Tikhanov-collapse regularization -- where all but one
+    dimension is marginalized over first"""
+
+    def __init__(self, reg_type=None, reg_val=None, input_dims=None, bc_val=0, **kwargs):
+        """Constructor for Tikhanov class"""
+
+        super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, bc_val=bc_val, **kwargs)
+        
+        _valid_reg_types = ['gmax_t', 'gmax_space', 'gmax_filter']
+        assert reg_type in _valid_reg_types, "{} is not a valid Tikhanov-C regularization type".format(reg_type)
+        
+        # the "input_dims" are ordered differently for matrix implementations,
+        # so this is a temporary fix to be able to use old functions
+        self.input_dims = [input_dims[0], input_dims[1]*input_dims[2], input_dims[3]]
+
+        self.collapse_dims = [2, 1, 0]
+        if reg_type == 'gmax_t':
+            self.reg_dim = 2
+        elif reg_type == 'gmax_filter':
+            self.reg_dim = 0
+        else:
+            self.reg_dim = 1
+        self.collapse_dims.remove(self.reg_dim)
+
+        # Make appropriate reg_matrix as buffer (non-fit parameter)
+        reg_tensor = self._build_reg_mats( reg_type )
+        self.register_buffer( 'rmat', reg_tensor)
+    
+    def compute_reg_penalty(self, weights):
+        """Calculate regularization penalty for Tikhanov reg types"""
+
+        #w2 = torch.square(weights)  # assuming positive constraints here -- no squaring needed
+        w = torch.sum( torch.sum(
+                weights.reshape(self.input_dims + [-1]), # [C, W*H, T, NF]
+                axis=self.collapse_dims[0]), 
+                axis=self.collapse_dims[1])
+
+        reg_pen = torch.matmul( w.T, torch.matmul(self.rmat, w) )
+        reg_pen = torch.diagonal(reg_pen, 0) # sum later (replaced call to torch.trace)
+
+        return reg_pen
+
+    def _build_reg_mats(self, reg_type):
+        """Build regularization matrices in default tf Graph
+
+        Args:
+            reg_type (str): see `_allowed_reg_types` for options
+        """
+        #import NDNT.utils.create_reg_matrices as get_rmats
+        L = self.input_dims[self.reg_dim]
+        reg_mat = np.ones([L,L]) - np.eye(L)
+        return torch.Tensor(reg_mat)
+    # END TikhanovC.build_reg_mats
+
 
 class ActivityReg(RegModule):
     """ Regularization to penalize activity separably for each dimension
