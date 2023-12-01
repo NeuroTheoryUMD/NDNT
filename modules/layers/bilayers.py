@@ -5,6 +5,112 @@ from torch.nn import functional as F
 import numpy as np
 
 
+class BinocLayer1D(ConvLayer):
+    """
+    Takes a monocular convolutional output over both eyes -- assumes first spatial dimension is doubled
+    -- reinterprets input as separate filters from each eye, but keeps them grouped
+    -- assumes each 2 input filters (for each eye -- 4 inputs total) are inputs to each output filter
+    """ 
+
+    def __init__(self, input_dims=None, num_filters=None, padding=None, **kwargs ):
+        """Same arguments as ConvLayer, but will reshape output to divide space in half"""
+
+        assert padding is None, "Should not enter padding: will be set to 'same'"
+        NF, NX2, a, b = input_dims
+        assert (a == 1) & (b == 1), "BINOCLAYER: Input dims are screwed up"
+
+        if num_filters is None:
+            num_filters = NF//2
+        assert num_filters == NF//2, "num_filters must be specified correctly"
+        input_dims[0] = 4  # this will be taken care of with groups
+        NX = NX2//2
+        input_dims[1] = NX
+
+        super().__init__(
+            input_dims=input_dims, num_filters=num_filters, padding='same',
+            **kwargs)
+
+        self.input_dims[0] = 2*NF  # fix now that weights are specified
+
+        #self.group_filters = group_filters  # I think this is grouped this
+    # END BinocLayer1D.__init__
+
+    def forward(self, x):
+        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+
+        s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3) # B, C, T, X, Y
+
+        w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)
+        # puts output_dims first, as required for conv
+
+        # Collapse over irrelevant dims for dim-specific convs
+        #s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) )
+        s = torch.reshape( s, (-1, self.input_dims[0], self.input_dims[1]) )
+        
+        #if self.padding:
+        #s = F.pad(s, self._npads, "constant", 0)
+
+        if self._fullpadding:
+            #s = F.pad(s, self._npads, "constant", 0)
+            y = F.conv1d(
+                F.pad(s, self._npads, "constant", 0), 
+                w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                bias=self.bias, groups=4,
+                stride=self.stride, dilation=self.dilation)
+        else:
+            y = F.conv1d(
+                s,
+                w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                bias=self.bias, groups=4,
+                padding=self._npads[0],
+                stride=self.stride, dilation=self.dilation)
+
+        if not self.res_layer:
+            if self.output_norm is not None:
+                y = self.output_norm(y)
+
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+
+        if self._ei_mask is not None:
+            if self.is1D:
+                y = y * self._ei_mask[None, :, None]
+            else:
+                y = y * self._ei_mask[None, :, None, None]
+            # y = torch.einsum('bchw, c -> bchw* self.ei_mask
+            # w = torch.einsum('nctw,tz->nczw', w, self.tent_basis)
+
+        if self.res_layer:
+            # s is with dimensions: B, C, T, X, Y 
+            y = y + torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) )
+                 
+            if self.output_norm is not None:
+                y = self.output_norm(y)
+
+        y = torch.reshape(y, (-1, self.num_outputs))
+
+        # store activity regularization to add to loss later
+        #self.activity_regularization = self.activity_reg.regularize(y)
+        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+            self.reg.compute_activity_regularization(y)
+        
+        return y
+    # END BinocLayer1D.forward
+
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        Ldict = super().layer_dict(**kwargs)
+        del Ldict['padding']  # will have 'same' padding automatically
+        del Ldict['stride']  # will have 'same' padding automatically
+        del Ldict['dilation']  # will have 'same' padding automatically
+        # Added arguments
+        Ldict['layer_type'] = 'binoc'
+        return Ldict
+    # END [classmethod] BinocLayer1D.layer_dict
+
+
 class BiConvLayer1D(ConvLayer):
     """
     Filters that act solely on filter-dimension (dim-0)

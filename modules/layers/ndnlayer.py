@@ -120,7 +120,8 @@ class NDNLayer(nn.Module):
             # Does this apply to both weights and biases? Should be separate?
             # How does this compare without explicit constraint? Maybe better, maybe worse...
 
-        self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals, num_outputs=num_filters )
+        self.reg = Regularization( 
+            filter_dims=self.filter_dims, vals=reg_vals, num_outputs=num_filters, pos_constraint=self.pos_constraint )
         ##### self.activity_reg = ActivityRegularization(reg_vals=reg_vals)
         # place to store the activity regularization value to be used in the loss function
         ##### self.activity_regularization = 0.0

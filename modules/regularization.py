@@ -27,7 +27,8 @@ class Regularization(nn.Module):
 
     """
 
-    def __init__(self, filter_dims=None, vals=None, normalize=False, num_outputs=None, folded_lags=False, **kwargs):
+    def __init__(self, filter_dims=None, vals=None, num_outputs=None, 
+                 normalize=False, pos_constraint=False, folded_lags=False, **kwargs):
         """Constructor for Regularization class. This stores all info for regularization, and 
         sets up regularization modules for training, and returns reg_penalty from layer when passed in weights
         
@@ -61,6 +62,7 @@ class Regularization(nn.Module):
         self.unit_reg = False
         self.folded_lags = folded_lags
         self.num_outputs = num_outputs
+        self.pos_constraint=pos_constraint
         self.boundary_conditions = None
         self.activity_regmodule = None
 
@@ -153,7 +155,8 @@ class Regularization(nn.Module):
 
             reg_obj = self.get_reg_class(reg)(
                 reg_type=reg, reg_val=val, 
-                input_dims=self.input_dims, folded_lags=self.folded_lags, unit_reg=self.unit_reg, bc_val=BC)
+                input_dims=self.input_dims, pos_constraint=self.pos_constraint,
+                folded_lags=self.folded_lags, unit_reg=self.unit_reg, bc_val=BC)
             self.reg_modules.append(reg_obj.to(device))
 
             if reg == 'activity':
@@ -230,7 +233,9 @@ class Regularization(nn.Module):
 class RegModule(nn.Module): 
     """ Base class for regularization modules """
 
-    def __init__(self, reg_type=None, reg_val=None, input_dims=None, num_dims=0, unit_reg=False, folded_lags=False, **kwargs):
+    def __init__(self, reg_type=None, reg_val=None, 
+                 input_dims=None, num_dims=0, unit_reg=False, folded_lags=False, 
+                 pos_constraint=False, **kwargs):
         """Constructor for Reg_module class"""
 
         assert reg_type is not None, 'Need reg_type.'
@@ -245,6 +250,7 @@ class RegModule(nn.Module):
         self.input_dims = input_dims
         self.num_dims = num_dims # this is the relevant number of dimensions for some filters -- will be set within functions
         self.folded_lags = folded_lags
+        self.pos_constraint = pos_constraint
 
     def forward(self, weights):
         rpen = self.compute_reg_penalty(weights)
@@ -262,7 +268,7 @@ class LocalityReg(RegModule):
         assert reg_type in _valid_reg_types, '{} is not a valid Locality Reg type'.format(reg_type)
 
         super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
-        
+
         self.build_reg_mats()
         # normalized weights mean w ~ 1/sqrt(N), so \sum w^2 = 1. but w^4 => 1/N^2 so multiply by N
         #self.multiplier = np.prod(input_dims)
@@ -271,10 +277,14 @@ class LocalityReg(RegModule):
         """Compute regularization penalty for locality"""
 
         rpen = 0
+        if self.pos_constraint:
+            w = weights.reshape(self.input_dims + [-1]) #[C, NX, NY, num_lags, num_filters]
+        else:
+            w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
+
         if self.reg_type == 'glocalx':
             
-            # glocal
-            w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
+            # glocal                
             wx = w.sum(dim=(0,2,3)) # sum over y and t (note this works for singular dim y too, i.e., 1d)
 
             penx = torch.einsum('xn,xw->wn', wx, self.localx_pen)
@@ -297,7 +307,7 @@ class LocalityReg(RegModule):
         elif self.reg_type == 'glocalt':
             
             # glocal on time
-            w = weights.reshape(self.input_dims + [-1])**2
+            #w = weights.reshape(self.input_dims + [-1])**2
             wt = w.sum(dim=(0,1,2))
 
             rpen = torch.einsum('tn,tw->wn', wt, self.localt_pen)
@@ -306,7 +316,7 @@ class LocalityReg(RegModule):
         elif self.reg_type == 'localx':
             
             # glocal
-            w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
+            #w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
 
             penx = torch.einsum('cxytn,xw->wn', w, self.localx_pen)
             penx = torch.einsum('xn,cxytn->n', penx, w)
@@ -326,7 +336,7 @@ class LocalityReg(RegModule):
         elif self.reg_type == 'localt':
             
             # glocal on time
-            w = weights.reshape(self.input_dims + [-1])**2
+            #w = weights.reshape(self.input_dims + [-1])**2
 
             rpen = torch.einsum('cxytn,tw->wn', w, self.localt_pen)
             rpen = torch.einsum('tn,cxytn->n', rpen, w)
@@ -334,7 +344,7 @@ class LocalityReg(RegModule):
         elif self.reg_type == 'trd':
             
             # penalty on time
-            w = weights.reshape(self.input_dims + [-1])**2
+            #w = weights.reshape(self.input_dims + [-1])**2
 
             rpen = torch.einsum('cxytn,tw->wn', w, self.trd_pen)
             rpen = torch.einsum('tn,cxytn->n', rpen, w)
@@ -375,9 +385,12 @@ class DiagonalReg(RegModule):
     def compute_reg_penalty(self, weights):
         """Compute regularization loss"""
 
-        # Collapse weights across non-spatial dimensions
-        w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
+        if self.pos_constraint:
+            w = weights.reshape(self.input_dims + [-1]) #[C, NX, NY, num_lags, num_filters]
+        else:
+            w = weights.reshape(self.input_dims + [-1])**2 #[C, NX, NY, num_lags, num_filters]
 
+        # Collapse weights across non-spatial dimensions
         if self.reg_type == 'center':
             wcollapse = w.mean(dim=(0,3,4)).reshape([-1])
             rpen = torch.mean( torch.matmul( wcollapse, self.regcost) )

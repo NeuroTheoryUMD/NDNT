@@ -341,7 +341,8 @@ class ConvLayer(NDNLayer):
             else:
                 y = F.conv1d(
                     s,
-                    w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                    #w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                    w.reshape([-1, self.folded_dims, self.filter_dims[1]]), 
                     bias=self.bias,
                     padding=self._npads[0],
                     stride=self.stride, dilation=self.dilation)
