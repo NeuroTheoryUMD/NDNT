@@ -274,7 +274,7 @@ class ConvLayer(NDNLayer):
         # handle spatial padding here, time is integrated out in conv base layer
 
     @classmethod
-    def layer_dict(cls, padding='same', filter_dims=None, folded_lags=False, res_layer=False, **kwargs):
+    def layer_dict(cls, padding='same', filter_dims=None, folded_lags=False, res_layer=False, window=None, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -289,8 +289,8 @@ class ConvLayer(NDNLayer):
         Ldict['filter_dims'] = filter_dims
         Ldict['res_layer'] = res_layer
         Ldict['temporal_tent_spacing'] = 1
-        Ldict['output_norm'] = None
-        Ldict['window'] = None  # could be 'hamming'
+        #Ldict['output_norm'] = None  # captured in parent
+        Ldict['window'] = window  # could be 'hamming'
         Ldict['stride'] = 1
         Ldict['dilation'] = 1
         Ldict['padding'] = padding

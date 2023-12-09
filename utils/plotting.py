@@ -2,7 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_filters_1D(ws, cmap='viridis', num_cols=8, row_height=2, fix_scale=True, **kwargs):
+def plot_filters_1D(ws, num_cols=8, row_height=2, fix_scale=True, **kwargs):
     """function to plot 1-D spatiotemporal filters (so, 2-d images) by passing in weights of multiple filters"""
     num_filters = ws.shape[-1]
     if num_filters < 8:
@@ -47,7 +47,7 @@ def plot_filters_ST1D(ws, cmap='viridis', num_cols=None, row_height=2, fix_scale
 ### END plot_filters_ST1D
 
 def plot_filters_ST2D(ws, sort=False, **kwargs):
-    """Stolendirectly from neureye -> core.plot_filters, and modified"""
+    """Stolen directly from neureye -> core.plot_filters, and modified"""
     from NDNT.utils import subplot_setup
 
     if len(ws.shape) < 4:

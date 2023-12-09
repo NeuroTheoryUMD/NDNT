@@ -3,7 +3,6 @@ import torch
 from torch import nn
 from functools import reduce
 
-
 import numpy as np # TODO: we can get rid of this and just use torch for math
 import tqdm
 import json
@@ -41,7 +40,8 @@ class NDN(nn.Module):
         super().__init__()
 
         # save the ffnet_list for serialization purposes
-        self.ffnet_list = ffnet_list
+        from copy import deepcopy
+        self.ffnet_list = deepcopy(ffnet_list)
         self.loss_type = loss_type
         self.ffnet_out = ffnet_out
         

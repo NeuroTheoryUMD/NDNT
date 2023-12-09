@@ -405,6 +405,7 @@ class NDNLayer(nn.Module):
                    input_dims=None, num_filters=None, # necessary parameters
                    bias=False, NLtype='lin', norm_type=0,
                    initialize_center=False, num_inh=0, pos_constraint=False, # optional parameters
+                   reg_vals={}, output_norm=None,
                    **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
@@ -432,10 +433,10 @@ class NDNLayer(nn.Module):
             'pos_constraint': pos_constraint,
             'num_inh': num_inh,
             'bias': bias,
-            'weights_initializer': 'xavier_uniform',
-            'bias_initializer': 'zeros',
-            'output_norm':None,
+            'output_norm': output_norm,
             'initialize_center': initialize_center,
-            'reg_vals': {}
+            'reg_vals': reg_vals,
+            'weights_initializer': 'xavier_uniform',
+            'bias_initializer': 'zeros'
         }
 

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .convlayers import ConvLayer
+from .convlayers import ConvLayer, STconvLayer
 from torch.nn import functional as F
 import numpy as np
 
@@ -141,6 +141,38 @@ class BiConvLayer1D(ConvLayer):
         Ldict['layer_type'] = 'biconv'
         return Ldict
     # END [classmethod] BinConvLayer1D.layer_dict
+
+
+class BiSTconv1D(STconvLayer):
+    """
+    Filters that act solely on filter-dimension (dim-0)
+
+    """ 
+
+    def __init__(self, **kwargs ):
+        """Same arguments as ConvLayer, but will reshape output to divide space in half"""
+
+        super().__init__(**kwargs)
+
+        self.output_dims[0] = self.output_dims[0]*2
+        self.output_dims[1] = self.output_dims[1]//2
+        #self.group_filters = group_filters  # I think this is grouped this
+    # END BinConvLayer1D.__init__
+
+    #def forward(self, x):
+    #    # Call conv forward, but then option to reshape
+    #    super.forward( x )
+    #    if self.group_filters:
+    #        # Output will be batch x 2 x num_filters x space (with the two corresponding to left and right eyes)
+
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        Ldict = super().layer_dict(**kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'bistconv'
+        return Ldict
+    # END [classmethod] BinSTconvLayer1D.layer_dict
 
 
 class ChannelConvLayer(ConvLayer):
