@@ -35,6 +35,7 @@ class NDN(nn.Module):
         ffnet_out = None,
         optimizer_params = None,
         model_name=None,
+        seed=None,
         working_dir='./checkpoints'):
 
         super().__init__()
@@ -45,6 +46,13 @@ class NDN(nn.Module):
         self.loss_type = loss_type
         self.ffnet_out = ffnet_out
         
+        self.seed = seed
+        if seed is not None:
+            # set flags / seeds    
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+
         if ffnet_list is None:
             # then must be a single ffnet specified by layer_list
             assert layer_list is not None, "NDN: must specify either ffnet_list or layer_list."
