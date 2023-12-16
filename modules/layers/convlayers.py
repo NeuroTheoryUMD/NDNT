@@ -324,20 +324,29 @@ class ConvLayer(NDNLayer):
             #s = F.pad(s, self._npads, "constant", 0)
 
             if self._fullpadding:
-                #s = F.pad(s, self._npads, "constant", 0)
                 y = F.conv1d(
                     F.pad(s, self._npads, pad_type, 0),
                     w.view([-1, self.folded_dims, self.filter_dims[1]]), 
                     bias=self.bias,
                     stride=self.stride, dilation=self.dilation)
             else:
-                y = F.conv1d(
-                    s,
-                    #w.view([-1, self.folded_dims, self.filter_dims[1]]), 
-                    w.reshape([-1, self.folded_dims, self.filter_dims[1]]), 
-                    bias=self.bias,
-                    padding=self._npads[0],
-                    stride=self.stride, dilation=self.dilation)
+                if self._padding == 'circular':
+                    s = F.pad(s, self._npads, pad_type, 0)  # think does not work 1-d (so commented above out)
+                    y = F.conv1d(
+                        s,
+                        #w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                        w.reshape([-1, self.folded_dims, self.filter_dims[1]]), 
+                        bias=self.bias,
+                        #padding=self._npads[0],
+                        stride=self.stride, dilation=self.dilation)
+                else:  # this looks the same, but is faster (does not work with circular)
+                    y = F.conv1d(
+                        s,
+                        #w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                        w.reshape([-1, self.folded_dims, self.filter_dims[1]]), 
+                        bias=self.bias,
+                        padding=self._npads[0], 
+                        stride=self.stride, dilation=self.dilation)
         else:
             s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
             # Alternative location of batch_norm:
@@ -354,13 +363,23 @@ class ConvLayer(NDNLayer):
                     dilation=self.dilation)
             else:
                 # functional pads since padding is simple
-                y = F.conv2d(
-                    s, 
-                    w.reshape([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
-                    padding=(self._npads[2], self._npads[0]),
-                    bias=self.bias,
-                    stride=self.stride,
-                    dilation=self.dilation)
+                if self.padding == 'circular':
+                    s = F.pad(s, self._npads, pad_type, 0)
+                    y = F.conv2d(
+                        s, 
+                        w.reshape([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
+                        #padding=(self._npads[2], self._npads[0]),
+                        bias=self.bias,
+                        stride=self.stride,
+                        dilation=self.dilation)
+                else:  # this is faster if not circular
+                    y = F.conv2d(
+                        s, 
+                        w.reshape([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
+                        padding=(self._npads[2], self._npads[0]),
+                        bias=self.bias,
+                        stride=self.stride,
+                        dilation=self.dilation)
 
         if not self.res_layer:
             if self.output_norm is not None:
@@ -648,7 +667,7 @@ class STconvLayer(TconvLayer):
             s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
             w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
 
-            if self.padding:
+            if self._padding != 'valid':
                 # flip order of padding for STconv -- last two are temporal padding
                 pad = (self._npads[2], self._npads[3], self.filter_dims[-1]-1, 0)
             else:
