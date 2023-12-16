@@ -15,7 +15,7 @@ class ConvLayer(NDNLayer):
         num_filters: number of output filters
         filter_dims: width of convolutional kernel (int or list of ints)
     Args (optional):
-        padding: 'same' or 'valid' (default 'same')
+        padding: 'same','valid', or 'circular' (default 'same')
         weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
         bias_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
         bias: bool, whether to include bias term
@@ -41,7 +41,7 @@ class ConvLayer(NDNLayer):
         assert input_dims is not None, "ConvLayer: Must specify input_dims"
         assert num_filters is not None, "ConvLayer: Must specify num_filters"
         if res_layer:
-            assert padding == 'same', "ConvLayer: padding must be set to 'same' for res_layer"
+            assert padding in ['same', 'circular'], "ConvLayer: padding must not be 'valid' for res_layer"
 
         #assert (conv_dims is not None) or (filter_dims is not None), "ConvLayer: conv_dims or filter_dims must be specified"
         if 'conv_dims' in kwargs:
@@ -49,10 +49,6 @@ class ConvLayer(NDNLayer):
 
         assert filter_dims is not None, "ConvLayer: filter_dims must be specified"
 
-        #if conv_dims is None:
-        #    from copy import copy
-        #    conv_dims = copy(filter_dims[1:])
-        
         is1D = input_dims[2] == 1
         # Place filter_dims information in correct place -- maybe overkill, but easy to specify 
         # spatial width in any number of ways using 'filter_dims'
@@ -60,10 +56,8 @@ class ConvLayer(NDNLayer):
             filter_dims = [filter_dims]
         if len(filter_dims) == 1:
             if is1D:
-                #conv_dims = [copy(conv_dims), input_dims[-1]]
                 filter_dims = [input_dims[0], filter_dims[0], 1, input_dims[-1]]
             else:
-                #conv_dims = [copy(conv_dims), copy(conv_dims), input_dims[-1]]
                 filter_dims = [input_dims[0], filter_dims[0], filter_dims[0], input_dims[-1]]
         elif len(filter_dims) == 2:  # Assume 2-d and passing spatial dims
             assert not is1D, "ConvLayer: invalid filter_dims"
@@ -103,14 +97,8 @@ class ConvLayer(NDNLayer):
             self.tent_basis = self.tent_basis[:num_lags,:]
             num_lag_params = self.tent_basis.shape[1]
             print('ConvLayer temporal tent spacing: num_lag_params =', num_lag_params)
-            #conv_dims[2] = num_lag_params
             filter_dims[-1] = num_lag_params
 
-        #if filter_dims is None:
-        #    filter_dims = [input_dims[0]] + conv_dims
-        #else:            
-        #    filter_dims[1:] = conv_dims
-        
         super().__init__(
             input_dims=input_dims,
             num_filters=num_filters,
@@ -241,15 +229,15 @@ class ConvLayer(NDNLayer):
     
     @padding.setter
     def padding(self, value):
-        assert value in ['valid', 'same'], "ConvLayer: incorrect value entered for padding"
+        assert value in ['valid', 'same', 'circular'], "ConvLayer: incorrect value entered for padding"
         self._padding = value
         self._fullpadding = False
 
         sz = self.filter_dims[1:3] # handle 2D if necessary
         if self._padding == 'valid':
             self._npads = (0, 0, 0, 0)
-        else:
-            assert self.stride == 1, "Warning: 'same' padding not yet implemented when stride > 1"
+        else:  # same number of pads for 'circular' and'same'
+            assert self.stride == 1, "Warning: padding not yet implemented when stride > 1 if not 'valid' padding"
             self._fullpadding = self.filter_dims[1]%2 == 0
             if self.is1D:
                 self._npads = (sz[0]//2, (sz[0]-1)//2)
@@ -293,7 +281,7 @@ class ConvLayer(NDNLayer):
         Ldict['window'] = window  # could be 'hamming'
         Ldict['stride'] = 1
         Ldict['dilation'] = 1
-        Ldict['padding'] = padding
+        Ldict['padding'] = padding # values can be 'same' (def), 'valid', 'circular'
         Ldict['folded_lags'] = folded_lags
 
         return Ldict
@@ -324,7 +312,11 @@ class ConvLayer(NDNLayer):
 
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)
         # puts output_dims first, as required for conv
-        
+        if self._padding == 'circular':
+            pad_type = 'circular'
+        else:
+            pad_type = 'constant'
+
         # Collapse over irrelevant dims for dim-specific convs
         if self.is1D:
             s = torch.reshape( s, (-1, self.folded_dims, self.input_dims[1]) )
@@ -334,7 +326,7 @@ class ConvLayer(NDNLayer):
             if self._fullpadding:
                 #s = F.pad(s, self._npads, "constant", 0)
                 y = F.conv1d(
-                    F.pad(s, self._npads, "constant", 0),
+                    F.pad(s, self._npads, pad_type, 0),
                     w.view([-1, self.folded_dims, self.filter_dims[1]]), 
                     bias=self.bias,
                     stride=self.stride, dilation=self.dilation)
@@ -353,7 +345,7 @@ class ConvLayer(NDNLayer):
             #    s = self.output_norm(s)
 
             if self._fullpadding:
-                s = F.pad(s, self._npads, "constant", 0)
+                s = F.pad(s, self._npads, pad_type, 0)
                 y = F.conv2d(
                     s, # we do our own padding
                     w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
@@ -426,7 +418,7 @@ class TconvLayer(ConvLayer):
         num_filters=None, # int
         conv_dims=None, # [w,h,t]
         filter_dims=None, # [C, w, h, t]
-        padding='valid',
+        padding='spatial',
         output_norm=None,
         **kwargs):
         
@@ -475,7 +467,7 @@ class TconvLayer(ConvLayer):
 
     @padding.setter
     def padding(self, value):
-        assert value in ['valid', 'same', 'spatial'], "TconvLayer: incorrect value entered for padding"
+        assert value in ['valid', 'same', 'spatial', 'circular'], "TconvLayer: incorrect value entered for padding"
         self._padding = value
         self._fullpadding = False
         sz = self.filter_dims[1:] # handle 2D if necessary
@@ -487,21 +479,20 @@ class TconvLayer(ConvLayer):
             #  elif self._padding == 'same':
             #    self._npads = (self.filter_dims[-1]-1, 0,
             #        self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
-            elif self._padding == 'spatial':
+            elif self._padding in ['spatial', 'circular']:
                 self._npads = (0, 0,
                     self.filter_dims[1]//2, (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2)
             self._fullpadding = self.filter_dims[1]%2 == 0
         else:
             if self._padding == 'valid':
                 self._npads = (0, 0, 0, 0, 0, 0)
-                
             elif self._padding == 'same':
                 assert self.stride == 1, "Warning: 'same' padding not yet implemented when stride > 1"
                 self._npads = (self.filter_dims[-1]-1, 0,
                     self.filter_dims[1]//2,
                     (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
                     self.filter_dims[2]//2, (self.filter_dims[2] - 1 + self.filter_dims[2]%2)//2)
-            elif self._padding == 'spatial':
+            elif self._padding in ['spatial', 'circular']:
                 self._npads = (0, 0,
                     self.filter_dims[1]//2,
                     (self.filter_dims[1] - 1 + self.filter_dims[1]%2)//2,
@@ -522,12 +513,17 @@ class TconvLayer(ConvLayer):
 
     def forward(self, x):
 
+        if self._padding == 'circular':
+            pad_type = 'circular'
+        else:
+            pad_type = 'constant'
+
         w = self.preprocess_weights()
         if self.is1D:
             w = w.view(self.filter_dims[:2] + [self.filter_dims[3]] + [-1]).permute(3,0,1,2) # [C,H,T,N]->[N,C,H,T]
             s = x.view([-1] + self.input_dims[:2]+[self.input_dims[3]]) # [B,C,W,T]
             if self.padding:
-                s = F.pad(s, self._npads, "constant", 0)
+                s = F.pad(s, self._npads, pad_type, 0)
 
             y = F.conv2d(
                 s,
@@ -541,7 +537,7 @@ class TconvLayer(ConvLayer):
             x = x.view([-1] + self.input_dims) # [B,C*W*H*T]->[B,C,W,H,T]
 
             if self.padding:
-                x = F.pad(x, self._npads, "constant", 0)
+                x = F.pad(x, self._npads, pad_type, 0)
 
             y = F.conv3d(
                 x,
@@ -596,6 +592,7 @@ class TconvLayer(ConvLayer):
         return Ldict
     # END [classmethod] TconvLayer.layer_dict
 
+
 class STconvLayer(TconvLayer):
     """
     Spatio-temporal convolutional layer.
@@ -608,9 +605,7 @@ class STconvLayer(TconvLayer):
         num_filters (int): number of filters
         filter_dims (list of ints): filter dimensions [C, w, h, T]
             w < W, h < H
-        stride (int): stride of convolution
-
-    
+        stride (int): stride of convolution    
     """ 
 
     def __init__(self,
@@ -619,16 +614,12 @@ class STconvLayer(TconvLayer):
         output_norm=None,
         **kwargs):
 
-        # conv_dims=None, # [w,h,t]
         # filter_dims=None, # [C, w, h, t]
         
         assert input_dims is not None, "STConvLayer: input_dims must be specified"
         assert num_filters is not None, "STConvLayer: num_filters must be specified"
         # assert (conv_dims is not None) or (filter_dims is not None), "STConvLayer: conv_dims or filter_dims must be specified"
         
-        # if conv_dims is None:
-        #     conv_dims = filter_dims[1:]
-
         # All parameters of filter (weights) should be correctly fit in layer_params
         super().__init__(input_dims,
             num_filters, output_norm=output_norm, **kwargs)
@@ -648,6 +639,11 @@ class STconvLayer(TconvLayer):
         # I benchmarked this and it'sd a 20% speedup to put the "Time" dimension first.
 
         w = self.preprocess_weights()
+        if self._padding == 'circular':
+            pad_type = 'circular'
+        else:
+            pad_type = 'constant'
+
         if self.is1D:
             s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
             w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
@@ -659,7 +655,7 @@ class STconvLayer(TconvLayer):
                 # still need to pad the batch dimension
                 pad = (0,0,self.filter_dims[-1]-1,0)
 
-            s = F.pad(s, pad, "constant", 0)
+            s = F.pad(s, pad, pad_type, 0)
 
             y = F.conv2d(
                 s,
@@ -673,13 +669,13 @@ class STconvLayer(TconvLayer):
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
             w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
             
-            if self.padding:
+            if self._padding != 'valid':
                 pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
             else:
                 # still need to pad the batch dimension
                 pad = (0,0,0,0,self.filter_dims[-1]-1,0)
 
-            s = F.pad(s, pad, "constant", 0)
+            s = F.pad(s, pad, pad_type, 0)
 
             y = F.conv3d(
                 s,
