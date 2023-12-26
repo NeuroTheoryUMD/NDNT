@@ -98,11 +98,12 @@ class NDNLayer(nn.Module):
         self.conv = False
 
         # Was this implemented correctly? Where should NLtypes (the dictionary) live?
-        if NLtype in NLtypes:
-            self.NL = NLtypes[NLtype]
-        else:
-            print("Nonlinearity undefined.")
-            # return error
+        assert NLtype in NLtypes, "NLtype not defined."
+        #if NLtype in NLtypes:
+        self.NL = NLtypes[NLtype]
+        #else:
+        #    print("Nonlinearity undefined.")
+        #    # return error
 
         self.shape = tuple([np.prod(self.filter_dims), self.num_filters])
         self.weight_scale = np.sqrt(self.shape[0]) / 100
