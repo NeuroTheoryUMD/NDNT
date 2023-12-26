@@ -10,13 +10,14 @@ import numpy as np
 
 class LagLayer(NDNLayer):
     """
-    Temporal-convolutional NDN Layer
-
-    Takes time-embedded stimulus with input dims
-    Args (required):
+    Operates spatiotemporal filter om time-embeeded stimulus
+    Spatiotemporal filter should have less lags than stimulus -- then ends up with some lags left
+    Filter is full spatial width and the number of lags is explicity specified in initializer
+    (so, inherits spatial and chanel dimensions of stimulus input)
+        Args (required):
         input_dims: tuple or list of ints, (num_channels, height, width, lags)
         num_filters: number of output filters
-        filter_dims: width of convolutional kernel (int or list of ints)
+        num_lags: number of lags in spatiotemporal filter
     Args (optional):
         weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
         bias_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
