@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 from .convlayers import ConvLayer, STconvLayer
+from .ndnlayer import NDNLayer
 from torch.nn import functional as F
 import numpy as np
-
+from copy import deepcopy
 
 class BinocLayer1D(ConvLayer):
     """
@@ -142,29 +143,65 @@ class BiConvLayer1D(ConvLayer):
         return Ldict
     # END [classmethod] BinConvLayer1D.layer_dict
 
-
-class BiSTconv1D(STconvLayer):
+class BiSTconv1D(NDNLayer):
+#class BiSTconv1D(STconvLayer):
     """
-    Filters that act solely on filter-dimension (dim-0)
-
+    To be BinocMixLayer (bimix):
+    Inputs of size B x C x 2xNX x 1: mixes 2 eyes based on ratio
+        filter number is NC -- one for each channel: so infered from input_dims
+        filter_dims is [1,1,1,1] -> one number per filter
+    ORIGINAL BiSTconv1D: Filters that act solely on filter-dimension (dim-0)
     """ 
 
-    def __init__(self, **kwargs ):
+    def __init__(self, input_dims=None, num_filters=None, filter_dims=None, norm_type=None,
+                 NLtype='relu', **kwargs ):
         """Same arguments as ConvLayer, but will reshape output to divide space in half"""
 
-        super().__init__(**kwargs)
+        assert input_dims is not None, "BIMIX: Input_dims necessary"
+        assert filter_dims is None, "BIMIX: filter_dims invalid"
+        assert num_filters is None, "BIMIX: num_filters should not be passed in: preset by input_dims"
+        assert norm_type is False, "BIMIX: No normalization allowed"
 
-        self.output_dims[0] = self.output_dims[0]*2
-        self.output_dims[1] = self.output_dims[1]//2
-        #self.group_filters = group_filters  # I think this is grouped this
+        super().__init__(
+            input_dims=input_dims, num_filters=input_dims[0], filter_dims=[1,1,1,1], 
+            **kwargs)
+
+        self.output_dims = deepcopy(input_dims)
+        self.output_dims[1] = self.input_dims[0]//2
+        self.num_outputs = np.prod(self.output_dims)
+
+# ORIGINAL WAS UNUSED SO USING THE NAME FOR NOW -- to change name if works
+#    def __init__(self, **kwargs ):
+#        """Same arguments as ConvLayer, but will reshape output to divide space in half"""
+#
+#        super().__init__(**kwargs)
+#
+#        self.output_dims[0] = self.output_dims[0]*2
+#        self.output_dims[1] = self.output_dims[1]//2
+#        #self.group_filters = group_filters  # I think this is grouped this
     # END BinConvLayer1D.__init__
 
-    #def forward(self, x):
+    def forward(self, x):
+
+        x = x.reshape([-1, self.input_dims[0], 2, self.output_dims[1]])
+        bw = F.sigmoid(self.weight)
+
+        y = bw * x[:,:,0,:] + (1-bw)*x[:,:,1,:] + self.bias[:,None,None]
+
+        if self.NL is not None:
+            y = self.NL(y)
+
+        if self._ei_mask is not None:
+            y = y * self._ei_mask
+
+        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+            self.reg.compute_activity_regularization(y)
+
+        return y.reshape([-1, self.num_outputs])
     #    # Call conv forward, but then option to reshape
     #    super.forward( x )
     #    if self.group_filters:
     #        # Output will be batch x 2 x num_filters x space (with the two corresponding to left and right eyes)
-
 
     @classmethod
     def layer_dict(cls, **kwargs):

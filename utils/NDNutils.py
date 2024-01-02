@@ -20,9 +20,9 @@ def fit_lbfgs(mod, data, val_data=None,
               max_iter=1000,
               lr=1,
               line_search='strong_wolfe',
-              history_size=10,
-              tolerance_change=1e-14,
-              tolerance_grad=1e-14):
+              history_size=100,
+              tolerance_change=1e-7,
+              tolerance_grad=1e-7):
     '''
     Runs fullbatch LBFGS on a Pytorch model and data dictionary
     Inputs:

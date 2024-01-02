@@ -42,7 +42,6 @@ class NDN(nn.Module):
 
         # save the ffnet_list for serialization purposes
         from copy import deepcopy
-        self.ffnet_list = deepcopy(ffnet_list)
         self.loss_type = loss_type
         self.ffnet_out = ffnet_out
         
@@ -60,10 +59,9 @@ class NDN(nn.Module):
             ffnet_list = [FFnetwork.ffnet_dict(layer_list=layer_list)]
         else:
             assert layer_list is None, "NDN: cannot specify ffnet_list and layer_list at same time."
- 
         assert type(ffnet_list) is list, 'FFnetwork list in NDN constructor must be a list.'
-
-
+        self.ffnet_list = deepcopy(ffnet_list)
+ 
         if (ffnet_out is None) or (ffnet_out == -1):
             ffnet_out = len(ffnet_list)-1
 
