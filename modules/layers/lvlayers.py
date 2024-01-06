@@ -7,7 +7,92 @@ import torch.nn as nn
 from .ndnlayer import NDNLayer
 import numpy as np
 
+
 class LVLayer(NDNLayer):
+    """Generates output at based on a number of LVs, sampled by time point.
+    Each LV has T weights, and can be many LVs (so weight matrix is T x NLVs.
+    Requires specifically formatted input that passes in indices of LVs and relative
+    weight, so will linearly interpolate. Also, can have trial-structure so will have 
+    temporal reg that does not need to go across trials
+    
+    Input will specifically be of form of (for each batch point):
+    [index1, index2, w1]  and output will be w1*LV(i1) + (1-w1)*LV(i2)
+    """
+
+    def __init__(self, 
+        num_time_pnts=None, 
+        num_lvs=1,
+        num_trials=None,
+        norm_type=0,
+        weights_initializer='normal',
+        **kwargs):
+        """if num_trials is None, then assumes one continuous sequence, otherwise will assume num_time_pnts
+        is per-trial, and dimensionality of filter is [num_trials, 1, 1, num_time_pnts]"""
+
+        assert num_time_pnts is not None, "LVLayer: Must specify num_time_pnts"
+
+        if num_trials is None:
+            num_trials = 1
+
+        super().__init__(
+            filter_dims=[num_trials, 1, 1, num_time_pnts], 
+            num_filters=num_lvs, weights_initializer=weights_initializer,
+            bias=False, **kwargs)
+    # END __init__
+        
+    def preprocess_weights(self):
+        if self.norm_type > 0:
+            w = self.weight / torch.std(self.weight, axis=0).clamp(min=1e-6)
+        else:
+            w = self.weight
+        return w
+    # END preprocess_weights
+            
+    def forward( self, x ):
+        """Assumes input of B x 3 (where three numbers are indexes of 2 surrounding LV and relative weight of LV1)"""
+
+        weights = self.preprocess_weights()
+        #inds = x[:,:2].type(torch.int64)
+        w = torch.concat( (x[:, 2][:, None], 1-x[:,2][:, None]), dim=1)  # Relative weights of first LV indexed
+
+        #if self.norm_type > 0:
+            #y = torch.einsum('tin,ti->tn', self.weight[inds, :], w ) / torch.std(self.weight, axis=0).clamp(min=1e-6)
+        y = torch.einsum('tin,ti->tn', weights[x[:,:2].type(torch.int64), :], w ) 
+        #else:
+            #y = torch.einsum('tin,ti->tn', self.weight[inds, :], w )
+        #y = torch.sum( self.weight[inds, :]*w[:,:,None], axis=1 )  # seems slightly slower
+        return y
+
+    @classmethod
+    def layer_dict(cls, num_time_pnts=None, num_lvs=1, num_trials=None, weights_initializer='normal', **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+        Ldict = super().layer_dict(**kwargs)
+        Ldict['layer_type'] = 'LVlayer'
+        # delete standard layer info for purposes of constructor
+        #del Ldict['input_dims']
+        del Ldict['bias_initializer']
+        del Ldict['initialize_center']
+        del Ldict['num_filters']
+        del Ldict['bias']
+        # Added arguments
+        #Ldict['batch_sample'] = True
+        #Ldict['fix_n_index'] = False
+        Ldict['num_time_pnts'] = num_time_pnts
+        Ldict['num_lvs'] = num_lvs
+        Ldict['num_trials'] = num_trials
+        Ldict['weights_initializer'] = weights_initializer
+        Ldict['input_dims'] = [3, 1, 1, 1]
+        return Ldict
+# END LVLayer
+
+
+class LVLayerOLD(NDNLayer):
     """No input. Produces LVs sampled from mu/sigma at each time step
     Could make tent functions for smoothness over time as well
     Inputs:
