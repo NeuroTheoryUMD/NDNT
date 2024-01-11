@@ -285,6 +285,11 @@ class OriConvLayer(ConvLayer):
         return x
 
     def forward(self, x):
+        if self._padding == 'circular':
+            pad_type = 'circular'
+        else:
+            pad_type = 'constant'
+        
         w = self.preprocess_weights()
         # permute num_filters, input_dims[0], width, height, (no lag)
         w = w.reshape(self.filter_dims[:3]+[self.num_filters]).permute(3, 0, 1, 2)
@@ -323,7 +328,6 @@ class OriConvLayer(ConvLayer):
         # move the angles to the second dimension
         rotated_ws_reshaped = rotated_ws_reshaped.permute(0, 4, 1, 2, 3)
         # and combine the filters and angles into the folded_dims dimension
-        # put a 1 in the second dimension to match the input
         # since we are convolving in the folded_dims dimension to do all filters at once
         rotated_ws_reshaped = rotated_ws_reshaped.reshape((self.num_filters*len(self.angles),
                                                            self.filter_dims[0],
@@ -331,14 +335,25 @@ class OriConvLayer(ConvLayer):
                                                            self.filter_dims[2]))
 
         if self._fullpadding:
-            s_padded = F.pad(s, self.npads, "constant", 0)
-            y = F.conv2d(s_padded, rotated_ws_reshaped, 
-                        bias=self.bias.repeat(len(self.angles)), stride=self.stride, dilation=self.dilation)
+            s_padded = F.pad(s, self.npads, pad_type, 0)
+            y = F.conv2d(s_padded,
+                         rotated_ws_reshaped, 
+                         bias=self.bias.repeat(len(self.angles)),
+                         stride=self.stride,
+                         dilation=self.dilation)
         else:
-            y = F.conv2d(s, rotated_ws_reshaped,
-                        padding=(self._npads[2], self._npads[0]), 
-                        bias=self.bias.repeat(len(self.angles)),
-                        stride=self.stride, dilation=self.dilation)
+            if self.padding == 'circular':
+                s_padded = F.pad(s, self._npads, pad_type, 0)
+                y = F.conv2d(s_padded, rotated_ws_reshaped,
+                             bias=self.bias.repeat(len(self.angles)),
+                             stride=self.stride,
+                             dilation=self.dilation)
+            else: # this is faster if not circular
+                y = F.conv2d(s, rotated_ws_reshaped,
+                             padding=(self._npads[2], self._npads[0]),
+                             bias=self.bias.repeat(len(self.angles)),
+                             stride=self.stride,
+                             dilation=self.dilation)
 
         if not self.res_layer:
             if self.output_norm is not None:
