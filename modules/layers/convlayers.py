@@ -688,13 +688,22 @@ class STconvLayer(TconvLayer):
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
             w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
             
-            if self._padding != 'valid':
-                pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
-            else:
+            #if self._padding != 'valid':
+            #    pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
+            #else:
                 # still need to pad the batch dimension
-                pad = (0,0,0,0,self.filter_dims[-1]-1,0)
-
-            s = F.pad(s, pad, pad_type, 0)
+            #    pad = (0,0,0,0,self.filter_dims[-1]-1,0)
+            #s = F.pad(s, pad, pad_type, 0)
+            if self._padding == 'valid':
+                # still need to pad the batch dimension
+                s = F.pad(s, (0,0,0,0,self.filter_dims[-1]-1,0), pad_type, 0)
+            elif self._padding == 'circular':
+                pad_spatial = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], 0,0)
+                pad_temporal= (0,0,0,0, self.filter_dims[-1]-1,0)
+                s = F.pad(F.pad(s, pad_spatial, "circular", 0), pad_temporal, "constant", 0)
+            else:
+                stimpad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
+                s = F.pad(s, stimpad, pad_type, 0)
 
             y = F.conv3d(
                 s,

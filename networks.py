@@ -33,7 +33,8 @@ LayerTypes = {
     'dimSP': layers.DimSPLayer,
     'dimSPT': layers.DimSPTLayer,
     'channel': layers.ChannelLayer,
-    'LVlayer': layers.LVLayer
+    'LVlayer': layers.LVLayer,
+    'l1layer': layers.L1convLayer
     # 'external': layers.ExternalLayer,    
     #'res': layers.ResLayer,
 }
