@@ -189,6 +189,31 @@ class ConvLayer(NDNLayer):
     #    self._output_dims = value
     #    self.num_outputs = int(np.prod(self._output_dims))
 
+    def batchnorm_clone(self, bn_orig):
+        from copy import deepcopy
+
+        assert self.output_norm is not None, "Must already have initialized batch_norm"
+        NF0 = bn_orig.num_features
+        NF = self.output_norm.num_features
+        assert int(NF/NF0*100) == int(NF/NF0)*100, "BATCHNORM: filter-number is not compatible"
+        filter_expand = int(NF/NF0)
+        if filter_expand > 1:
+            print( "  %dx batch-norm filter expansion"%filter_expand )
+
+        self.output_norm.weight.data = torch.tile( 
+            deepcopy(bn_orig.weight.data), dims=[filter_expand,1]).T.flatten()
+        self.output_norm.bias.data = torch.tile( 
+            deepcopy(bn_orig.bias.data), dims=[filter_expand,1]).T.flatten() 
+        self.output_norm.track_running_stats = bn_orig.track_running_stats
+
+        if bn_orig.track_running_stats:
+            self.output_norm.running_mean.data = torch.tile(
+                deepcopy(bn_orig.running_mean.data), dims=[filter_expand,1]).T.flatten()
+            self.output_norm.running_var.data = torch.tile(
+                deepcopy(bn_orig.running_var.data), dims=[filter_expand,1]).T.flatten()    
+        self.output_norm.training = False
+    # END ConvLayer.batchnorm_clone()
+        
     def batchnorm_convert( self ):
         """Converts layer with batch_norm to have the same output without batch_norm. This involves
         adjusting the weights and adding offsets"""
