@@ -197,12 +197,15 @@ class OriConvLayer(ConvLayer):
 
         # make the ei mask and store it as a buffer,
         # repeat it for each orientation (plus one for the original orientation)
+        NQ = len(self.angles)
         if self._ei_mask is not None: 
             self.register_buffer('_ei_mask',
                                 torch.cat(
-                                    (torch.ones(self.num_filters-self._num_inh), 
-                                    -torch.ones(self._num_inh))
-                                ).repeat(len(self.angles)))
+                                    (torch.ones((self.num_filters-self._num_inh)*NQ), 
+                                    -torch.ones(self._num_inh*NQ)) ))
+                                #    (torch.ones(self.num_filters-self._num_inh), 
+                                #    -torch.ones(self._num_inh))
+                                #).repeat(len(self.angles)))
             #print('ei_mask', self._ei_mask.shape)
 
         # Make additional window function to preserve rotations  
@@ -309,11 +312,11 @@ class OriConvLayer(ConvLayer):
             # sparse matmul method, but causes artifacting at non 90 degree angles
             # rotate the weight matrix for the given angle
             #w_theta = torch.sparse.mm(w_flattened, self.rotation_matrices[i])
-
+            
             # rotate using torchvision transform
             w_theta = TF.rotate(img=w_flattened.reshape(-1, self.filter_dims[1], self.filter_dims[2]),
                                 interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
-                                angle=self.angles[i]).reshape(-1, self.filter_dims[1]*self.filter_dims[2])
+                                angle=float(self.angles[i])).reshape(-1, self.filter_dims[1]*self.filter_dims[2])
 
             # put w_theta back into the full weight matrix
             rotated_ws[:, :, i] = w_theta
@@ -399,6 +402,7 @@ class ConvLayer3D(ConvLayer):
     def __init__(self,
         input_dims:list=None, # [C, W, H, T]
         filter_width:int=None,
+        filter_width_d2:int=1,
         num_filters:int=None,
         output_norm:int=None,
         **kwargs):
@@ -407,10 +411,14 @@ class ConvLayer3D(ConvLayer):
         assert num_filters is not None, "ConvLayer3D: num_filters must be specified"
         assert filter_width is not None, "ConvLayer3D: filter_width must be specified"
 
-        full_filter_dims = [input_dims[0], filter_width, filter_width, 1]
+        full_filter_dims = [input_dims[0], filter_width, filter_width, filter_width_d2]
         input_dims_2D = [input_dims[0], input_dims[1], input_dims[2], 1]
         
-        super().__init__(input_dims_2D, num_filters, filter_dims=full_filter_dims, output_norm=None, **kwargs)
+        super().__init__(
+            input_dims=input_dims_2D,
+            num_filters=num_filters,
+            filter_dims=full_filter_dims, 
+            output_norm=output_norm, **kwargs)
 
         # output_norm will be the wrong dimensionality, so define here
         if output_norm in ['batch', 'batchX']:
@@ -500,5 +508,6 @@ class ConvLayer3D(ConvLayer):
         # Added arguments
         Ldict['layer_type'] = 'conv3d'
         Ldict['filter_width'] = filter_width
+        Ldict['']
         return Ldict
 
