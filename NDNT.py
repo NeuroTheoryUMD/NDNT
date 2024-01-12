@@ -738,7 +738,7 @@ class NDN(nn.Module):
 
     def eval_models(
         self, data, data_inds=None, bits=False, null_adjusted=False, speckledXV=False, train_val=1,
-        batch_size=1000, num_workers=0, **kwargs ):
+        batch_size=1000, num_workers=0, device=None, **kwargs ):
         '''
         get null-adjusted log likelihood (if null_adjusted = True)
         bits=True will return in units of bits/spike
@@ -754,6 +754,10 @@ class NDN(nn.Module):
             # Then assume that this is just to evaluate a sample: keep original here
             assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
             dev0 = data['robs'].device
+            if device is not None:
+                if device != dev0:
+                    "For dictionary-based evaluation, constrained to the device the data is on."
+
             m0 = self.to(dev0)
             yhat = m0(data)
             y = data['robs']
@@ -812,12 +816,14 @@ class NDN(nn.Module):
 
             LLsum, Tsum, Rsum = 0, 0, 0
             from tqdm import tqdm
-            d = next(self.parameters()).device  # device the model is on
+            d0 = next(self.parameters()).device  # device the model is currently on
+            self = self.to(device)
+
             for data_sample in tqdm(data_dl, desc='Eval models'):
                 # data_sample = data[tt]
                 for dsub in data_sample.keys():
-                    if data_sample[dsub].device != d:
-                        data_sample[dsub] = data_sample[dsub].to(d)
+                    if data_sample[dsub].device != device:
+                        data_sample[dsub] = data_sample[dsub].to(device)
                 with torch.no_grad():
                     pred = self(data_sample)
                     if speckledXV:
@@ -841,6 +847,8 @@ class NDN(nn.Module):
                 LLneuron = -LLneuron - LLnulls 
         if bits:
             LLneuron/=np.log(2)
+
+        self = self.to(d0)  # put back on original device
 
         return LLneuron.detach().cpu().numpy()
 
