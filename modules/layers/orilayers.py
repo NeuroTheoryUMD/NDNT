@@ -513,7 +513,7 @@ class ConvLayer3D(ConvLayer):
             time_reverse=time_reverse)
 
     @classmethod
-    def layer_dict(cls, filter_width=None, **kwargs):
+    def layer_dict(cls, filter_width=None, ori_filter_width=1, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -527,6 +527,6 @@ class ConvLayer3D(ConvLayer):
         # Added arguments
         Ldict['layer_type'] = 'conv3d'
         Ldict['filter_width'] = filter_width
-        Ldict['']
+        Ldict['ori_filter_width'] = ori_filter_width
         return Ldict
 
