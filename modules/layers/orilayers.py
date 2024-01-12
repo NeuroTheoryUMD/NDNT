@@ -475,6 +475,10 @@ class ConvLayer3D(ConvLayer):
                 bias=self.bias,
                 stride=self.stride,
                 dilation=self.dilation)
+
+        # output norm (e.g. batch norm)
+        if self.output_norm is not None:
+            y = self.output_norm(y)
         
         # Nonlinearity
         if self.NL is not None:
@@ -489,10 +493,6 @@ class ConvLayer3D(ConvLayer):
         # if self.res_layer:
         #     # s is with dimensions: B, C, T, X, Y 
         #     y = y + s                 
-
-        # output norm (e.g. batch norm)
-        if self.output_norm is not None:
-            y = self.output_norm(y)
 
         # flatten the output
         y = torch.reshape(y, (-1, self.num_outputs))
