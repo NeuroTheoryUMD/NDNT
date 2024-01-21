@@ -4,6 +4,8 @@ from torch.nn import functional as F
 import numpy as np
 
 from .ndnlayer import NDNLayer
+from .convlayers import ConvLayer
+from torch.nn.parameter import Parameter
 
 class Tlayer(NDNLayer):
     """
@@ -164,6 +166,56 @@ class Tlayer(NDNLayer):
         Ldict['output_norm'] = None
     
         return Ldict
+
+
+class L1convLayer(ConvLayer):
+
+    def __init__(self, **kwargs):  # same as ConvLayer, with some extras built in...
+        # Set up ConvLayer
+        super().__init__(**kwargs)
+        # Add second set of weights (corresponding to w-)
+        self.weight_minus = Parameter(torch.Tensor(size=self.shape))
+    # END L1convLayer.__init__
+        
+    def preprocess_weights(self):
+        w = F.relu(self.weight) - F.relu(self.weight_minus)
+        # Do all preprocessing for NDNlayer, and then conv-layer below
+        #w = super().preprocess_weights()
+
+        if self.window:
+            w = w.view(self.filter_dims+[self.num_filters]) # [C, H, W, T, D]
+            if self.is1D:
+                w = torch.einsum('chwln,h->chwln', w, self.window_function)
+            else:
+                w = torch.einsum('chwln, hw->chwln', w, self.window_function)
+            w = w.reshape(-1, self.num_filters)
+
+        if self.tent_basis is not None:
+            wdims = self.tent_basis.shape[0]
+            
+            w = w.view(self.filter_dims[:3] + [wdims] + [-1]) # [C, H, W, T, D]
+            w = torch.einsum('chwtn,tz->chwzn', w, self.tent_basis)
+            w = w.reshape(-1, self.num_filters)
+        
+        return w
+
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'l1layer'
+
+        return Ldict
+
 
 class OnOffLayer(Tlayer):
     """ """

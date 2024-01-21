@@ -90,9 +90,6 @@ class OriLayer(NDNLayer):
         
         return rotation_matrix_tensor 
     
-    #Minor issue: Einstein summation does not seem to work with sparse tensors?
-    #This is actually a major problem as the tensors are 3600 by 3600 by other stuff.
-
     def forward(self, x):
         w = self.preprocess_weights() #What shape is this? (whatever self.shape is)
         #You still need the original! w is NC*NXY*NT by NF 
@@ -170,6 +167,8 @@ class OriConvLayer(ConvLayer):
         assert angles is not None, "OriConvLayer: Must specify angles for rotation"
         assert not res_layer, "OriConvLayer: res_layer not yet supported"
 
+        assert angles[0] == 0, "Angles should always start with theta=0"  # this will make calc slightly faster
+
         super().__init__(
             input_dims=input_dims, num_filters=num_filters,
             filter_dims=filter_dims, padding=padding, res_layer=False,
@@ -197,12 +196,15 @@ class OriConvLayer(ConvLayer):
 
         # make the ei mask and store it as a buffer,
         # repeat it for each orientation (plus one for the original orientation)
+        NQ = len(self.angles)
         if self._ei_mask is not None: 
             self.register_buffer('_ei_mask',
                                 torch.cat(
-                                    (torch.ones(self.num_filters-self._num_inh), 
-                                    -torch.ones(self._num_inh))
-                                ).repeat(len(self.angles)))
+                                    (torch.ones((self.num_filters-self._num_inh)*NQ), 
+                                    -torch.ones(self._num_inh*NQ)) ))
+                                #    (torch.ones(self.num_filters-self._num_inh), 
+                                #    -torch.ones(self._num_inh))
+                                #).repeat(len(self.angles)))
             #print('ei_mask', self._ei_mask.shape)
 
         # Make additional window function to preserve rotations  
@@ -285,33 +287,49 @@ class OriConvLayer(ConvLayer):
         return x
 
     def forward(self, x):
+        if self._padding == 'circular':
+            pad_type = 'circular'
+        else:
+            pad_type = 'constant'
+        
+        s = x.reshape(-1, self.input_dims[0], self.input_dims[1], self.input_dims[2])
+
         w = self.preprocess_weights()
         # permute num_filters, input_dims[0], width, height, (no lag)
         w = w.reshape(self.filter_dims[:3]+[self.num_filters]).permute(3, 0, 1, 2)
         # combine num_filters*input_dims[0] and width*height into one dimension
-        w_flattened = w.reshape(self.num_filters*self.filter_dims[0], self.filter_dims[1]*self.filter_dims[2]) 
-        s = x.reshape(-1, self.input_dims[0], self.input_dims[1], self.input_dims[2])
+
+        #w_flattened = w.reshape(self.num_filters*self.filter_dims[0], self.filter_dims[1]*self.filter_dims[2]) 
+        w_prep = w.reshape(self.num_filters*self.filter_dims[0], self.filter_dims[1], self.filter_dims[2])
 
         # repeat weights for each angle along a new dimension
         # 1, 1 specifies to keep the filters and width*height dimensions the same
-        rotated_ws = w_flattened.repeat(len(self.angles), 1, 1).permute(1, 2, 0)
+        #rotated_ws = w_flattened.repeat(len(self.angles), 1, 1).permute(1, 2, 0)
+        
+        #rotated_ws = w_flattened.repeat(len(self.angles), 1, 1).permute(1, 2, 0)
+        rotated_ws = w_prep.repeat(len(self.angles), 1, 1, 1).permute(1, 2, 3, 0)
         
         # use torch.sparse.mm to multiply the rotation matrices by the weights
-        for i in range(len(self.angles)):
+        for ii in range(1, len(self.angles)):  # first angle always = 0 (so explicit copy -- can skip)
             # get the weights for the given angle
             #w_theta = rotated_ws[:, :, i]
 
             # sparse matmul method, but causes artifacting at non 90 degree angles
             # rotate the weight matrix for the given angle
             #w_theta = torch.sparse.mm(w_flattened, self.rotation_matrices[i])
-
+            
             # rotate using torchvision transform
-            w_theta = TF.rotate(img=w_flattened.reshape(-1, self.filter_dims[1], self.filter_dims[2]),
-                                interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
-                                angle=self.angles[i]).reshape(-1, self.filter_dims[1]*self.filter_dims[2])
+            w_theta = TF.rotate(
+                img=w_prep,
+                interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
+                angle=float(self.angles[ii]))
+            #    img=w_flattened.reshape(-1, self.filter_dims[1], self.filter_dims[2]),
+            #    interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
+            #    angle=float(self.angles[ii])).reshape(-1, self.filter_dims[1]*self.filter_dims[2])
 
             # put w_theta back into the full weight matrix
-            rotated_ws[:, :, i] = w_theta
+            #rotated_ws[:, :, ii] = w_theta
+            rotated_ws[:, :, :, ii] = w_theta
         
         # reshape the weights so we can put the angles in the second dimension
         rotated_ws_reshaped = rotated_ws.reshape((self.num_filters,
@@ -323,7 +341,6 @@ class OriConvLayer(ConvLayer):
         # move the angles to the second dimension
         rotated_ws_reshaped = rotated_ws_reshaped.permute(0, 4, 1, 2, 3)
         # and combine the filters and angles into the folded_dims dimension
-        # put a 1 in the second dimension to match the input
         # since we are convolving in the folded_dims dimension to do all filters at once
         rotated_ws_reshaped = rotated_ws_reshaped.reshape((self.num_filters*len(self.angles),
                                                            self.filter_dims[0],
@@ -331,14 +348,25 @@ class OriConvLayer(ConvLayer):
                                                            self.filter_dims[2]))
 
         if self._fullpadding:
-            s_padded = F.pad(s, self.npads, "constant", 0)
-            y = F.conv2d(s_padded, rotated_ws_reshaped, 
-                        bias=self.bias.repeat(len(self.angles)), stride=self.stride, dilation=self.dilation)
+            s_padded = F.pad(s, self.npads, pad_type, 0)
+            y = F.conv2d(s_padded,
+                         rotated_ws_reshaped, 
+                         bias=self.bias.repeat(len(self.angles)),
+                         stride=self.stride,
+                         dilation=self.dilation)
         else:
-            y = F.conv2d(s, rotated_ws_reshaped,
-                        padding=(self._npads[2], self._npads[0]), 
-                        bias=self.bias.repeat(len(self.angles)),
-                        stride=self.stride, dilation=self.dilation)
+            if self.padding == 'circular':
+                s_padded = F.pad(s, self._npads, pad_type, 0)
+                y = F.conv2d(s_padded, rotated_ws_reshaped,
+                             bias=self.bias.repeat(len(self.angles)),
+                             stride=self.stride,
+                             dilation=self.dilation)
+            else: # this is faster if not circular
+                y = F.conv2d(s, rotated_ws_reshaped,
+                             padding=(self._npads[2], self._npads[0]),
+                             bias=self.bias.repeat(len(self.angles)),
+                             stride=self.stride,
+                             dilation=self.dilation)
 
         if not self.res_layer:
             if self.output_norm is not None:
@@ -379,11 +407,11 @@ class OriConvLayer(ConvLayer):
         return Ldict
 
 
-
 class ConvLayer3D(ConvLayer):
     def __init__(self,
         input_dims:list=None, # [C, W, H, T]
         filter_width:int=None,
+        ori_filter_width:int=1,
         num_filters:int=None,
         output_norm:int=None,
         **kwargs):
@@ -391,11 +419,17 @@ class ConvLayer3D(ConvLayer):
         assert input_dims is not None, "ConvLayer3D: input_dims must be specified"
         assert num_filters is not None, "ConvLayer3D: num_filters must be specified"
         assert filter_width is not None, "ConvLayer3D: filter_width must be specified"
+        assert ori_filter_width%2==1, "ConvLayer3D: ori-filter-width must be odd"
 
-        full_filter_dims = [input_dims[0], filter_width, filter_width, 1]
+        full_filter_dims = [input_dims[0], filter_width, filter_width, ori_filter_width]
         input_dims_2D = [input_dims[0], input_dims[1], input_dims[2], 1]
+        self.ori_padding = int((ori_filter_width-1)//2)
         
-        super().__init__(input_dims_2D, num_filters, filter_dims=full_filter_dims, output_norm=None, **kwargs)
+        super().__init__(
+            input_dims=input_dims_2D,
+            num_filters=num_filters,
+            filter_dims=full_filter_dims, 
+            output_norm=output_norm, **kwargs)
 
         # output_norm will be the wrong dimensionality, so define here
         if output_norm in ['batch', 'batchX']:
@@ -415,9 +449,16 @@ class ConvLayer3D(ConvLayer):
         s = x.reshape([-1]+self.input_dims)
 
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters])
+        if self.ori_padding > 0:
+            s = F.pad(s, [self.ori_padding, self.ori_padding, 0,0,0,0], 'circular', 0)
+        if self.padding != 'valid':
+            if self._padding == 'circular':
+                pad_type = 'circular'
+            else:
+                pad_type = 'constant'
+            s = F.pad(s, [0,0, self._npads[3], self._npads[2], self._npads[1], self._npads[0]], pad_type, 0)
 
         if self._fullpadding:
-            s = F.pad(s, self._npads, "constant", 0)
             y = F.conv3d(
                 s, # we do our own padding
                 w.permute(4,0,1,2,3), # num_filters is first
@@ -426,13 +467,18 @@ class ConvLayer3D(ConvLayer):
                 dilation=self.dilation)
         else:
             # functional pads since padding is simple
+            #s = F.pad(s, self._npads, pad_type, 0)
             y = F.conv3d(
                 s, 
                 w.permute(4,0,1,2,3), # num_filters is first,
-                padding=(self._npads[2], self._npads[0], 0),
+                #padding=(self._npads[2], self._npads[0], 0),
                 bias=self.bias,
                 stride=self.stride,
                 dilation=self.dilation)
+
+        # output norm (e.g. batch norm)
+        if self.output_norm is not None:
+            y = self.output_norm(y)
         
         # Nonlinearity
         if self.NL is not None:
@@ -447,10 +493,6 @@ class ConvLayer3D(ConvLayer):
         # if self.res_layer:
         #     # s is with dimensions: B, C, T, X, Y 
         #     y = y + s                 
-
-        # output norm (e.g. batch norm)
-        if self.output_norm is not None:
-            y = self.output_norm(y)
 
         # flatten the output
         y = torch.reshape(y, (-1, self.num_outputs))
@@ -471,7 +513,7 @@ class ConvLayer3D(ConvLayer):
             time_reverse=time_reverse)
 
     @classmethod
-    def layer_dict(cls, filter_width=None, **kwargs):
+    def layer_dict(cls, filter_width=None, ori_filter_width=1, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -485,5 +527,6 @@ class ConvLayer3D(ConvLayer):
         # Added arguments
         Ldict['layer_type'] = 'conv3d'
         Ldict['filter_width'] = filter_width
+        Ldict['ori_filter_width'] = ori_filter_width
         return Ldict
 
