@@ -11,6 +11,7 @@ import os
 
 from .metrics import poisson_loss as plosses
 from .metrics import mse_loss as glosses
+from .metrics import rmse_loss as rlosses
 from .utils import create_optimizer_params, NpEncoder
 from .modules.experiment_sampler import ExperimentSampler
 
@@ -76,6 +77,8 @@ class NDN(nn.Module):
                 self.loss_module = plosses.SimplePoissonLoss()
             elif loss_type in ['gaussian', 'mse']:
                 self.loss_module = glosses.MseLoss_datafilter()
+            elif loss_type in ['rmse']:
+                self.loss_module = rlosses.RmseLoss()
             else:
                 print('Invalid loss function.')
                 self.loss_module = None
@@ -928,7 +931,39 @@ class NDN(nn.Module):
                 pred[batch_size*bb + np.arange(len(trange)-num_lags), :] = pred_tmp[num_lags:, :]
     
         return pred.cpu()
-            
+
+    def change_loss( self, new_loss_type, dataset=None ):
+        """Swaps in new loss module for model
+        Include dataset if wish to initialize loss (which happens during fit)
+        """
+        if isinstance(new_loss_type, str):
+            self.loss_type = new_loss_type
+            if self.loss_type == 'poisson' or self.loss_type == 'poissonT':
+                self.loss_module = plosses.PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
+            elif self.loss_type in ['simple', 'poissonS']:
+                self.loss_module = plosses.SimplePoissonLoss()
+            elif self.loss_type in ['gaussian', 'mse']:
+                self.loss_module = glosses.MseLoss_datafilter()
+            else:
+                print('Invalid loss function.')
+                self.loss_module = None
+        else: # assume passed in loss function directly
+            self.loss_type = 'custom'
+            self.loss_module = new_loss_type
+
+        # module can also be called as a function (since it has a forward)
+        self.loss = self.loss_module
+        self.val_loss = self.loss_module
+
+        if dataset is not None:
+            if self.loss_module.unit_weighting or (self.loss_module.batch_weighting == 2):
+                if dataset.trial_sample:
+                    inds = dataset.train_blks
+                else:
+                    inds = dataset.train_inds
+                self.initialize_loss(dataset, batch_size=self.batch_size, data_inds=inds) 
+    # END change_loss()
+
     def get_weights(self, ffnet_target=0, **kwargs):
         """passed down to layer call, with optional arguments conveyed"""
         assert ffnet_target < len(self.networks), "Invalid ffnet_target %d"%ffnet_target

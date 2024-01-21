@@ -41,10 +41,14 @@ class LVLayer(NDNLayer):
     # END __init__
         
     def preprocess_weights(self):
+        if self.pos_constraint:
+            w = F.relu(self.weight)
+        else:
+            w = self.weight 
+
         if self.norm_type > 0:
             w = self.weight / torch.std(self.weight, axis=0).clamp(min=1e-6)
-        else:
-            w = self.weight
+
         return w
     # END preprocess_weights
             
@@ -61,6 +65,12 @@ class LVLayer(NDNLayer):
         #else:
             #y = torch.einsum('tin,ti->tn', self.weight[inds, :], w )
         #y = torch.sum( self.weight[inds, :]*w[:,:,None], axis=1 )  # seems slightly slower
+        if self.NL is not None:
+            y = self.NL(y)
+
+        if self._ei_mask is not None:
+            y = y * self._ei_mask
+
         return y
 
     @classmethod

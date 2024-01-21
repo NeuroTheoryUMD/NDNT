@@ -43,6 +43,17 @@ class PoissonLoss_datafilter(nn.Module):
     #     s += 'poisson'
     #     return s 
 
+    def set_log_epsilon( self, epsilon=None ):
+        """Changes the floor of the poisson loss function (the epsilon in the logarithm). Leave epsilon
+        blank or None if want to reset to default (1e-8)"""
+        if epsilon is None:
+            self.loss = nn.PoissonNLLLoss(log_input=False, reduction='mean')
+            self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
+        else:
+            self.loss = nn.PoissonNLLLoss(log_input=False, reduction='mean', eps=epsilon)
+            self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none', eps=epsilon)
+    # END PoissonLoss_datafilter.set_log_epsilon()
+
     def set_loss_weighting( self, batch_weighting=None, unit_weighting=None, unit_weights=None, av_batch_size=None ):
         """
         This changes default loss function weights to adjust for the dataset by setting two flags:
