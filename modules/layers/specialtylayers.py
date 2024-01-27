@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import numpy as np
+from copy import deepcopy
 
 from .ndnlayer import NDNLayer
 from .convlayers import ConvLayer
@@ -168,17 +169,23 @@ class Tlayer(NDNLayer):
         return Ldict
 
 
-class L1convLayer(ConvLayer):
-
+class L1convLayer(NDNLayer):
+    """First start with non-convolutional version"""
     def __init__(self, **kwargs):  # same as ConvLayer, with some extras built in...
-        # Set up ConvLayer
+  
         super().__init__(**kwargs)
         # Add second set of weights (corresponding to w-)
         self.weight_minus = Parameter(torch.Tensor(size=self.shape))
+        self.weight_minus.data = -deepcopy(self.weight.data)
+        self.weight_minus.data[self.weight_minus < 0] = 0.0
+        self.weight.data[self.weight < 0] = 0.0
+        self.window=False
+        self.tent_basis=None
     # END L1convLayer.__init__
         
     def preprocess_weights(self):
-        w = F.relu(self.weight) - F.relu(self.weight_minus)
+        #w = F.relu(self.weight) - F.relu(self.weight_minus)
+        w = self.weight**2 - self.weight_minus**2
         # Do all preprocessing for NDNlayer, and then conv-layer below
         #w = super().preprocess_weights()
 
@@ -199,6 +206,43 @@ class L1convLayer(ConvLayer):
         
         return w
 
+    def reset_parameters2(self, weights_initializer=None, bias_initializer=None, param=None) -> None:
+        super().reset_parameters(weights_initializer, bias_initializer, param)
+        self.weight_minus.data = -deepcopy(self.weight.data)
+        self.weight_minus.data[self.weight_minus < 0] = 0.0
+        self.weight.data[self.weight < 0] = 0.0
+
+
+# class L1convLayer(ConvLayer):
+
+#     def __init__(self, **kwargs):  # same as ConvLayer, with some extras built in...
+#         # Set up ConvLayer
+#         super().__init__(**kwargs)
+#         # Add second set of weights (corresponding to w-)
+#         self.weight_minus = Parameter(torch.Tensor(size=self.shape))
+#     # END L1convLayer.__init__
+        
+#     def preprocess_weights(self):
+#         w = F.relu(self.weight) - F.relu(self.weight_minus)
+#         # Do all preprocessing for NDNlayer, and then conv-layer below
+#         #w = super().preprocess_weights()
+
+#         if self.window:
+#             w = w.view(self.filter_dims+[self.num_filters]) # [C, H, W, T, D]
+#             if self.is1D:
+#                 w = torch.einsum('chwln,h->chwln', w, self.window_function)
+#             else:
+#                 w = torch.einsum('chwln, hw->chwln', w, self.window_function)
+#             w = w.reshape(-1, self.num_filters)
+
+#         if self.tent_basis is not None:
+#             wdims = self.tent_basis.shape[0]
+            
+#             w = w.view(self.filter_dims[:3] + [wdims] + [-1]) # [C, H, W, T, D]
+#             w = torch.einsum('chwtn,tz->chwzn', w, self.tent_basis)
+#             w = w.reshape(-1, self.num_filters)
+        
+        return w
 
     @classmethod
     def layer_dict(cls, **kwargs):

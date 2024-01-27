@@ -437,7 +437,7 @@ class NDNLayer(nn.Module):
             'bias': bias,
             'output_norm': output_norm,
             'initialize_center': initialize_center,
-            'reg_vals': reg_vals,
+            'reg_vals': deepcopy(reg_vals),
             'weights_initializer': weights_initializer,
             'bias_initializer': bias_initializer
         }
