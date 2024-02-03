@@ -29,16 +29,22 @@ class LVLayer(NDNLayer):
         """if num_trials is None, then assumes one continuous sequence, otherwise will assume num_time_pnts
         is per-trial, and dimensionality of filter is [num_trials, 1, 1, num_time_pnts]"""
 
-        assert num_time_pnts is not None, "LVLayer: Must specify num_time_pnts"
-
         if num_trials is None:
             num_trials = 1
 
+        if num_time_pnts is None:
+            print('Making trial-level LVs')
+            num_time_pnts = num_trials
+            num_trials = 1
+            self.use_tent_basis = False
+        else:
+            self.use_tent_basis = True
+        
         super().__init__(
-            filter_dims=[num_trials, 1, 1, num_time_pnts], 
+            filter_dims=[num_trials, 1, 1, num_time_pnts], norm_type=norm_type,
             num_filters=num_lvs, weights_initializer=weights_initializer,
             bias=False, **kwargs)
-    # END __init__
+    # END LVLayer.__init__()
         
     def preprocess_weights(self):
         if self.pos_constraint:
@@ -56,15 +62,18 @@ class LVLayer(NDNLayer):
         """Assumes input of B x 3 (where three numbers are indexes of 2 surrounding LV and relative weight of LV1)"""
 
         weights = self.preprocess_weights()
-        #inds = x[:,:2].type(torch.int64)
-        w = torch.concat( (x[:, 2][:, None], 1-x[:,2][:, None]), dim=1)  # Relative weights of first LV indexed
 
-        #if self.norm_type > 0:
-            #y = torch.einsum('tin,ti->tn', self.weight[inds, :], w ) / torch.std(self.weight, axis=0).clamp(min=1e-6)
-        y = torch.einsum('tin,ti->tn', weights[x[:,:2].type(torch.int64), :], w ) 
-        #else:
-            #y = torch.einsum('tin,ti->tn', self.weight[inds, :], w )
-        #y = torch.sum( self.weight[inds, :]*w[:,:,None], axis=1 )  # seems slightly slower
+        if self.use_tent_basis:
+            w = torch.concat( (x[:, 2][:, None], 1-x[:,2][:, None]), dim=1)  # Relative weights of first LV indexed
+            y = torch.einsum('tin,ti->tn', weights[x[:,:2].type(torch.int64), :], w ) 
+            #if self.norm_type > 0:
+                #y = torch.einsum('tin,ti->tn', self.weight[inds, :], w ) / torch.std(self.weight, axis=0).clamp(min=1e-6)
+            #else:
+                #y = torch.einsum('tin,ti->tn', self.weight[inds, :], w )
+            #y = torch.sum( self.weight[inds, :]*w[:,:,None], axis=1 )  # seems slightly slower
+        else:
+            y = weights[x.type(torch.int64)]
+
         if self.NL is not None:
             y = self.NL(y)
 
@@ -72,6 +81,7 @@ class LVLayer(NDNLayer):
             y = y * self._ei_mask
 
         return y
+    # END LVLayer.forward()
 
     @classmethod
     def layer_dict(cls, num_time_pnts=None, num_lvs=1, num_trials=None, weights_initializer='normal', **kwargs):
