@@ -48,7 +48,8 @@ class LVLayer(NDNLayer):
         
     def preprocess_weights(self):
         if self.pos_constraint:
-            w = F.relu(self.weight)
+            #w = F.relu(self.weight)
+            w = torch.square(self.weight)
         else:
             w = self.weight 
 
