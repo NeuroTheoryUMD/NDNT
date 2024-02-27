@@ -53,7 +53,7 @@ class LVLayer(NDNLayer):
             w = self.weight 
 
         if self.norm_type > 0:
-            w = self.weight / torch.std(self.weight, axis=0).clamp(min=1e-6)
+            w = w / torch.std(w, axis=0).clamp(min=1e-6)
 
         return w
     # END preprocess_weights
