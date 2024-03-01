@@ -612,7 +612,7 @@ class TconvLayer(ConvLayer):
         return y
     #END TconvLayer.forward
 
-    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=None):
+    def plot_filters( self, cmaps='viridis', num_cols=8, row_height=2, time_reverse=None):
         # Place-holder: does nothing specific that NDNLayer does not do  
 
         super().plot_filters( 

@@ -24,6 +24,30 @@ def plot_filters_1D(ws, num_cols=8, row_height=2, fix_scale=True, **kwargs):
     plt.show()
 
 
+def plot_filters_2D(ws, num_cols=8, row_height=2, fix_scale=True, cmap='viridis', **kwargs):
+    """function to plot 1-D spatiotemporal filters (so, 2-d images) by passing in weights of multiple filters"""
+    from NDNT.utils import imagesc
+
+    num_filters = ws.shape[-1]
+    if num_filters < 8:
+        num_cols = 8
+    num_rows = np.ceil(num_filters/num_cols).astype(int)
+    fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
+    fig.set_size_inches(16, row_height*num_rows)
+    plt.tight_layout()
+
+    m = np.max(abs(ws))
+    for cc in range(num_filters):
+        ax = plt.subplot(num_rows, num_cols, cc+1)
+        if fix_scale:
+            imagesc(ws[:,:,cc], max=m, cmap=cmap)
+        else:
+            imagesc(ws[:,:,cc], cmap=cmap)
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+    plt.show()
+
+
 def plot_filters_ST1D(ws, cmap='viridis', num_cols=None, row_height=2, fix_scale=True, **kwargs):
     """function to plot 1-D spatiotemporal filters (so, 2-d images) by passing in weights of multiple filters"""
     num_filters = ws.shape[-1]

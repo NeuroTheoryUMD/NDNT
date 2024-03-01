@@ -371,8 +371,12 @@ class NDNLayer(nn.Module):
                 plot_filters_ST1D(ws, **kwargs)
         else:
             if self.input_dims[0] == 1:
-                from NDNT.utils import plot_filters_ST2D
-                plot_filters_ST2D(ws, **kwargs)
+                if self.filter_dims[3] == 1:
+                    from NDNT.utils import plot_filters_2D
+                    plot_filters_2D(ws, **kwargs)
+                else:
+                    from NDNT.utils import plot_filters_ST2D
+                    plot_filters_ST2D(ws, **kwargs)
             else:
                 from NDNT.utils import plot_filters_ST3D
                 plot_filters_ST3D(ws, **kwargs)
