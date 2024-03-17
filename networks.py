@@ -21,6 +21,7 @@ LayerTypes = {
     'oriconv': layers.OriConvLayer,
     'conv3d': layers.ConvLayer3D,
     'oolayer': layers.OnOffLayer,
+    'masklayer': layers.MaskLayer,
     'iter': layers.IterLayer,
     'iterT': layers.IterTlayer,
     'iterST': layers.IterSTlayer,

@@ -382,3 +382,63 @@ class OnOffLayer(Tlayer):
     
         return Ldict
     # END OnOffLayer.layer_dict()
+
+
+class MaskLayer(NDNLayer):
+    """ """
+
+    def __init__(self, input_dims=None,
+                 num_filters=None,
+                 #filter_dims=None,  # absorbed by kwargs if necessary
+                 mask=None,
+                 NLtype:str='lin',
+                 norm_type:int=0,
+                 pos_constraint=0,
+                 num_inh:int=0,
+                 bias:bool=False,
+                 weights_initializer:str='xavier_uniform',
+                 output_norm=None,
+                 initialize_center=False,
+                 bias_initializer:str='zeros',
+                 reg_vals:dict=None,
+                 **kwargs,
+                 ):
+
+        super().__init__(
+            input_dims=input_dims, num_filters=num_filters,
+            #filter_dims=None,  # for now, not using so Non is correct
+            NLtype=NLtype, norm_type=norm_type,
+            pos_constraint=pos_constraint, num_inh=num_inh,
+            bias=bias, weights_initializer=weights_initializer,
+            output_norm=output_norm, initialize_center=initialize_center,
+            bias_initializer=bias_initializer, reg_vals=reg_vals,
+            **kwargs)
+
+        # Now make mask
+        assert mask is not None, "MASKLAYER: must include mask, dodo"
+        assert np.prod(mask.shape) == np.prod(self.filter_dims)*num_filters
+        self.register_buffer('mask', torch.tensor(mask.reshape([-1, num_filters]), dtype=torch.float32))
+    # END MaskLayer.__init__
+
+    def preprocess_weights( self ):
+        w = super().preprocess_weights()
+        return w*self.mask
+    # END MaskLayer.preprocess_weights()
+
+    @classmethod
+    def layer_dict(cls, mask=None, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'masklayer'
+        Ldict['mask'] = mask
+    
+        return Ldict
+    # END MaskLayer.layer_dict()
