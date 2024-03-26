@@ -4,9 +4,7 @@ from .ndnlayer import NDNLayer
 import numpy as np
 class DivNormLayer(NDNLayer):
     """
-    Divisive normalization implementation: not explicitly convolutional
-    
-
+    Divisive normalization implementation: not explicitly convolutional.
     """ 
 
     def __init__(self,
@@ -17,7 +15,16 @@ class DivNormLayer(NDNLayer):
             bias=True,
             **kwargs,
         ):
+        """
+        Divisive normalization layer.
 
+        Args:
+            input_dims: list or tuple of ints, dimensions of input tensor.
+            num_filters: int, number of filters to use.
+            filter_dims: list or tuple of ints, dimensions of filter tensor.
+            pos_constraint: bool, if True, apply a positivity constraint to the weights.
+            bias: bool, if True, include a bias term.
+        """
         assert (input_dims is not None) or (num_filters is not None), "DivNormLayer: Must specify either input_dims or num_filters"
         
         if not pos_constraint:
@@ -47,12 +54,26 @@ class DivNormLayer(NDNLayer):
         torch.nn.init.uniform_(self.bias, 0.0, 1.0)
     
     def preprocess_weights(self):
+        """
+        Preprocesses weights by applying positivity constraint and normalization.
 
+        Returns:
+            w: torch.Tensor, preprocessed weights.
+        """
         w = super().preprocess_weights()
 
         return w * self.mask
 
     def forward(self, x):
+        """
+        Forward pass for divisive normalization layer.
+
+        Args:
+            x: torch.Tensor, input tensor.
+
+        Returns:
+            x: torch.Tensor, output tensor.
+        """
         # TODO: make if statement for 1-d or 2-d, 3-d indpendent of x, should be specified by a property
 
         # Pull weights and process given pos_constrain and normalization conditions

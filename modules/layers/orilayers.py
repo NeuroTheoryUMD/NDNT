@@ -19,10 +19,12 @@ class OriLayer(NDNLayer):
             filter_dims=None, angles=None, **kwargs): 
         """
         Initialize orientation layer.
-        :param input_dims: input dimensions
-        :param num_filters: number of filters
-        :param filter_dims: filter dimensions
-        :param angles: angles for rotation (in degrees)
+
+        Args:
+            input_dims: input dimensions
+            num_filters: number of filters
+            filter_dims: filter dimensions
+            angles: angles for rotation (in degrees)
         """
 
         assert input_dims is not None, "OriLayer: Must specify input dimensions"
@@ -41,6 +43,16 @@ class OriLayer(NDNLayer):
         self.output_dims=new_output_dims 
 
     def rotation_matrix_tensor(self, filter_dims, theta_list):
+        """
+        Create a rotation matrix tensor for each angle in theta_list.
+
+        Args:
+            filter_dims: filter dimensions
+            theta_list: list of angles in degrees
+
+        Returns:
+            rotation_matrix_tensor: rotation matrix tensor
+        """
         assert self.filter_dims[2] != 1, "OriLayer: Stimulus must be 2-D"
 
         w = filter_dims[1]
@@ -91,6 +103,15 @@ class OriLayer(NDNLayer):
         return rotation_matrix_tensor 
     
     def forward(self, x):
+        """
+        Forward pass through the layer.
+
+        Args:
+            x: torch.Tensor, input tensor of shape (batch_size, *input_dims)
+
+        Returns:
+            y: torch.Tensor, output tensor of shape (batch_size, *output_dims)
+        """
         w = self.preprocess_weights() #What shape is this? (whatever self.shape is)
         #You still need the original! w is NC*NXY*NT by NF 
         x_0 = torch.matmul(x, w) #linearity 
@@ -138,6 +159,15 @@ class OriLayer(NDNLayer):
 
     @classmethod
     def layer_dict(cls, angles=None, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+
+        Args:
+            angles: list of angles for rotation (in degrees)
+
+        Returns:
+            Ldict: dict, dictionary of layer parameters
+        """
         Ldict = super().layer_dict(**kwargs)
         Ldict["layer_type"]="ori"
         Ldict["angles"]=angles
@@ -153,12 +183,13 @@ class OriConvLayer(ConvLayer):
                  filter_dims=None, padding="valid", output_norm=None, angles=None, **kwargs): 
         """
         Initialize orientation layer.
-        :param input_dims: input dimensions
-        :param num_filters: number of filters
-        :param filter_dims: filter dimensions
-        :param angles: angles for rotation (in degrees)
-        """
 
+        Args:
+            input_dims: input dimensions
+            num_filters: number of filters
+            filter_dims: filter dimensions
+            angles: angles for rotation (in degrees)
+        """
         # input validation
         assert input_dims is not None, "OriConvLayer: Must specify input dimensions"
         assert len(input_dims) == 4, "OriConvLayer: Stimulus must be 2-D"
@@ -224,6 +255,16 @@ class OriConvLayer(ConvLayer):
         self.output_dims = [self.output_dims[0], self.output_dims[1], self.output_dims[2], len(self.angles)]
 
     def rotation_matrix_tensor(self, filter_dims, theta_list):
+        """
+        Create a rotation matrix tensor for each angle in theta_list.
+
+        Args:
+            filter_dims: filter dimensions
+            theta_list: list of angles in degrees
+
+        Returns:
+            rotation_matrix_tensor: rotation matrix tensor
+        """
         w = filter_dims[1] # width
         # if the width is odd, then the center is at the floor of the center
         if w%2 == 1:
@@ -272,11 +313,29 @@ class OriConvLayer(ConvLayer):
         return rotation_matrix_tensor 
 
     def get_rot_mat(self, theta, device):
+        """
+        Get a rotation matrix for a given angle.
+
+        Args:
+            theta: angle in radians
+            device: device to put the tensor on
+
+        Returns:
+            rot_mat: rotation matrix
+        """
         theta = torch.tensor(theta)
         return torch.tensor([[torch.cos(theta), torch.sin(theta), 0],
                             [torch.sin(theta), torch.cos(theta), 0]]).to(device)
 
     def rotate_tensor(self, x, theta, dtype):
+        """
+        Rotate a tensor by a given angle.
+
+        Args:
+            x: input tensor
+            theta: angle in radians
+            dtype: data type
+        """
         # repeat along the batch dimension
         rot_mat = self.get_rot_mat(theta, x.device)[None, ...].type(dtype).repeat(x.shape[0],1,1)
 
@@ -287,6 +346,15 @@ class OriConvLayer(ConvLayer):
         return x
 
     def forward(self, x):
+        """
+        Forward pass through the layer.
+
+        Args:
+            x: torch.Tensor, input tensor of shape (batch_size, *input_dims)
+
+        Returns:
+            y: torch.Tensor, output tensor of shape (batch_size, *output_dims)
+        """
         if self._padding == 'circular':
             pad_type = 'circular'
         else:
@@ -401,6 +469,15 @@ class OriConvLayer(ConvLayer):
 
     @classmethod
     def layer_dict(cls, angles=None, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+
+        Args:
+            angles: list of angles for rotation (in degrees)
+
+        Returns:
+            Ldict: dict, dictionary of layer parameters
+        """
         Ldict = super().layer_dict(**kwargs)
         Ldict["layer_type"]="oriconv"
         Ldict["angles"]=angles
@@ -408,6 +485,10 @@ class OriConvLayer(ConvLayer):
 
 
 class ConvLayer3D(ConvLayer):
+    """
+    3D convolutional layer.
+    """
+
     def __init__(self,
         input_dims:list=None, # [C, W, H, T]
         filter_width:int=None,
@@ -415,7 +496,16 @@ class ConvLayer3D(ConvLayer):
         num_filters:int=None,
         output_norm:int=None,
         **kwargs):
-        
+        """
+        Initialize 3D convolutional layer.
+
+        Args:
+            input_dims: input dimensions
+            filter_width: filter width
+            ori_filter_width: orientation filter width
+            num_filters: number of filters
+            output_norm: output normalization
+        """
         assert input_dims is not None, "ConvLayer3D: input_dims must be specified"
         assert num_filters is not None, "ConvLayer3D: num_filters must be specified"
         assert filter_width is not None, "ConvLayer3D: filter_width must be specified"
@@ -446,6 +536,15 @@ class ConvLayer3D(ConvLayer):
             assert False, 'res_layer not implemented for ConvLayer3D'
 
     def forward(self, x):
+        """
+        Forward pass through the layer.
+
+        Args:
+            x: torch.Tensor, input tensor of shape (batch_size, *input_dims)
+
+        Returns:
+            y: torch.Tensor, output tensor of shape (batch_size, *output_dims)
+        """
         s = x.reshape([-1]+self.input_dims)
 
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters])
@@ -507,6 +606,19 @@ class ConvLayer3D(ConvLayer):
     # END ConvLayer3D.forward
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
+        """
+        Plot the filters.
+
+        Args:
+            cmaps: color map
+            num_cols: number of columns
+            row_height: row height
+            time_reverse: time reverse
+
+        Returns:
+            fig: figure
+            axs: axes
+        """
         # Overload plot_filters to automatically time_reverse
         super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
@@ -520,6 +632,10 @@ class ConvLayer3D(ConvLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            filter_width: filter width
+            ori_filter_width: orientation filter width
         """
 
         Ldict = super().layer_dict(**kwargs)

@@ -8,7 +8,9 @@ from copy import deepcopy
 from .ndnlayer import NDNLayer
 
 class ReadoutLayer(NDNLayer):
-
+    """
+    ReadoutLayer for spatial readout.
+    """
     def __init__(self, 
             input_dims=None,
             num_filters=None,
@@ -20,7 +22,20 @@ class ReadoutLayer(NDNLayer):
             align_corners=False,
             mode='bilinear',  # 'nearest' is also possible
             **kwargs):
+        """
+        ReadoutLayer: Spatial readout layer for NDNs.
 
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_dims: tuple or list of ints, (num_channels, height, width, lags)
+            batch_sample: bool, whether to sample grid locations separately per sample per batch
+            init_mu_range: float, range for uniform initialization of means
+            init_sigma: float, standard deviation for uniform initialization of sigmas
+            gauss_type: str, 'isotropic', 'uncorrelated', or 'full'
+            align_corners: bool, whether to align corners in grid_sample
+            mode: str, 'bilinear' or 'nearest'
+        """
         assert input_dims is not None, "ReadoutLayer: Must specify input_dims"
         assert num_filters is not None, "ReadoutLayer: Must specify num_filters"
 
@@ -108,7 +123,10 @@ class ReadoutLayer(NDNLayer):
 
     def initialize_spatial_mapping(self):
         """
-        Initializes the mean, and sigma of the Gaussian readout 
+        Initializes the mean, and sigma of the Gaussian readout.
+
+        Args:
+            None
         """
         self.mu.data.uniform_(-self.init_mu_range, self.init_mu_range)  # random initializations uniformly spread....
         # if self.gauss_type != 'full':
@@ -128,6 +146,7 @@ class ReadoutLayer(NDNLayer):
         DAN: more specifically, it returns sampled positions for each batch over all elements, given mus and sigmas
         DAN: if not 'sample', it just gives mu back (so testing has no randomness)
         DAN: this is some funny bit of code, but don't think I need to touch it past what I did
+
         Args:
             batch_size (int): size of the batch
             sample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(mu,sigma), defined per neuron
@@ -167,7 +186,17 @@ class ReadoutLayer(NDNLayer):
     # END ReadoutLayer.sample_grid() 
 
     def get_weights(self, to_reshape=True, time_reverse=None, num_inh=None):
-        """overloaded to read not use preprocess weights but instead use layer property features"""
+        """
+        Overloaded to read not use preprocess weights but instead use layer property features.
+        
+        Args:
+            to_reshape (bool): whether to reshape the weights to the filter_dims
+            time_reverse (bool): whether to reverse the time dimension
+            num_inh (int): number of inhibitory units
+
+        Returns:
+            ws: weights of the readout layer
+        """
 
         assert time_reverse is None, "  READOUT: time_reverse will not work here."
         assert num_inh is None, "  READOUT: num_inh will not work here."
@@ -185,16 +214,11 @@ class ReadoutLayer(NDNLayer):
 
     def forward(self, x, shift=None):
         """
-        Propagates the input forwards through the readout
+        Propagates the input forwards through the readout.
+        
         Args:
             x: input data
-            sample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(mu,sigma), defined per neuron
-                            or use the mean, mu, of the Gaussian distribution without sampling.
-                           if sample is None (default), samples from the N(mu,sigma) during training phase and
-                             fixes to the mean, mu, during evaluation phase.
-                           if sample is True/False, overrides the model_state (i.e training or eval) and does as instructed
             shift (bool): shifts the location of the grid (from eye-tracking data)
-            out_idx (bool): index of neurons to be predicted
 
         Returns:
             y: neuronal activity
@@ -237,7 +261,12 @@ class ReadoutLayer(NDNLayer):
     # END ReadoutLayer.forward
 
     def set_readout_locations(self, locs):
-        """This hasn't been tested yet, but should be self-explanatory"""
+        """
+        This hasn't been tested yet, but should be self-explanatory.
+        
+        Args:
+            locs: locations of the readout units
+        """
         if len(locs.shape) == 1:
             locs = np.expand_dims(locs,1)
         NC, num_dim = locs.shape
@@ -246,12 +275,26 @@ class ReadoutLayer(NDNLayer):
         self.mu = deepcopy(locs)
 
     def get_readout_locations(self):
-        """Currently returns center location and sigmas, as list"""
+        """
+        Currently returns center location and sigmas, as list.
+        
+        Returns:
+            mu: center locations of the readout units
+            sigma: sigmas of the readout units
+        """
         return self.mu.detach().cpu().numpy().squeeze(), self.sigma.detach().cpu().numpy().squeeze()    
 
     def passive_readout(self):
-        """This will not fit mu and std, but set them to zero. It will pass identities in,
-        so number of input filters must equal number of readout units"""
+        """
+        This will not fit mu and std, but set them to zero. It will pass identities in,
+        so number of input filters must equal number of readout units.
+        
+        Args:
+            None
+
+        Returns:
+            None
+        """
 
         assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
         # Set parameters for default readout
@@ -272,6 +315,12 @@ class ReadoutLayer(NDNLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            NLtype: str, type of nonlinearity
+
+        Returns:
+            Ldict: dictionary of layer parameters
         """
 
         Ldict = super().layer_dict(**kwargs)
@@ -291,11 +340,19 @@ class ReadoutLayer(NDNLayer):
 
 
 class ReadoutLayer3d(ReadoutLayer):
-
+    """
+    ReadoutLayer3d for 3d readout.
+    This is a subclass of ReadoutLayer, but with the added dimension of time.
+    """
     def __init__(self, 
             input_dims=None,
             **kwargs):
+        """
+        ReadoutLayer3d: 3d readout layer for NDNs.
 
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, depth, lags)
+        """
         assert input_dims[3] > 1, "ReadoutLayer3d: should not be using this layer if no 3rd dimension of input"
 
         # Need to tuck lag dimension into channel-dims so parent constructor makes the right filter shape
@@ -319,15 +376,10 @@ class ReadoutLayer3d(ReadoutLayer):
     def forward(self, x, shift=None):
         """
         Propagates the input forwards through the readout
+
         Args:
             x: input data
-            sample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(mu,sigma), defined per neuron
-                            or use the mean, mu, of the Gaussian distribution without sampling.
-                           if sample is None (default), samples from the N(mu,sigma) during training phase and
-                             fixes to the mean, mu, during evaluation phase.
-                           if sample is True/False, overrides the model_state (i.e training or eval) and does as instructed
             shift (bool): shifts the location of the grid (from eye-tracking data)
-            out_idx (bool): index of neurons to be predicted
 
         Returns:
             y: neuronal activity
@@ -374,7 +426,9 @@ class ReadoutLayer3d(ReadoutLayer):
     # END ReadoutLayer3d.forward
 
     def passive_readout(self):
-        """This might have to be redone for readout3d to take into account extra filter dim"""
+        """
+        This might have to be redone for readout3d to take into account extra filter dim.
+        """
         print("WARNING: SCAF3d: this function is not vetted and likely will clunk")
         assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
         # Set parameters for default readout
@@ -394,8 +448,13 @@ class ReadoutLayer3d(ReadoutLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
-        """
 
+        Args:
+            None
+
+        Returns:
+            Ldict: dictionary of layer parameters
+        """
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'readout3d'
         return Ldict
@@ -404,7 +463,7 @@ class ReadoutLayer3d(ReadoutLayer):
 
 class FixationLayer(NDNLayer):
     """
-    FixationLayer for fixation 
+    FixationLayer for fixation.
     """
     def __init__(self,
             num_fixations=None, 
@@ -420,7 +479,19 @@ class FixationLayer(NDNLayer):
             bias=False,
             NLtype='lin',
             **kwargs):
-        """layer weights become the shift for each fixation, sigma is constant over each dimension"""
+        """
+        Layer weights become the shift for each fixation, sigma is constant over each dimension.
+        
+        Args:
+            num_fixations: int, number of fixations
+            num_spatial_dims: int, number of spatial dimensions
+            batch_sample: bool, whether to sample grid locations separately per sample per batch
+            fix_n_index: bool, whether to index fixations starting at 1
+            init_sigma: float, standard deviation for uniform initialization of sigmas
+            single_sigma: bool, whether to use a single sigma for all fixations
+            bias: bool, whether to include bias term
+            NLtype: str, type of nonlinearity
+        """
         #self.num_fixations = layer_params['input_dims'][0]
         #assert np.prod(input_dims[1:]) == 1, 'something wrong with fix-layer input_dims'
         assert num_fixations is not None, "FIX LAYER: Must set number of fixations"
@@ -460,6 +531,12 @@ class FixationLayer(NDNLayer):
     def forward(self, x, shift=None):
         """
         The input is the sampled fixation-stim
+        
+        Args:
+            x: input data
+            shift (bool): shifts the location of the grid (from eye-tracking data)
+
+        Returns:
             y: neuronal activity
         """
         # with torch.no_grad():
@@ -506,6 +583,9 @@ class FixationLayer(NDNLayer):
     # END FixationLayer.forward
     
     def initialize(self, *args, **kwargs):
+        """
+        This will initialize the layer parameters.
+        """
         raise NotImplementedError("initialize is not implemented for ", self.__class__.__name__)
 
     @classmethod
@@ -516,6 +596,15 @@ class FixationLayer(NDNLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            num_fixations: int, number of fixations
+            num_spatial_dims: int, number of spatial dimensions
+            init_sigma: float, standard deviation for uniform initialization of sigmas
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+
+        Returns:
+            Ldict: dictionary of layer parameters
         """
         if input_dims is not None:
             assert np.prod(input_dims) == 1, "FIX DICT: Set filter_dims to #fixations and leave input_dims alone"

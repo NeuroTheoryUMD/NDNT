@@ -6,7 +6,7 @@ import torch
 
 # NDN tools
 import NDNT.utils as utils # some other utilities
-import NDNT.NDNT as NDN
+import NDNT.NDN as NDN
 from NDNT.modules.layers import *
 from NDNT.networks import *
 

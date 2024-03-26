@@ -5,7 +5,7 @@ from torch import nn
 from functools import reduce
 from copy import deepcopy
 
-from .modules import layers
+from NDNT.modules import layers
 
 LayerTypes = {
     'normal': layers.NDNLayer,
@@ -43,19 +43,34 @@ LayerTypes = {
 _valid_ffnet_types = ['normal', 'add', 'mult', 'readout', 'scaffold', 'scaffold3d']
       
 class FFnetwork(nn.Module):
+    """
+    Initializes an instance of the network.
+
+    Args:
+        layer_list (list, optional): A list of dictionaries representing the layers of the network. Defaults to None.
+        ffnet_type (str, optional): The type of the feedforward network. Defaults to 'normal'.
+        xstim_n (str, optional): The name of the stimulus input. Defaults to 'stim'.
+        ffnet_n (list, optional): A list of feedforward networks. Defaults to None.
+        input_dims_list (list, optional): A list of input dimensions for each layer. Defaults to None.
+        reg_list (list, optional): A list of regularization parameters. Defaults to None.
+        scaffold_levels (list, optional): A list of scaffold levels. Defaults to None.
+        **kwargs: Additional keyword arguments.
+
+    Raises:
+        AssertionError: If layer_list is not provided.
+    """
 
     def __init__(self,
-            layer_list: list = None,
-            ffnet_type: str = 'normal',
-            #layer_types: list = None,
-            xstim_n: str = 'stim',
-            ffnet_n: list = None,
-            input_dims_list: list = None,
-            reg_list: list = None,
-            scaffold_levels: list = None,
-            **kwargs,
-            ):
-
+                layer_list: list = None,
+                ffnet_type: str = 'normal',
+                #layer_types: list = None,
+                xstim_n: str = 'stim',
+                ffnet_n: list = None,
+                input_dims_list: list = None,
+                reg_list: list = None,
+                scaffold_levels: list = None,
+                **kwargs,
+                ):
         # if len(kwargs) > 0:
         #     print("FFnet: unknown kwargs:", kwargs)
         assert layer_list is not None, "FFnetwork: Must supply a layer_list."
@@ -131,6 +146,13 @@ class FFnetwork(nn.Module):
             self.input_dims
             self.input_dims_list
         and returns Boolean whether the passed in input dims are valid
+
+        Args:
+            input_dims_list (list): A list of input dimensions for each layer.
+            ffnet_type (str): The type of the feedforward network.
+
+        Returns:
+            valid_input_dims (bool): Whether the passed in input dims are valid.
         """
 
         valid_input_dims = True
@@ -173,7 +195,17 @@ class FFnetwork(nn.Module):
     def preprocess_input(self, inputs):
         """
         Preprocess input to network.
+
+        Args:
+            inputs (list, torch.Tensor): The input to the network.
+
+        Returns:
+            x (torch.Tensor): The preprocessed input.
+
+        Raises:
+            ValueError: If no layers are defined.
         """
+
         # Combine network inputs (if relevant)
         if isinstance(inputs, list):
             if len(inputs) == 1:
@@ -196,6 +228,16 @@ class FFnetwork(nn.Module):
         return x
 
     def forward(self, inputs):
+        """
+        Forward pass through the network.
+
+        Args:
+            inputs (list, torch.Tensor): The input to the network.
+
+        Returns:
+            x (torch.Tensor): The output of the network.
+        """
+
         if self.layers is None:
             raise ValueError("FFnet: no layers defined.")
         
@@ -212,6 +254,16 @@ class FFnetwork(nn.Module):
     # END FFnetwork.forward
 
     def __reg_setup_ffnet(self, reg_params=None):
+        """
+        Sets up the regularization params for the network.
+
+        Args:
+            reg_params (dict): The regularization parameters to use.
+
+        Returns:
+            layer_reg_list (list): The regularization parameters for each layer.
+        """
+
         # Set all default values to none
         num_layers = len(self.layer_list)
         layer_reg_list = []
@@ -234,18 +286,45 @@ class FFnetwork(nn.Module):
         """
         Makes regularization modules with current requested values.
         This is done immediately before training, because it can change during training and tuning.
+
+        Args:
+            device (str, optional): The device to use. Defaults to None.
         """
+
         for layer in self.layers:
             if hasattr(layer, 'reg'):
                 layer.reg.build_reg_modules(device=device)
             
     def compute_reg_loss(self):
+        """
+        Computes the regularization loss.
+
+        Args:
+            None
+
+        Returns:
+            rloss (torch.Tensor): The regularization loss.
+        """
+
         rloss = []
         for layer in self.layers:
             rloss.append(layer.compute_reg_loss())
         return reduce(torch.add, rloss)
 
     def list_parameters(self, layer_target=None):
+        """
+        Lists the parameters for the network.
+
+        Args:
+            layer_target (int, optional): The layer to list the parameters for. Defaults to None.
+
+        Returns:
+            None
+
+        Raises:
+            AssertionError: If the layer target is invalid.
+        """
+
         if layer_target is None:
             layer_target = np.arange(len(self.layers), dtype='int32')
         elif not isinstance(layer_target, list):
@@ -256,7 +335,20 @@ class FFnetwork(nn.Module):
             self.layers[nn].list_parameters()
 
     def set_parameters(self, layer_target=None, name=None, val=None ):
-        """Set parameters for listed layer or for all layers."""
+        """
+        Sets the parameters for the listed layer or for all layers.
+
+        Args:
+            layer_target (int, optional): The layer to set the parameters for. Defaults to None.
+            name (str): The name of the parameter.
+            val (bool): The value to set the parameter to.
+
+        Returns:
+            None
+
+        Raises:
+            AssertionError: If the layer target is invalid.
+        """
         if layer_target is None:
             layer_target = np.arange(len(self.layers), dtype='int32')
         elif not isinstance(layer_target, list):
@@ -266,22 +358,72 @@ class FFnetwork(nn.Module):
             self.layers[nn].set_parameters(name=name, val=val)
 
     def set_reg_val(self, reg_type=None, reg_val=None, layer_target=None ):
-        """Set reg_values for listed layer or for all layers."""
+        """
+        Set reg_values for listed layer or for all layers.
+        
+        Args:
+            reg_type (str): The type of regularization to set.
+            reg_val (float): The value to set the regularization to.
+            layer_target (int, optional): The layer to set the regularization for. Defaults to None.
+
+        Returns:
+            None
+
+        Raises:
+            AssertionError: If the layer target is invalid.
+        """
         if layer_target is None:
             layer_target = 0
         assert layer_target < len(self.layers), "layer target too large (max = %d)"%len(self.layers)
         self.layers[layer_target].set_reg_val( reg_type=reg_type, reg_val=reg_val )
 
     def plot_filters(self, layer_target=0, **kwargs):
+        """
+        Plots the filters for the listed layer.
+
+        Args:
+            layer_target (int, optional): The layer to plot the filters for. Defaults to 0.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            None
+        """
         self.layers[layer_target].plot_filters(**kwargs)
 
     def get_weights(self, layer_target=0, **kwargs):
-        """passed down to layer call, with optional arguments conveyed"""
+        """
+        Passed down to layer call, with optional arguments conveyed.
+        
+        Args:
+            layer_target (int): The layer to get the weights for.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            The weights for the specified layer.
+
+        Raises:
+            AssertionError: If the layer target is invalid.
+        """
         assert layer_target < len(self.layers), "Invalid layer_target %d"%layer_target
         return self.layers[layer_target].get_weights(**kwargs)
 
     @classmethod
     def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', scaffold_levels=None, num_lags_out=1, **kwargs):
+        """
+        Returns a dictionary of the feedforward network.
+
+        Args:
+            layer_list (list): A list of dictionaries representing the layers of the network.
+            xstim_n (str): The name of the stimulus input.
+            ffnet_n (list): A list of feedforward networks.
+            ffnet_type (str): The type of the feedforward network.
+            scaffold_levels (list): A list of scaffold levels.
+            num_lags_out (int): The number of lags out.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            ffnet_dict (dict): The dictionary of the feedforward network.
+        """
         return {
             'ffnet_type': ffnet_type,
             'xstim_n':xstim_n, 'ffnet_n':ffnet_n,
@@ -292,7 +434,13 @@ class FFnetwork(nn.Module):
 
 
 class ScaffoldNetwork(FFnetwork):
-    """Concatenates output of all layers together in filter dimension, preserving spatial dims  """
+    """
+    Concatenates output of all layers together in filter dimension, preserving spatial dims.
+
+    This essentially used the constructor for Point1DGaussian, with dicationary input.
+    Currently there is no extra code required at the network level. I think the constructor
+    can be left off entirely, but leaving in in case want to add something.
+    """
 
     def __repr__(self):
         s = super().__repr__()
@@ -302,9 +450,12 @@ class ScaffoldNetwork(FFnetwork):
 
     def __init__(self, scaffold_levels=None, num_lags_out=1, **kwargs):
         """
-        This essentially used the constructor for Point1DGaussian, with dicationary input.
-        Currently there is no extra code required at the network level. I think the constructor
-        can be left off entirely, but leaving in in case want to add something.
+        Args:
+            scaffold_levels (list): A list of scaffold levels.
+            num_lags_out (int): The number of lags out.
+
+        Raises:
+            AssertionError: If the scaffold levels are invalid.
         """
         super().__init__(**kwargs)
         self.network_type = 'scaffold'
@@ -344,6 +495,19 @@ class ScaffoldNetwork(FFnetwork):
     # END ScaffoldNetwork.__init__
 
     def forward(self, inputs):
+        """
+        Forward pass through the network.
+
+        Args:
+            inputs (list, torch.Tensor): The input to the network.
+
+        Returns:
+            x (torch.Tensor): The output of the network.
+
+        Raises:
+            ValueError: If no layers are defined.
+        """
+
         if self.layers is None:
             raise ValueError("Scaffold: no layers defined.")
         
@@ -375,6 +539,20 @@ class ScaffoldNetwork(FFnetwork):
 
     @classmethod
     def ffnet_dict( cls, scaffold_levels=None, num_lags_out=1, **kwargs):
+        """
+        Returns a dictionary of the scaffold network.
+
+        Args:
+            scaffold_levels (list): A list of scaffold levels.
+            num_lags_out (int): The number of lags out.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            ffnet_dict (dict): The dictionary of the scaffold network.
+
+        Raises:
+            AssertionError: If the scaffold levels are invalid.
+        """
         ffnet_dict = super().ffnet_dict(**kwargs)
         ffnet_dict['ffnet_type'] = 'scaffold'
         ffnet_dict['scaffold_levels'] = scaffold_levels
@@ -384,7 +562,19 @@ class ScaffoldNetwork(FFnetwork):
 
 
 class ScaffoldNetwork3d(ScaffoldNetwork):
-    """Like scaffold network above, but preserves the third dimension"""
+    """
+    Like scaffold network above, but preserves the third dimension.
+
+    This essentially used the constructor for Point1DGaussian, with dicationary input.
+    Currently there is no extra code required at the network level. I think the constructor
+    can be left off entirely, but leaving in in case want to add something.
+
+    Args:
+        num_lags_out (int): The number of lags out.
+
+    Raises:
+        AssertionError: If the scaffold levels are invalid.
+    """
 
     def __repr__(self):
         s = super().__repr__()
@@ -393,11 +583,6 @@ class ScaffoldNetwork3d(ScaffoldNetwork):
         return s
 
     def __init__(self, num_lags_out=None, **kwargs):
-        """
-        This essentially used the constructor for Point1DGaussian, with dicationary input.
-        Currently there is no extra code required at the network level. I think the constructor
-        can be left off entirely, but leaving in in case want to add something.
-        """
         assert num_lags_out is not None, "should be using num_lags_out with the scaffold3d network"
 
         super().__init__(**kwargs)
@@ -408,6 +593,19 @@ class ScaffoldNetwork3d(ScaffoldNetwork):
     # END ScaffoldNetwork3d.__init__
 
     def forward(self, inputs):
+        """
+        Forward pass through the network.
+
+        Args:
+            inputs (list, torch.Tensor): The input to the network.
+
+        Returns:
+            x (torch.Tensor): The output of the network.
+        
+        Raises:
+            ValueError: If no layers are defined.
+        """
+
         if self.layers is None:
             raise ValueError("Scaffold: no layers defined.")
         
@@ -439,6 +637,15 @@ class ScaffoldNetwork3d(ScaffoldNetwork):
 
     @classmethod
     def ffnet_dict( cls, **kwargs):
+        """
+        Returns a dictionary of the scaffold network.
+
+        Args:
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            ffnet_dict (dict): The dictionary of the scaffold network.
+        """
         ffnet_dict = super().ffnet_dict(**kwargs)
         ffnet_dict['ffnet_type'] = 'scaffold3d'
         return ffnet_dict
@@ -449,6 +656,10 @@ class ReadoutNetwork(FFnetwork):
     """
     A readout using a spatial transformer layer whose positions are sampled from one Gaussian per neuron. Mean
     and covariance of that Gaussian are learned.
+    
+    This essentially used the constructor for Point1DGaussian, with dicationary input.
+    Currently there is no extra code required at the network level. I think the constructor
+    can be left off entirely, but leaving in in case want to add something.
 
     Args:
         in_shape (list, tuple): shape of the input feature map [channels, width, height]
@@ -471,7 +682,8 @@ class ReadoutNetwork(FFnetwork):
                         'hidden_features':20,
                         'final_tanh': False,
                         }
-"""
+    """
+
     def __repr__(self):
         s = super().__repr__()
         # Add information about module to print out
@@ -479,11 +691,6 @@ class ReadoutNetwork(FFnetwork):
         return s
 
     def __init__(self, **kwargs):
-        """
-        This essentially used the constructor for Point1DGaussian, with dicationary input.
-        Currently there is no extra code required at the network level. I think the constructor
-        can be left off entirely, but leaving in in case want to add something.
-        """
         super().__init__(**kwargs)
         self.network_type = 'readout'
         # Make sure first type is readout: important for interpretation of input dims and potential shifter
@@ -501,6 +708,13 @@ class ReadoutNetwork(FFnetwork):
             self.input_dims
             self.input_dims_list
         and returns Boolean whether the passed in input dims are valid
+
+        Args:
+            input_dims_list (list): A list of input dimensions for each layer.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            valid_input_dims (bool): Whether the passed in input dims are valid.
         """
 
         valid_input_dims = True
@@ -520,7 +734,15 @@ class ReadoutNetwork(FFnetwork):
     # END ReadoutNetwork.determine_input_dims
 
     def forward(self, inputs):
-        """network inputs correspond to output of conv layer, and (if it exists), a shifter""" 
+        """
+        Network inputs correspond to output of conv layer, and (if it exists), a shifter.
+        
+        Args:
+            inputs (list, torch.Tensor): The input to the network.
+
+        Returns:
+            y (torch.Tensor): The output of the network.
+        """ 
 
         if not isinstance(inputs, list):
             inputs = [inputs]
@@ -533,13 +755,40 @@ class ReadoutNetwork(FFnetwork):
     # END ReadoutNetwork.forward
 
     def get_readout_locations(self):
+        """
+        Returns the readout locations.
+
+        Args:
+            None
+
+        Returns:
+            The readout locations.
+        """
         return self.layers[0].get_readout_locations()
 
     def set_readout_locations(self, locs):
+        """
+        Sets the readout locations.
+
+        Args:
+            locs: The readout locations.
+
+        Returns:
+            None
+        """
         self.layers[0].set_readout_locations(locs)
 
     @classmethod
     def ffnet_dict( cls, ffnet_n=0, **kwargs):
+        """
+        Returns a dictionary of the readout network.
+
+        Args:
+            ffnet_n (int): The feedforward network.
+
+        Returns:
+            ffnet_dict (dict): The dictionary of the readout network.
+        """
         ffnet_dict = super().ffnet_dict(xstim_n=None, ffnet_n=ffnet_n, **kwargs)
         ffnet_dict['ffnet_type'] = 'readout'
         return ffnet_dict
@@ -547,14 +796,24 @@ class ReadoutNetwork(FFnetwork):
 
 
 class FFnet_external(FFnetwork):
-    """This is a 'shell' that lets an external network be plugged into the NDN. It establishes all the basics
-    so that information requested to this network from other parts of the NDN will behave correctly."""
+    """
+    This is a 'shell' that lets an external network be plugged into the NDN. It establishes all the basics
+    so that information requested to this network from other parts of the NDN will behave correctly.
+
+    Args:
+        external_module_dict (dict): A dictionary of external modules.
+        external_module_name (str): The name of the external module.
+        input_dims_reshape (list): A list of input dimensions to reshape.
+        **kwargs: Additional keyword arguments.
+
+    Raises:
+        AssertionError: If the external module dictionary is invalid.
+    """
     #def __repr__(self):
     #    s = super().__repr__()
     #    # Add information about module to print out
 
     def __init__(self, external_module_dict=None, external_module_name=None, input_dims_reshape=None, **kwargs):
-
         # The parent construct will make a 'dummy layer' that will be filled in with module 0 below
         super(FFnet_external, self).__init__(**kwargs)
         self.network_type = 'external'
@@ -572,6 +831,19 @@ class FFnet_external(FFnetwork):
     # END FFnet_external.__init__
 
     def forward(self, inputs):
+        """
+        Forward pass through the network.
+
+        Args:
+            inputs (list, torch.Tensor): The input to the network.
+
+        Returns:
+            y (torch.Tensor): The output of the network.
+
+        Raises:
+            ValueError: If no layers are defined.
+        """
+        
         # Leave all heavy lifting to the external module, which is in layers[0]. But concatenate network inputs, as needed
         x = inputs[0]
         for mm in range(1, len(inputs)):
@@ -589,10 +861,31 @@ class FFnet_external(FFnetwork):
         return y.reshape((batch_size, -1))
     
     def compute_reg_loss(self):
+        """
+        Computes the regularization loss.
+
+        Args:
+            None
+
+        Returns:
+            0
+        """
         # Since we do not implement regularization within the external network, this returns nothing
         return 0
 
     def list_params(self, layer_target=None):
+        """
+        Lists the parameters for the network.
+
+        Args:
+            layer_target (int, optional): The layer to list the parameters for. Defaults to None.
+
+        Returns:
+            None
+
+        Raises:
+            AssertionError: If the layer target is invalid.
+        """
         assert layer_target is None, 'No ability to directly distinguish layers in the external network.'
         for nm, pp in self.named_parameters(recurse=True):
             if pp.requires_grad:
@@ -601,6 +894,20 @@ class FFnet_external(FFnetwork):
                 print("    NOT FIT: %s:"%nm, pp.size())
 
     def set_params(self, layer_target=None, name=None, val=None ):
+        """
+        Sets the parameters for the listed layer or for all layers.
+
+        Args:
+            layer_target (int, optional): The layer to set the parameters for. Defaults to None.
+            name (str): The name of the parameter.
+            val (bool): The value to set the parameter to.
+
+        Returns:
+            None
+
+        Raises:
+            AssertionError: If the layer target is invalid.
+        """
         assert layer_target is None, 'No ability to directly distinguish layers in the external network.'
         assert isinstance(val, bool), 'val must be set.'
         for nm, pp in self.named_parameters(recurse=True):
@@ -611,6 +918,15 @@ class FFnet_external(FFnetwork):
 
     @classmethod
     def ffnet_dict( cls, **kwargs):
+        """
+        Returns a dictionary of the external network.
+
+        Args:
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            ffnet_dict (dict): The dictionary of the external network.
+        """
         ffnet_dict = super().ffnet_dict(**kwargs)
         ffnet_dict['ffnet_type'] = 'external'
         return ffnet_dict

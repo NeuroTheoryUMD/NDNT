@@ -4,9 +4,7 @@ from .ndnlayer import NDNLayer
 import numpy as np
 class TimeLayer(NDNLayer):
     """
-    Layer to track experiment time and a weighted output
-    
-
+    Layer to track experiment time and a weighted output.
     """ 
 
     def __init__(self,
@@ -19,7 +17,19 @@ class TimeLayer(NDNLayer):
             pos_constraint=True,
             **kwargs,
         ):
+        """
+        TimeLayer: Layer to track experiment time and a weighted output.
 
+        Args:
+            start_time: float, start time of experiment
+            end_time: float, end time of experiment
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_bases: number of tent basis functions
+            num_filters: number of output filters
+            filter_dims: tuple or list of ints, (num_channels, height, width, lags)
+            pos_constraint: bool, whether to enforce non-negative weights
+            **kwargs: additional arguments to pass to NDNLayer
+        """
         assert num_filters is not None, "TimeLayer: Must specify num_filters"
         assert num_bases is not None, "TimeLayer: Must specify num_bases"
         
@@ -56,7 +66,15 @@ class TimeLayer(NDNLayer):
     
 
     def forward(self, x):
+        """
+        Forward pass through the TimeLayer.
 
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            y: torch.Tensor, output tensor
+        """
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
 

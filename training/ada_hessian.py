@@ -3,16 +3,17 @@ import torch
 
 class AdaHessian(torch.optim.Optimizer):
     """
-    Implements the AdaHessian algorithm from "ADAHESSIAN: An Adaptive Second OrderOptimizer for Machine Learning"
-    Arguments:
-        params (iterable) -- iterable of parameters to optimize or dicts defining parameter groups
-        lr (float, optional) -- learning rate (default: 0.1)
-        betas ((float, float), optional) -- coefficients used for computing running averages of gradient and the squared hessian trace (default: (0.9, 0.999))
-        eps (float, optional) -- term added to the denominator to improve numerical stability (default: 1e-8)
-        weight_decay (float, optional) -- weight decay (L2 penalty) (default: 0.0)
-        hessian_power (float, optional) -- exponent of the hessian trace (default: 1.0)
-        update_each (int, optional) -- compute the hessian trace approximation only after *this* number of steps (to save time) (default: 1)
-        n_samples (int, optional) -- how many times to sample `z` for the approximation of the hessian trace (default: 1)
+    Implements the AdaHessian algorithm from "ADAHESSIAN: An Adaptive Second OrderOptimizer for Machine Learning".
+
+    Args:
+        params (iterable): iterable of parameters to optimize or dicts defining parameter groups
+        lr (float, optional): learning rate (default: 0.1)
+        betas ((float, float), optional): coefficients used for computing running averages of gradient and the squared hessian trace (default: (0.9, 0.999))
+        eps (float, optional): term added to the denominator to improve numerical stability (default: 1e-8)
+        weight_decay (float, optional): weight decay (L2 penalty) (default: 0.0)
+        hessian_power (float, optional): exponent of the hessian trace (default: 1.0)
+        update_each (int, optional): compute the hessian trace approximation only after *this* number of steps (to save time) (default: 1)
+        n_samples (int, optional): how many times to sample `z` for the approximation of the hessian trace (default: 1)
     """
 
     def __init__(self, params, lr=0.1, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.0, 
@@ -44,7 +45,10 @@ class AdaHessian(torch.optim.Optimizer):
 
     def get_params(self):
         """
-        Gets all parameters in all param_groups with gradients
+        Gets all parameters in all param_groups with gradients.
+
+        Returns:
+            generator: a generator that produces all parameters with gradients
         """
 
         return (p for group in self.param_groups for p in group['params'] if p.requires_grad)
@@ -88,8 +92,9 @@ class AdaHessian(torch.optim.Optimizer):
     def step(self, closure=None):
         """
         Performs a single optimization step.
-        Arguments:
-            closure (callable, optional) -- a closure that reevaluates the model and returns the loss (default: None)
+
+        Args:
+            closure (callable, optional): a closure that reevaluates the model and returns the loss (default: None)
         """
 
         loss = None

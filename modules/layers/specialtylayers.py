@@ -33,7 +33,18 @@ class Tlayer(NDNLayer):
             output_norm=None,
             res_layer=False,  # to make a residual layer
             **kwargs):
+        """
+        Tlayer: NDN Layer where num_lags is handled convolutionally (but all else is normal).
 
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            num_lags: number of lags in spatiotemporal filter
+            temporal_tent_spacing: int, spacing of tent basis functions
+            output_norm: str, 'batch', 'batchX', or None
+            res_layer: bool, whether to make a residual layer
+            **kwargs: additional arguments to pass to NDNLayer
+        """
         assert input_dims is not None, "Tlayer: Must specify input_dims"
         assert num_filters is not None, "Tlayer: Must specify num_filters"
         assert num_lags is not None, "Tlayer: Must specify num_lags -- otherwise just use NDNLayer"
@@ -99,8 +110,16 @@ class Tlayer(NDNLayer):
     # END Tlayer.__init__()
 
     def forward(self, x):
-        # Reshape stim matrix LACKING temporal dimension [bcwh] 
+        """
+        Forward pass through the Tlayer.
 
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            y: torch.Tensor, output tensor
+        """
+        # Reshape stim matrix LACKING temporal dimension [bcwh] 
         s = (x.T)[None, :, :] # [B,dims]->[1,dims,B]
 
         w = self.preprocess_weights()
@@ -141,12 +160,21 @@ class Tlayer(NDNLayer):
     # END Tlayer.forward 
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
-        # Overload plot_filters to automatically time_reverse
+        """
+        Overload plot_filters to automatically time_reverse.
+
+        Args:
+            cmaps: str or list of str, colormap(s) to use
+            num_cols: int, number of columns to use in plot
+            row_height: int, height of each row in plot
+            time_reverse: bool, whether to reverse the time dimension
+
+        Returns:
+            None
+        """
         super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
             time_reverse=time_reverse)
-
-
 
     @classmethod
     def layer_dict(cls, num_lags=None, res_layer=False, **kwargs):
@@ -170,9 +198,21 @@ class Tlayer(NDNLayer):
 
 
 class L1convLayer(NDNLayer):
-    """First start with non-convolutional version"""
+    """
+    First start with non-convolutional version.
+
+    L1convLayer: Convolutional layer with L1 regularization.
+    """
     def __init__(self, **kwargs):  # same as ConvLayer, with some extras built in...
-  
+        """
+        Set up ConvLayer with L1 regularization.
+
+        Args:
+            **kwargs: additional arguments to pass to ConvLayer
+
+        Returns:
+            None
+        """
         super().__init__(**kwargs)
         # Add second set of weights (corresponding to w-)
         self.weight_minus = Parameter(torch.Tensor(size=self.shape))
@@ -184,6 +224,12 @@ class L1convLayer(NDNLayer):
     # END L1convLayer.__init__
         
     def preprocess_weights(self):
+        """
+        Preprocess weights for L1convLayer.
+
+        Returns:
+            w: torch.Tensor, preprocessed weights
+        """
         #w = F.relu(self.weight) - F.relu(self.weight_minus)
         w = self.weight**2 - self.weight_minus**2
         # Do all preprocessing for NDNlayer, and then conv-layer below
@@ -207,6 +253,17 @@ class L1convLayer(NDNLayer):
         return w
 
     def reset_parameters2(self, weights_initializer=None, bias_initializer=None, param=None) -> None:
+        """
+        Reset parameters for L1convLayer.
+
+        Args:
+            weights_initializer: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            bias_initializer: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            param: dict, additional parameters to pass to the initializer
+
+        Returns:
+            None
+        """
         super().reset_parameters(weights_initializer, bias_initializer, param)
         self.weight_minus.data = -deepcopy(self.weight.data)
         self.weight_minus.data[self.weight_minus < 0] = 0.0
@@ -262,8 +319,10 @@ class L1convLayer(NDNLayer):
 
 
 class OnOffLayer(Tlayer):
-    """ """
-
+    """
+    OnOffLayer: Layer with separate on and off filters.
+    """
+    
     def __init__(
             self,
             input_dims=None,
@@ -273,7 +332,18 @@ class OnOffLayer(Tlayer):
             output_norm=None,
             res_layer=False,  # to make a residual layer
             **kwargs):
-
+        """
+        Args (required):
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            num_lags: number of lags in spatiotemporal filter
+            
+        Args (optional):
+            temporal_tent_spacing: int, spacing of tent basis functions
+            output_norm: str, 'batch', 'batchX', or None
+            res_layer: bool, whether to make a residual layer
+            **kwargs: additional arguments to pass to NDNLayer
+        """
         assert input_dims is not None, "Tlayer: Must specify input_dims"
         assert num_filters is not None, "Tlayer: Must specify num_filters"
         assert num_lags is not None, "Tlayer: Must specify num_lags -- otherwise just use NDNLayer"
@@ -296,7 +366,16 @@ class OnOffLayer(Tlayer):
     # END OnOffLayer.__init__
 
     def plot_filters( self, time_reverse=None, **kwargs):
+        """
+        Plot the filters for the OnOffLayer.
 
+        Args:
+            time_reverse: bool, whether to reverse the time dimension
+            **kwargs: additional arguments to pass to the plotting function
+
+        Returns:
+            None
+        """
         ws = self.get_weights(time_reverse=True)
         for ii in range(2):
             if self.input_dims[2] == 1:
@@ -316,8 +395,16 @@ class OnOffLayer(Tlayer):
     # END OnOffLayer.plot_filters()
     
     def forward(self, x):
-        # Reshape stim matrix LACKING temporal dimension [bcwh] 
+        """
+        Forward pass through the OnOffLayer.
 
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            y: torch.Tensor, output tensor
+        """
+        # Reshape stim matrix LACKING temporal dimension [bcwh] 
         #x2 = torch.cat( (x, abs(x)), axis=1)
 
         #### After that (above), it is the same forward as Tlayer (until after the lin-conv)
@@ -374,6 +461,13 @@ class OnOffLayer(Tlayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            num_lags: int, number of lags in spatiotemporal filter
+            **kwargs: additional arguments to pass to NDNLayer
+
+        Returns:
+            Ldict: dict, dictionary of layer parameters
         """
 
         Ldict = super().layer_dict(num_lags=num_lags, **kwargs)
@@ -385,7 +479,9 @@ class OnOffLayer(Tlayer):
 
 
 class MaskLayer(NDNLayer):
-    """ """
+    """
+    MaskLayer: Layer with a mask applied to the weights.
+    """
 
     def __init__(self, input_dims=None,
                  num_filters=None,
@@ -403,7 +499,25 @@ class MaskLayer(NDNLayer):
                  reg_vals:dict=None,
                  **kwargs,
                  ):
+        """
+        MaskLayer: Layer with a mask applied to the weights.
 
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            mask: np.ndarray, mask to apply to the weights
+            NLtype: str, 'lin', 'relu', 'tanh', 'sigmoid', 'elu', 'none'
+            norm_type: int, normalization type
+            pos_constraint: int, whether to enforce non-negative weights
+            num_inh: int, number of inhibitory filters
+            bias: bool, whether to include bias term
+            weights_initializer: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            output_norm: str, 'batch', 'batchX', or None
+            initialize_center: bool, whether to initialize the center
+            bias_initializer: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            reg_vals: dict, regularization values
+            **kwargs: additional arguments to pass to NDNLayer
+        """
         super().__init__(
             input_dims=input_dims, num_filters=num_filters,
             #filter_dims=None,  # for now, not using so Non is correct
@@ -421,6 +535,12 @@ class MaskLayer(NDNLayer):
     # END MaskLayer.__init__
 
     def preprocess_weights( self ):
+        """
+        Preprocess weights for MaskLayer.
+
+        Returns:
+            w: torch.Tensor, preprocessed weights
+        """
         w = super().preprocess_weights()
         return w*self.mask
     # END MaskLayer.preprocess_weights()
@@ -433,6 +553,13 @@ class MaskLayer(NDNLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            mask: np.ndarray, mask to apply to the weights
+            **kwargs: additional arguments to pass to NDNLayer
+
+        Returns:
+            Ldict: dict, dictionary of layer parameters
         """
 
         Ldict = super().layer_dict(**kwargs)

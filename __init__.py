@@ -1,15 +1,15 @@
-from . import modules
-from .modules import layers
-from . import metrics
-from . import training
+from NDNT import modules
+from NDNT.modules import layers
+from NDNT import metrics
+from NDNT import training
 
-from .modules.regularization import Regularization
+from NDNT.modules.regularization import Regularization
 
-from . import utils
+from NDNT import utils
 
-from .metrics.poisson_loss import PoissonLoss_datafilter
+from NDNT.metrics.poisson_loss import PoissonLoss_datafilter
 
-from .NDNT import NDN
-from .networks import *
+from NDNT.NDN import NDN
+from NDNT.networks import *
 
-from .version import version as __version__
+from NDNT.version import version as __version__

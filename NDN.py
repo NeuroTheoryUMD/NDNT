@@ -9,13 +9,13 @@ import json
 import zipfile
 import os
 
-from .metrics import poisson_loss as plosses
-from .metrics import mse_loss as glosses
-from .metrics import rmse_loss as rlosses
-from .utils import create_optimizer_params, NpEncoder
-from .modules.experiment_sampler import ExperimentSampler
+from NDNT.metrics import poisson_loss as plosses
+from NDNT.metrics import mse_loss as glosses
+from NDNT.metrics import rmse_loss as rlosses
+from NDNT.utils import create_optimizer_params, NpEncoder
+from NDNT.modules.experiment_sampler import ExperimentSampler
 
-from . import networks as NDNnetworks
+from NDNT import networks as NDNnetworks
 
 FFnets = {
     'normal': NDNnetworks.FFnetwork,
@@ -27,7 +27,24 @@ FFnets = {
 }
 
 class NDN(nn.Module):
+    """
+    Initializes an instance of the NDN (Neural Deep Network) class.
 
+    Args:
+        ffnet_list (list): A list of FFnetwork objects. If None, a single ffnet specified by layer_list will be used.
+        layer_list (list): A list specifying the layers of the FFnetwork. Only used if ffnet_list is None.
+        external_modules (list): A list of external modules to be used in the FFnetwork.
+        loss_type (str): The type of loss function to be used. Default is 'poisson'.
+        ffnet_out (int or list): The index(es) of the output layer(s) of the FFnetwork(s). If None, the last layer will be used.
+        optimizer_params (dict): Parameters for the optimizer. If None, default parameters will be used.
+        model_name (str): The name of the model. If None, a default name will be assigned.
+        seed (int): The random seed to be used for reproducibility.
+        working_dir (str): The directory to save checkpoints and other files.
+
+    Returns:
+        None
+    """
+    
     def __init__(self,
         ffnet_list = None,
         layer_list = None,  # can just import layer list if consisting of single ffnetwork (simple ffnet)
@@ -133,7 +150,18 @@ class NDN(nn.Module):
 
         When multiple ffnet inputs are concatenated, it will always happen in the first
         (filter) dimension, so all other dimensions must match
+
+        Args:
+            ffnet_list (list): A list of ffnetworks to be assembled.
+            external_nets (optional): External networks to be passed into the 'external' type ffnetworks.
+
+        Returns:
+            networks (nn.ModuleList): A module list containing the assembled ff-networks.
+
+        Raises:
+            AssertionError: If ffnet_list is not a list.
         """
+
         assert type(ffnet_list) is list, "ffnet_list must be a list."
         
         num_networks = len(ffnet_list)
@@ -162,8 +190,22 @@ class NDN(nn.Module):
     # END NDNT.assemble_ffnetworks
 
     def compute_network_outputs(self, Xs):
-        """Note this could return net_ins and net_outs, but currently just saving net_outs (no reason for net_ins yet"""
-        
+        """
+        Computes the network outputs for the given input data.
+
+        Args:
+            Xs (list): The input data.
+
+        Returns:
+            tuple: A tuple containing the network inputs and network outputs.
+
+        Raises:
+            AssertionError: If no networks are defined in this NDN.
+
+        Note:
+            This method currently saves only the network outputs and does not return the network inputs.
+        """
+
         assert 'networks' in dir(self), "compute_network_outputs: No networks defined in this NDN"
 
         net_ins, net_outs = [], []
@@ -185,16 +227,36 @@ class NDN(nn.Module):
     # END NDNT.compute_network_outputs
 
     def forward(self, Xs):
-        """This applies the forwards of each network in sequential order.
-        The tricky thing is concatenating multiple-input dimensions together correctly.
-        Note that the external inputs is actually in principle a list of inputs"""
+            """
+            Applies the forward pass of each network in sequential order.
 
-        net_ins, net_outs = self.compute_network_outputs( Xs )
-        # For now assume its just one output, given by the first value of self.ffnet_out
-        return net_outs[self.ffnet_out[0]]
+            Args:
+                Xs (list): List of input data.
+
+            Returns:
+                ndarray: Output of the forward pass.
+
+            Notes:
+                The tricky thing is concatenating multiple-input dimensions together correctly.
+                Note that the external inputs are actually in principle a list of inputs.
+            """
+
+            net_ins, net_outs = self.compute_network_outputs( Xs )
+            # For now assume it's just one output, given by the first value of self.ffnet_out
+            return net_outs[self.ffnet_out[0]]
     # END NDNT.forward
 
     def training_step(self, batch, batch_idx=None):  # batch_indx not used, right?
+        """
+        Performs a single training step.
+
+        Args:
+            batch (dict): A dictionary containing the input data batch.
+            batch_idx (int, optional): The index of the current batch. Defaults to None.
+
+        Returns:
+            dict: A dictionary containing the loss values for training, total loss, and regularization loss.
+        """
 
         y = batch['robs']
 
@@ -213,6 +275,16 @@ class NDN(nn.Module):
     # END Encoder.training_step
 
     def validation_step(self, batch, batch_idx=None):
+        """
+        Performs a validation step for the model.
+
+        Args:
+            batch (dict): A dictionary containing the input batch data.
+            batch_idx (int, optional): The index of the current batch. Defaults to None.
+
+        Returns:
+            dict: A dictionary containing the computed losses for the validation step.
+        """
         
         y = batch['robs']
 
@@ -229,18 +301,28 @@ class NDN(nn.Module):
         return {'loss': loss, 'val_loss': loss, 'reg_loss': reg_loss}
     
     def compute_reg_loss(self):
-        rloss = []
-        for network in self.networks:
-            rloss.append(network.compute_reg_loss())
-        return reduce(torch.add, rloss)
+            """
+            Computes the regularization loss for the NDNT model.
+
+            Args:
+                None
+
+            Returns:
+                The total regularization loss.
+            """
+
+            rloss = []
+            for network in self.networks:
+                rloss.append(network.compute_reg_loss())
+            return reduce(torch.add, rloss)
     
     def get_trainer(self,
         version=None,
         save_dir='./checkpoints',
         name='jnkname',
-        optimizer = None,
-        scheduler = None,
-        device = None,
+        optimizer=None,
+        scheduler=None,
+        device=None,
         optimizer_type='AdamW',
         early_stopping=False,
         early_stopping_patience=5,
@@ -248,17 +330,35 @@ class NDN(nn.Module):
         optimize_graph=False,
         **kwargs):
         """
-            Returns a trainer object
+        Returns a trainer object.
+
+        Args:
+            version (str): The version of the trainer.
+            save_dir (str): The directory to save the trainer checkpoints.
+            name (str): The name of the trainer.
+            optimizer (torch.optim.Optimizer): The optimizer to use for training.
+            scheduler (torch.optim.lr_scheduler._LRScheduler): The scheduler to use for adjusting the learning rate during training.
+            device (str or torch.device): The device to use for training. If not specified, it will default to 'cuda:0' if available, otherwise 'cpu'.
+            optimizer_type (str): The type of optimizer to use. Default is 'AdamW'.
+            early_stopping (bool): Whether to use early stopping during training. Default is False.
+            early_stopping_patience (int): The number of epochs to wait for improvement before stopping early. Default is 5.
+            early_stopping_delta (float): The minimum change in the monitored metric to be considered as improvement. Default is 0.0.
+            optimize_graph (bool): Whether to optimize the computation graph during training. Default is False.
+            **kwargs: Additional keyword arguments to be passed to the trainer.
+
+        Returns:
+            trainer (Trainer): The trainer object.
         """
+
         from NDNT.training import Trainer, EarlyStopping, LBFGSTrainer
         import os
-    
+
         #trainers = {'step': Trainer, 'AdamW': Trainer, 'Adam': Trainer, 'sgd': Trainer, 'lbfgs': LBFGSTrainer}
         trainers = {'step': Trainer, 'lbfgs': LBFGSTrainer}
-        
+
         if optimizer is None:  # then specified through optimizer inputs
             optimizer = self.get_optimizer(optimizer_type=optimizer_type, **kwargs)
-        
+
         if early_stopping:
             earlystopper = EarlyStopping( patience=early_stopping_patience, delta= early_stopping_delta )
             #if isinstance(opt_params['early_stopping'], EarlyStopping):
@@ -287,17 +387,17 @@ class NDN(nn.Module):
         else:
             if optimizer_type == 'LBFGS':
                 trainer_type = 'lbfgs'
-        
+
         trainer = trainers[trainer_type](model=self,
-                optimizer=optimizer,
-                early_stopping=earlystopper,
-                dirpath=os.path.join(save_dir, name),
-                optimize_graph=optimize_graph,
-                device=device,
-                scheduler=scheduler,
-                version=version,
-                **kwargs
-                )
+                                         optimizer=optimizer,
+                                         early_stopping=earlystopper,
+                                         dirpath=os.path.join(save_dir, name),
+                                         optimize_graph=optimize_graph,
+                                         device=device,
+                                         scheduler=scheduler,
+                                         version=version,
+                                         **kwargs
+                                         )
 
         return trainer
 
@@ -314,6 +414,26 @@ class NDN(nn.Module):
             data_seed=None,
             #device=None,
             **kwargs):
+        
+        """
+        Creates dataloaders for training and validation.
+
+        Args:
+            dataset (Dataset): The dataset to use for training and validation.
+            train_inds (list): The indices of the training data.
+            val_inds (list): The indices of the validation data.
+            batch_size (int): The batch size to use.
+            num_workers (int): The number of workers to use for data loading.
+            is_multiexp (bool): Whether the dataset is a multi-experiment dataset.
+            full_batch (bool): Whether to use the full batch for training.
+            pin_memory (bool): Whether to pin memory for faster data loading.
+            data_seed (int): The seed to use for the data loader.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            train_dl (DataLoader): The training data loader.
+            valid_dl (DataLoader): The validation data loader.
+        """
 
         from torch.utils.data import DataLoader, random_split, Subset
 
@@ -401,6 +521,22 @@ class NDN(nn.Module):
             line_search_fn=None,
             **kwargs):
         
+        """
+        Returns an optimizer object.
+
+        Args:
+            optimizer_type (str): The type of optimizer to use. Default is 'AdamW'.
+            learning_rate (float): The learning rate to use. Default is 0.001.
+            weight_decay (float): The weight decay to use. Default is 0.01.
+            amsgrad (bool): Whether to use the AMSGrad variant of Adam. Default is False.
+            betas (tuple): The beta values to use for the optimizer. Default is (0.9, 0.999).
+            max_iter (int): The maximum number of iterations for the LBFGS optimizer. Default is 10.
+            history_size (int): The history size to use for the LBFGS optimizer. Default is 4.
+
+        Returns:
+            optimizer (torch.optim.Optimizer): The optimizer object.
+        """
+        
         # Assign optimizer
         if optimizer_type=='AdamW':
 
@@ -444,6 +580,12 @@ class NDN(nn.Module):
     # END NDN.get_optimizer
     
     def prepare_regularization(self):
+        """
+        Prepares the regularization for the model.
+
+        Returns:
+            None
+        """
 
         for network in self.networks:
             network.prepare_regularization(device=self.device)
@@ -467,13 +609,40 @@ class NDN(nn.Module):
         **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
         ):
 
-        '''
-        This is the main training loop.
-        Steps:
+        """
+        Trains the model using the specified dataset.
+
+        Args:
+            dataset (Dataset): The dataset to use for training and validation.
+            train_inds (list): The indices of the training data.
+            val_inds (list): The indices of the validation data.
+            speckledXV (bool): Whether to use speckled cross-validation. Default is False.
+            seed (int): The seed to use for reproducibility.
+            save_dir (str): The directory to save the model checkpoints.
+            version (int): The version of the trainer.
+            optimizer (torch.optim.Optimizer): The optimizer to use for training.
+            scheduler (torch.optim.lr_scheduler._LRScheduler): The scheduler to use for adjusting the learning rate during training.
+            batch_size (int): The batch size to use.
+            force_dict_training (bool): Whether to force dictionary-based training. Default is False.
+            block_sample (bool): Whether to use block sampling. Default is None.
+            reuse_trainer (bool): Whether to reuse the trainer. Default is False.
+            device (str or torch.device): The device to use for training. Default is None.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            None
+
+        Raises:
+            AssertionError: If batch_size is not specified.
+
+        Notes:
+            The fit method is the main training loop for the model.
+            Steps:
             1. Get a trainer and dataloaders
             2. Prepare regularizers
             3. Run the main fit loop from the trainer, checkpoint, and save model
-        '''
+        """
+
         import time
 
         assert batch_size is not None, "NDN.fit() must be passed batch_size in optimization params."
@@ -601,14 +770,38 @@ class NDN(nn.Module):
         device=None,
         **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
         ):
+        """
+        Fits the model using deep learning training.
 
-        '''
-        This is the main training loop.
-        Steps:
-            1. Get a trainer and dataloaders
-            2. Prepare regularizers
-            3. Run the main fit loop from the trainer, checkpoint, and save model
-        '''
+        Args:
+            train_ds (Dataset): The training dataset.
+            val_ds (Dataset): The validation dataset.
+            seed (int, optional): The seed for data and optimization. Defaults to None.
+            save_dir (str, optional): The directory to save the model. Defaults to None.
+            version (int, optional): The version of the model. Defaults to None.
+            name (str, optional): The name of the model. Defaults to None.
+            optimizer (Optimizer, optional): The optimizer for training. Defaults to None.
+            scheduler (Scheduler, optional): The scheduler for training. Defaults to None.
+            batch_size (int, optional): The batch size for training. Defaults to None.
+            num_workers (int, optional): The number of workers for data loading. Defaults to 0.
+            force_dict_training (bool, optional): Whether to force dictionary-based training instead of using data loaders for LBFGS. Defaults to False.
+            device (str, optional): The device to use for training. Defaults to None.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            None
+
+        Raises:
+            AssertionError: If batch_size is not provided.
+
+        Notes:
+            This is the main training loop.
+            Steps:
+            1. Get a trainer and data loaders.
+            2. Prepare regularizers.
+            3. Run the main fit loop from the trainer, checkpoint, and save the model.
+        """
+    
         import time
 
         assert batch_size is not None, "NDN.fit() must be passed batch_size in optimization params."
@@ -665,9 +858,21 @@ class NDN(nn.Module):
     
     def initialize_loss( self, dataset=None, batch_size=None, data_inds=None, batch_weighting=None, unit_weighting=None ):
         """
-        Interacts with loss_module to set loss flags and/or pass in dataset information
-        Without dataset, it will just set flags 'batch_weighting' [-1, 0,1,2] and 'unit_weighting'
-        With dataset, it will set av_batch_size and unit_weights based on average rate
+        Interacts with loss_module to set loss flags and/or pass in dataset information.
+        
+        Args:
+            dataset (optional): The dataset to be used for computing average batch size and unit weights.
+            batch_size (optional): The batch size to be used for computing average batch size.
+            data_inds (optional): The indices of the data in the dataset to be used.
+            batch_weighting (optional): The batch weighting value to be set. Must be one of [-1, 0, 1, 2].
+            unit_weighting (optional): The unit weighting value to be set.
+        
+        Returns:
+            None
+
+        Notes:
+            Without a dataset, this method will only set the flags 'batch_weighting' and 'unit_weighting'.
+            With a dataset, this method will set 'av_batch_size' and 'unit_weights' based on the average rate.
         """
 
         if batch_weighting is None:
@@ -697,6 +902,17 @@ class NDN(nn.Module):
     # END NDNT.initialize_loss
 
     def compute_average_responses( self, dataset, data_inds=None ):
+        """
+        Computes the average responses for the specified dataset.
+
+        Args:
+            dataset: The dataset to use for computing the average responses.
+            data_inds: The indices of the data in the dataset.
+
+        Returns:
+            ndarray: The average responses.
+        """
+
         if data_inds is None:
             data_inds = range(len(dataset))
         
@@ -720,6 +936,21 @@ class NDN(nn.Module):
     # END NDNT.compute_average_responses
 
     def initialize_biases( self, dataset, data_inds=None, ffnet_target=-1, layer_target=-1 ):
+        """
+        Initializes the biases for the specified dataset.
+
+        Args:
+            dataset: The dataset to use for initializing the biases.
+            data_inds: The indices of the data in the dataset.
+            ffnet_target: The target feedforward network.
+            layer_target: The target layer.
+
+        Returns:
+            None
+
+        Notes:
+            This method initializes the biases for the specified feedforward network and layer using the average responses.
+        """
 
         avRs = self.compute_average_responses( dataset=dataset, data_inds=data_inds )
         # Invert last layer nonlinearity
@@ -743,14 +974,43 @@ class NDN(nn.Module):
         self, data, data_inds=None, bits=False, null_adjusted=False, speckledXV=False, train_val=1,
         batch_size=1000, num_workers=0, device=None, **kwargs ):
         '''
+        Evaluate the neural network models on the given data.
+
         get null-adjusted log likelihood (if null_adjusted = True)
         bits=True will return in units of bits/spike
 
         Note that data will be assumed to be a dataset, and data_inds will have to be specified batches
         from dataset.__get_item__()
+
+        Args:
+            data (dict or Dataset): The input data to evaluate the models on. If a dictionary is provided, it is assumed to be a single sample. If a Dataset object is provided, it is assumed to contain multiple samples.
+            data_inds (list, optional): The indices of the data samples to evaluate. Only applicable if `data` is a Dataset object. Defaults to None.
+            bits (bool, optional): If True, the result will be returned in units of bits/spike. Defaults to False.
+            null_adjusted (bool, optional): If True, the null-adjusted log likelihood will be calculated. Defaults to False.
+            speckledXV (bool, optional): If True, speckled cross-validation will be used. Defaults to False.
+            train_val (int, optional): The train/validation split ratio. Only applicable if `speckledXV` is True. Defaults to 1.
+            batch_size (int, optional): The batch size for data loading. Defaults to 1000.
+            num_workers (int, optional): The number of worker processes for data loading. Defaults to 0.
+            device (torch.device, optional): The device to perform the evaluation on. If None, the device of the model will be used. Defaults to None.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            numpy.ndarray: The evaluated log likelihood values for each neuron.
+
+        Note:
+            If `data` is a dictionary, it is assumed to contain the following keys:
+                'robs': The observed responses.
+                'Mval': The validation mask.
+                'dfs': The data filters.
+            If `data` is a Dataset object, it is assumed to have the following attributes:
+                'robs': The observed responses.
+                'dfs': The data filters.
+
+        Raises:
+            AssertionError: If `data_inds` is not None when `data` is a dictionary.
         '''
 
-        # Switch into evalulation mode
+        # Switch into evaluation mode
         self.eval()
 
         if isinstance(data, dict): 
@@ -858,16 +1118,20 @@ class NDN(nn.Module):
     def generate_predictions(self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
         """
         Generate predictions for a dataset.
-        :param data: the dataset
-        :param data_inds: which indices to use from the dataset
-        :param block_inds: which blocks to use from the dataset (if block_sample)
-        :param batch_size: how much data to process at each iteration. Reduce if running out of memory.
-        :param num_lags: how many lags to use for prediction
-        :param ffnet_target: index for the feedforward network to use for prediction (default is the whole model)
-        :param device: which device to use for prediction
-        :return: predictions array (NT x NC) or (num_blocks x NC)
+
+        Args:
+            data: The dataset.
+            data_inds: The indices to use from the dataset.
+            block_inds: The blocks to use from the dataset (if block_sample).
+            batch_size: The batch size to use for processing. Reduce if running out of memory.
+            num_lags: The number of lags to use for prediction.
+            ffnet_target: The index of the feedforward network to use for prediction. Defaults to None.
+            device: The device to use for prediction.
+
+        Returns:
+            torch.Tensor: The predictions array.
         """
-    
+        
         # Switch into evalulation mode
         self.eval()
     
@@ -941,9 +1205,24 @@ class NDN(nn.Module):
         return pred.cpu()
 
     def change_loss( self, new_loss_type, dataset=None ):
-        """Swaps in new loss module for model
-        Include dataset if wish to initialize loss (which happens during fit)
         """
+        Change the loss function for the model.
+
+        Swaps in new loss module for model.
+        Include dataset if wish to initialize loss (which happens during fit).
+
+        Args:
+            new_loss_type: The new loss type.
+            dataset: The dataset to use for initializing the loss.
+
+        Returns:
+            None
+
+        Notes:
+            This method swaps in a new loss module for the model.
+            If a dataset is provided, the loss will be initialized during the fit.
+        """
+
         if isinstance(new_loss_type, str):
             self.loss_type = new_loss_type
             if self.loss_type == 'poisson' or self.loss_type == 'poissonT':
@@ -973,12 +1252,36 @@ class NDN(nn.Module):
     # END change_loss()
 
     def get_weights(self, ffnet_target=0, **kwargs):
-        """passed down to layer call, with optional arguments conveyed"""
+        """
+        Get the weights for the specified feedforward network.
+
+        Passed down to layer call, with optional arguments conveyed.
+
+        Args:
+            ffnet_target: The target feedforward network.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            list: The weights for the specified feedforward network.
+
+        Notes:
+            This method is passed down to the layer call with optional arguments conveyed.
+        """
+
         assert ffnet_target < len(self.networks), "Invalid ffnet_target %d"%ffnet_target
         return self.networks[ffnet_target].get_weights(**kwargs)
 
     def get_readout_locations(self):
-        """This currently retuns list of readout locations and sigmas -- set in readout network"""
+        """
+        Get the readout locations and sigmas.
+
+        Returns:
+            list: The readout locations and sigmas.
+
+        Notes:
+            This method currently returns a list of readout locations and sigmas set in the readout network.
+        """
+
         # Find readout network
         net_n = -1
         for ii in range(len(self.networks)):
@@ -988,12 +1291,32 @@ class NDN(nn.Module):
         return self.networks[net_n].get_readout_locations()
 
     def passive_readout(self):
-        """This finds the readout layer and applies its passive_readout function"""
+        """
+        Applies the passive readout function to the readout layer.
+
+        Returns:
+            None
+
+        Notes:
+            This method finds the readout layer and applies its passive_readout function.
+        """
+
         from NDNT.modules.layers.readouts import ReadoutLayer
         assert isinstance(self.networks[-1].layers[-1], ReadoutLayer), "NDNT: Last layer is not a ReadoutLayer"
         self.networks[-1].layers[-1].passive_readout()
 
     def list_parameters(self, ffnet_target=None, layer_target=None):
+        """
+        List the parameters for the specified feedforward network and layer.
+
+        Args:
+            ffnet_target: The target feedforward network.
+            layer_target: The target layer.
+
+        Returns:
+            None
+        """
+
         if ffnet_target is None:
             ffnet_target = np.arange(len(self.networks), dtype='int32')
         elif not isinstance(ffnet_target, list):
@@ -1004,7 +1327,22 @@ class NDN(nn.Module):
             self.networks[ii].list_parameters(layer_target=layer_target)
 
     def set_parameters(self, ffnet_target=None, layer_target=None, name=None, val=None ):
-        """Set parameters for listed layer or for all layers."""
+        """
+        Set the parameters for the specified feedforward network and layer.
+
+        Args:
+            ffnet_target: The target feedforward network.
+            layer_target: The target layer.
+            name: The name of the parameter.
+            val: The value to set the parameter to.
+
+        Returns:
+            None
+
+        Notes:
+            This method sets the parameters for the specified feedforward network and layer.
+        """
+
         if ffnet_target is None:
             ffnet_target = np.arange(len(self.networks), dtype='int32')
         elif not isinstance(ffnet_target, list):
@@ -1014,13 +1352,38 @@ class NDN(nn.Module):
             self.networks[ii].set_parameters(layer_target=layer_target, name=name, val=val)
 
     def set_reg_val(self, reg_type=None, reg_val=None, ffnet_target=None, layer_target=None ):
-        """Set reg_values for listed network and layer targets (default 0,0)."""
+        """
+        Set reg_values for listed network and layer targets (default 0,0).
+
+        Args:
+            reg_type: The regularization type.
+            reg_val: The regularization value.
+            ffnet_target: The target feedforward network.
+            layer_target: The target layer.
+
+        Returns:
+            None
+
+        Notes:
+            This method sets the regularization values for the specified feedforward network and layer.
+        """
+
         if ffnet_target is None:
             ffnet_target = 0
         assert ffnet_target < len(self.networks), "ffnet target too large (max = %d)"%len(self.networks)
         self.networks[ffnet_target].set_reg_val( reg_type=reg_type, reg_val=reg_val, layer_target=layer_target )
 
     def plot_filters(self, ffnet_target=0, **kwargs):
+        """
+        Plot the filters for the specified feedforward network.
+
+        Args:
+            ffnet_target: The target feedforward network.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            None
+        """
         self.networks[ffnet_target].plot_filters(**kwargs)
 
     def save_model_zip(self, 
@@ -1033,13 +1396,19 @@ class NDN(nn.Module):
         """
         Save the model as a zip file containing a json file with the model parameters
         and a .ckpt file with the state_dict.
-        :param filename: the name of the zip file to save
-        :param ffnet_list: the list of feedforward networks (if this is set, it uses the ffnet_list, ffnet_out, loss_type, model_name, and working_dir arguments)
-        :param ffnet_out: the output layer of the feedforward network
-        :param loss_type: the loss type
-        :param model_name: the name of the model
-        :param working_dir: the working directory
+
+        Args:
+            filename: The name of the zip file to save.
+            ffnet_list: The list of feedforward networks. (if this is set, it uses the ffnet_list, ffnet_out, loss_type, model_name, and working_dir arguments)
+            ffnet_out: The output layer of the feedforward network.
+            loss_type: The loss type.
+            model_name: The name of the model.
+            working_dir: The working directory.
+
+        Returns:
+            None
         """
+
         if filename.endswith('.zip'):
             filename = filename[:-4]
 
@@ -1075,8 +1444,15 @@ class NDN(nn.Module):
     def load_model_zip(cls, filename):
         """
         Load the model from a zip file containing a json file with the model parameters
-        and a .ckpt file with the state_dict
+        and a .ckpt file with the state_dict.
+
+        Args:
+            filename: The name of the zip file to load.
+
+        Returns:
+            NDN: The loaded model.
         """
+
         if filename.endswith('.zip'):
             filename = filename[:-4]
         # open the zip file
@@ -1105,8 +1481,17 @@ class NDN(nn.Module):
         return model
 
     def save_model(self, filename=None, pt=False ):
-        """Models will be saved using dill/pickle in as the filename, which can contain
-        the directory information. Will be put in the CPU first"""
+        """
+        Models will be saved using dill/pickle in as the filename, which can contain
+        the directory information. Will be put in the CPU first
+        
+        Args:
+            filename: The name of the file to save.
+            pt: Whether to use torch.save instead of dill.
+
+        Returns:
+            None
+        """
 
         import dill
         if filename is None:
@@ -1128,9 +1513,18 @@ class NDN(nn.Module):
                 dill.dump(self.to(torch.device('cpu')), f)
 
     def save_model_chk(self, filename=None, alt_dirname=None):
-        """Models will be saved using dill/pickle in the directory above the version
+        """
+        Models will be saved using dill/pickle in the directory above the version
         directories, which happen to be under the model-name itself. This assumes the
-        current save-directory (notebook specific) and the model name"""
+        current save-directory (notebook specific) and the model name
+        
+        Args:
+            filename: The name of the file to save.
+            alt_dirname: The alternate directory to save the file.
+
+        Returns:
+            None
+        """
 
         import dill
         if alt_dirname is None:
@@ -1149,10 +1543,17 @@ class NDN(nn.Module):
             dill.dump(self, f)
 
     def get_null_adjusted_ll(self, sample, bits=False):
-        '''
-        get null-adjusted log likelihood
-        bits=True will return in units of bits/spike
-        '''
+        """
+        Get the null-adjusted log likelihood.
+
+        Args:
+            sample: The sample data from a dataset.
+            bits: Whether to return the result in units of bits/spike.
+
+        Returns:
+            float: The null-adjusted log likelihood.
+        """
+
         m0 = self.cpu()
         if self.loss_type == 'poisson':
             #loss = nn.PoissonNLLLoss(log_input=False, reduction='none')
@@ -1173,13 +1574,15 @@ class NDN(nn.Module):
     def get_activations(self, sample, ffnet_target=0, layer_target=0, NL=False):
         """
         Returns the inputs and outputs of a specified ffnet and layer
+        
         Args:
             sample: dictionary of sample data from a dataset
             ffnet_target: which network to target (default: 0)
             layer_target: which layer to target (default: 0)
             NL: get activations using the nonlinearity as the module target
-        Output:
-            activations: dictionary of activations
+
+        Returns:
+            activations dict
             with keys:
                 'input' : input to layer
                 'output' : output of layer
@@ -1206,17 +1609,21 @@ class NDN(nn.Module):
     @property
     def device( self ):
         return next(self.parameters()).device
-        # just for checking -- but not definitive/great to do in general, apparently
+        # just for checking -   but not definitive/great to do in general, apparently
 
     @classmethod
     def load_model(cls, filename=None, pt=False ):
-        '''
-            Load a pickled model from disk.
-            Arguments:
-                filename: path and filename
-            Returns:
-                model: loaded model on CPU
-        '''
+        """
+        Load a pickled model from disk.
+
+        Args:
+            filename: The path and filename.
+            pt: Whether to use torch.load instead of dill.
+
+        Returns:
+            model: The loaded model on CPU.
+        """
+
         from NDNT.utils.NDNutils import CPU_Unpickler as unpickler
 
         #import dill 
@@ -1231,15 +1638,17 @@ class NDN(nn.Module):
 
     @classmethod
     def load_model_chk(cls, checkpoint_path=None, model_name=None, version=None):
-        '''
-            Load a model from disk.
-            Arguments:
-                checkpoint_path: path to directory containing model checkpoints
-                model_name: name of model (from model.model_name)
-                version: which checkpoint to load (default: best)
-            Returns:
-                model: loaded model
-        '''
+        """
+        Load a model from disk.
+
+        Args:
+            checkpoint_path: The path to the directory containing model checkpoints.
+            model_name: The name of the model (from model.model_name).
+            version: The checkpoint version (default: best).
+
+        Returns:
+            model: The loaded model.
+        """
         
         from NDNT.utils.NDNutils import load_model as load
 
@@ -1251,7 +1660,13 @@ class NDN(nn.Module):
         return model
 
     def model_string( self ):
-        """Automated way to name model"""
+        """
+        Automated way to name model
+
+        Returns:
+            str: The model name.
+        """
+        
         from NDNT.utils import filename_num2str
 
         label_chart = {

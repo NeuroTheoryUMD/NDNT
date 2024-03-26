@@ -7,9 +7,14 @@ class ActivityRegularization:
     
     def activity(self, layer_output, alpha):
         """
-        :param layer_output: torch.Tensor (output of a layer)
-        :param alpha: float (regularization strength)
-        :return: torch.Tensor (regularization loss)
+        Activity regularization loss function.
+
+        Args:
+            layer_output (torch.Tensor): output of a layer
+            alpha (float): (regularization strength)
+
+        Returns:
+            torch.Tensor (regularization loss)
         """
         # sum over the squared subunits, then average over the batch
         loss = alpha * torch.mean(torch.sum(layer_output**2, axis=1), axis=0)
@@ -18,9 +23,14 @@ class ActivityRegularization:
 
     def nonneg(self, layer_output, alpha):
         """
-        :param layer_output: torch.Tensor (output of a layer)
-        :param alpha: float (regularization strength)
-        :return: torch.Tensor (regularization loss)
+        Non-negative regularization loss function.
+
+        Args:
+            layer_output (torch.Tensor): output of a layer
+            alpha (float): (regularization strength)
+
+        Returns:
+            torch.Tensor (regularization loss)
         """
         # sum over the relu of the negative subunits, then average over the batch
         return alpha * torch.mean(torch.sum(torch.relu(-layer_output), axis=1), axis=0)
@@ -28,8 +38,13 @@ class ActivityRegularization:
 
     def regularize(self, layer_output):
         """
-        :param layer_output: torch.Tensor (output of a layer)
-        :return: torch.Tensor (regularization loss)
+        Regularization loss function.
+
+        Args:
+            layer_output (torch.Tensor): output of a layer
+
+        Returns:
+            torch.Tensor (regularization loss)
         """
         activity_loss = 0.0
         if self.reg_vals and 'activity' in self.reg_vals:

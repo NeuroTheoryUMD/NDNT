@@ -92,7 +92,18 @@ class Trainer:
 
 
     def fit(self, model, train_loader, val_loader, seed=None):
-        
+        """
+        Fit the model to the data.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            train_loader (DataLoader): Training data.
+            val_loader (DataLoader): Validation data.
+            seed (int): Random seed for reproducibility.
+
+        Returns:
+            None
+        """
         model = self.prepare_fit(model, seed=seed)
 
         # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
@@ -107,9 +118,16 @@ class Trainer:
         self.graceful_exit(model)
 
     def prepare_fit(self, model, seed=None):
-        '''
+        """
         This is called before fit_loop, and is used to set up the model and optimizer.
-        '''
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            seed (int): Random seed for reproducibility.
+
+        Returns:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+        """
         GPU_FLAG = torch.cuda.is_available()
         GPU_USED = self.device.type == 'cuda'
         if self.verbose > 0:
@@ -147,6 +165,18 @@ class Trainer:
 
     
     def fit_loop(self, model, epochs, train_loader, val_loader):
+        """
+        Main training loop. This is where the model is trained.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            epochs (int): Number of epochs to train.
+            train_loader (DataLoader): Training data.
+            val_loader (DataLoader): Validation data.
+
+        Returns:
+            None
+        """
         
         self.nbatch = len(train_loader)
 
@@ -244,8 +274,16 @@ class Trainer:
                     break
 
     def validate_one_epoch(self, model, val_loader):
-        # validation step for one epoch
+        """
+        validation step for one epoch
 
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            val_loader (DataLoader): Validation data.
+
+        Returns:
+            dict: validation loss
+        """
         # bring models to evaluation mode
         model.eval()
         runningloss = 0
@@ -277,8 +315,17 @@ class Trainer:
         return {'val_loss': runningloss/nsteps}
             
     def train_one_epoch(self, model, train_loader, epoch=0):
-        # train for one epoch
-        
+        """
+        Train for one epoch.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            train_loader (DataLoader): Training data.
+            epoch (int): Current epoch.
+
+        Returns:
+            dict: training loss
+        """
         assert not self.use_closure, "Trainer: LBFGS and LBFGSNew are supported by LBFGSTrainer"
         
         model.train() # set model to training mode
@@ -309,7 +356,17 @@ class Trainer:
 
 
     def train_one_step(self, model, data, batch_idx=None):
-        
+        """
+        Train for one step.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            data (dict): Training data.
+            batch_idx (int): Current batch index.
+
+        Returns:
+            dict: training loss
+        """
         # Data to device if it's not already there
         if self.use_gpu:
             for dsub in data:
@@ -350,7 +407,17 @@ class Trainer:
         return {'train_loss': loss.detach().item()}
     
     def checkpoint_model(self, model, epoch=None, is_best=False):
-        
+        """
+        Checkpoint the model.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            epoch (int): Current epoch.
+            is_best (bool): Whether this is the best model.
+
+        Returns:
+            None
+        """
         state = model.state_dict()
         
         if epoch is None:
@@ -369,6 +436,15 @@ class Trainer:
         save_checkpoint(cpkt, os.path.join(self.dirpath, 'model_checkpoint.ckpt'), is_best=is_best)
     
     def graceful_exit(self, model):
+        """
+        Graceful exit. This is called at the end of training or it if gets interrupted.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+
+        Returns:
+            None
+        """
         if self.verbose > 0:
             print("Done fitting")
         # to run upon keybord interrupt
@@ -410,18 +486,35 @@ class Trainer:
         #     'best_model.pt'
 
 class LBFGSTrainer(Trainer):
+    """
+    This class is for training with the LBFGS optimizer. It is a subclass of Trainer.
+    """
 
     def __init__(self,
             full_batch=False,
             **kwargs,
             ):
-
+        """
+        Args:
+            full_batch (bool): Whether to use full batch optimization.
+        """
         super().__init__(**kwargs)
 
         self.fullbatch = full_batch
     
     def fit(self, model, train_loader, val_loader=None, seed=None):
+        """
+        Fit the model to the data.
 
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            train_loader (DataLoader): Training data.
+            val_loader (DataLoader): Validation data.
+            seed (int): Random seed for reproducibility.
+
+        Returns:
+            None
+        """
         self.prepare_fit(model, seed=seed)
 
         if isinstance(train_loader, dict):
@@ -466,7 +559,16 @@ class LBFGSTrainer(Trainer):
         self.graceful_exit(model)
 
     def fit_data_dict(self, model, train_data):
-        "fit data that is provided in a dictionary"
+        """
+        Fit data that is provided in a dictionary.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            train_data (dict): Training data.
+
+        Returns:
+            None
+        """
         for dsub in train_data:
             train_data[dsub] = train_data[dsub].to(self.device)
             
@@ -496,8 +598,17 @@ class LBFGSTrainer(Trainer):
         
         
     def train_one_epoch(self, model, train_loader, epoch=0):
-        # train for one epoch
-        
+        """
+        Train for one epoch.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            train_loader (DataLoader): Training data.
+            epoch (int): Current epoch.
+
+        Returns:
+            dict: training loss
+        """
         model.train() # set model to training mode
 
         self.iter = 1
@@ -561,16 +672,30 @@ class LBFGSTrainer(Trainer):
 
 
 class TemperatureCalibratedTrainer(Trainer):
+    """
+    This class is for training with temperature calibration. It is a subclass of Trainer.
+    """
 
     def __init__(self,
             **kwargs,
             ):
-
+        """
+        Args:
+            None
+        """
         super().__init__(**kwargs)
 
     def validate_one_epoch(self, model, val_loader):
-        # validation step for one epoch
+        """
+        Validation step for one epoch.
 
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            val_loader (DataLoader): Validation data.
+
+        Returns:
+            dict: validation loss
+        """
         # bring models to evaluation mode
         model.eval()
         assert hasattr(model, 'temperature'), 'Model must have a temperature attribute'

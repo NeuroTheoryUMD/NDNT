@@ -8,12 +8,12 @@ from torch.utils.data import Sampler
 class ExperimentBatchGenerator:
     """
     Generator that returns batches of timepoints for a single experiment.
-    
+
     Args:
         timepoints (list): list of timepoints to sample from
         batch_size (int): size of the batch to sample
         shuffle (bool): whether to shuffle the batches
-        random_seed (int): random seed to use for shuffling 
+        random_seed (int): random seed to use for shuffling
     """
     
     def __init__(self, timepoints:list, batch_size:int, shuffle:bool, random_seed:int=None) -> None:
@@ -33,6 +33,12 @@ class ExperimentBatchGenerator:
                 Random().shuffle(self.batches)
     
     def next(self) -> list:
+        """
+        Next method of the generator.
+
+        Returns:
+            the next batch
+        """
         if self.current_batch_index < len(self.batches):
             batch = self.batches[self.current_batch_index]
             self.current_batch_index += 1
@@ -45,13 +51,14 @@ class ExperimentBatchGenerator:
 class ExperimentBatchIterator(Iterator):
     """
     Iterator that returns batches of timepoints across experiments.
-    
+
     Args:
         exp_to_time (dict): map from experiment indices to timepoints
         exp_batch_sizes (list): list of batch sizes for each experiment
         shuffle (bool): whether to shuffle the batches
         random_seed (int): random seed to use for shuffling
     """
+
     def __init__(self, exp_to_time, exp_batch_sizes, shuffle:bool, random_seed:int=None) -> None:
         self.exp_batch_generators = []
 
@@ -61,6 +68,12 @@ class ExperimentBatchIterator(Iterator):
             self.exp_batch_generators.append(ExperimentBatchGenerator(timepoints, exp_batch_size, shuffle, random_seed))
     
     def __next__(self) -> list:
+        """
+        Next method of the iterator.
+
+        Returns:
+            the next batch
+        """
         # get the next batch for each experiment and accumulate
         batch = []
         for exp_batch_generator in self.exp_batch_generators:
@@ -107,7 +120,8 @@ def construct_exp_to_time(dataset, indices=None) -> dict:
     return exp_to_time
 
 class ExperimentSampler(Sampler):
-    """Samples elements across experiments.
+    """
+    Samples elements across experiments.
 
     Args:
         dataset (Dataset): dataset to sample from
@@ -115,7 +129,7 @@ class ExperimentSampler(Sampler):
         indices (list): indices to sample from
         shuffle (bool): whether to shuffle the indices
         random_seed (int): random seed to use for shuffling
-        verbose (bool): whether to print out information about the sampler 
+        verbose (bool): whether to print out information about the sampler
     """
     
     def __init__(self, dataset: Dataset, batch_size:int, indices:list=None, shuffle:bool=True, random_seed:int=None, verbose=False) -> None:

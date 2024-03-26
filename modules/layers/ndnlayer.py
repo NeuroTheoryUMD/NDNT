@@ -72,7 +72,21 @@ class NDNLayer(nn.Module):
                  reg_vals:dict=None,
                  **kwargs,
                  ):
+        """
+        Initialize the layer.
 
+        Args:
+            input_dims: list of 4 ints, dimensions of input
+            num_filters: int, number of filters in layer
+            NLtype: str, type of nonlinearity to use (see activations.py)
+            norm: int, type of filter normalization to use (0=None, 1=filters are unit vectors, 2=maxnorm?)
+            pos_constraint: bool, whether to constrain weights to be positive
+            num_inh: int, number of inhibitory units (creates ei_mask and makes "inhibitory" units have negative output)
+            bias: bool, whether to include bias term
+            weight_init: str, type of weight initialization to use (see reset_parameters, default 'xavier_uniform')
+            bias_init: str, type of bias initialization to use (see reset_parameters, default 'zeros')
+            reg_vals: dict, regularization values to use (see regularizers.py)
+        """
         assert input_dims is not None, "NDNLayer: Must specify input_dims"
         assert num_filters is not None, "NDNLayer: Must specify num_filters"
         #assert len(num_filters) > 0, "NDNLayer: num_filters is incorrectly specified."
@@ -178,13 +192,16 @@ class NDNLayer(nn.Module):
                                  torch.cat( (torch.ones(self.num_filters-self._num_inh), -torch.ones(self._num_inh))) )
 
     def reset_parameters(self, weights_initializer=None, bias_initializer=None, param=None) -> None:
-        '''
+        """
         Initialize the weights and bias parameters of the layer.
+
         Args:
             weights_initializer: str, type of weight initialization to use
                 options: 'xavier_uniform', 'xavier_normal', 'kaiming_uniform', 'kaiming_normal', 'orthogonal', 'zeros', 'ones'
             bias_initializer: str, type of bias initialization to use
-        '''
+                options: 'uniform', 'normal', 'zeros', 'ones'
+            param: float or list of floats, parameter for weight initialization
+        """
         # Default initializer, although others possible
         if weights_initializer is None:
             weights_initializer = 'uniform'
@@ -241,11 +258,21 @@ class NDNLayer(nn.Module):
             print('bias initializer not defined')
 
     def initialize_gaussian_envelope(self):
+        """
+        Initialize the weights to have a Gaussian envelope.
+        This is useful for initializing filters to have a spatial-temporal Gaussian shape.
+        """
         from NDNT.utils import initialize_gaussian_envelope
         w_centered = initialize_gaussian_envelope( self.get_weights(to_reshape=False), self.filter_dims)
         self.weight.data = torch.tensor(w_centered, dtype=torch.float32)
 
     def preprocess_weights(self):
+        """
+        Preprocess the weights before using them in the forward pass.
+
+        Returns:
+            w: torch.Tensor, preprocessed weights
+        """
         # Apply positive constraints
         if self.pos_constraint > 0:
             w = torch.square(self.weight) # to promote continuous gradients around 0
@@ -263,6 +290,16 @@ class NDNLayer(nn.Module):
         return w
 
     def forward(self, x):
+        """
+        Forward pass for the layer.
+
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            x: torch.Tensor, output tensor
+        """
+
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
 
@@ -293,13 +330,29 @@ class NDNLayer(nn.Module):
         # END NDNLayer.forward
 
     def compute_reg_loss(self):
+        """
+        Compute the regularization loss for the layer.
+
+        Returns:
+            reg_loss: torch.Tensor, regularization loss
+        """
         #### weight_regularization = self.reg.compute_reg_loss(self.preprocess_weights())
         return self.reg.compute_reg_loss(self.preprocess_weights())
         # combine these two types of regularization
         #### return weight_regularization + self.activity_regularization
 
     def get_weights(self, to_reshape=True, time_reverse=False, num_inh=0):
-        """num-inh can take into account previous layer inhibition weights"""
+        """
+        num-inh can take into account previous layer inhibition weights.
+        
+        Args:
+            to_reshape: bool, whether to reshape the weights to the original filter shape
+            time_reverse: bool, whether to reverse the time dimension
+            num_inh: int, number of inhibitory units
+
+        Returns:
+            ws: np.ndarray, weights of the layer, on the CPU
+        """
 
         ws = self.preprocess_weights().detach().cpu().numpy()
         num_filts = ws.shape[-1]
@@ -341,16 +394,30 @@ class NDNLayer(nn.Module):
                 pp.requires_grad = val
 
     def set_reg_val( self, reg_type, reg_val=None):
+        """
+        Set the regularization value for a given regularization type.
+
+        Args:
+            reg_type: str, type of regularization to set
+            reg_val: float, value to set the regularization to
+
+        Returns:
+            None
+        """
         self.reg.set_reg_val( reg_type=reg_type, reg_val=reg_val )
 
     def plot_filters( self, time_reverse=None, **kwargs):
         """
         Plot the filters in the layer.
+
         Args:
             cmaps: str or colormap, colormap to use for plotting (default 'gray')
             num_cols: int, number of columns to use in plot (default 8)
             row_height: int, number of rows to use in plot (default 2)
             time_reverse: bool, whether to reverse the time dimension (default depends on dimension)
+
+        Returns:
+            None
         """
 
         # Make different defaults for time_reverse depending on 1 vs 2D
@@ -388,6 +455,13 @@ class NDNLayer(nn.Module):
         This uses the methods in the init to determine the input_dims, output_dims, filter_dims, and actual size of
         the weight tensor (weight_shape), given inputs, and package in a dictionary. This should be overloaded with each
         child of NDNLayer if want to use -- but this is external to function of actual layer.
+
+        Args:
+            input_dims: list of 4 ints, dimensions of input
+            num_filters: int, number of filters in layer
+
+        Returns:
+            dinfo: dict, dictionary of dimension information
         """
         assert input_dims is not None, "NDNLayer: Must include input_dims."
         assert num_filters is not None, "NDNLayer: Must include num_filters."
@@ -419,6 +493,23 @@ class NDNLayer(nn.Module):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            input_dims: list of 4 ints, dimensions of input
+            num_filters: int, number of filters in layer
+            bias: bool, whether to include bias term
+            NLtype: str, type of nonlinearity to use (see activations.py)
+            norm_type: int, type of filter normalization to use (0=None, 1=filters are unit vectors, 2=maxnorm?)
+            pos_constraint: bool, whether to constrain weights to be positive
+            num_inh: int, number of inhibitory units (creates ei_mask and makes "inhibitory" units have negative output)
+            initialize_center: bool, whether to initialize the weights to have a Gaussian envelope
+            reg_vals: dict, regularization values to use (see regularizers.py)
+            output_norm: str, type of output normalization to use
+            weights_initializer: str, type of weight initialization to use
+            bias_initializer: str, type of bias initialization to use
+
+        Returns:
+            dict: dictionary of layer parameters
         """
 
         # Check that input_dims are four-dimensional: otherwise assume filter_dimension missing, and lags

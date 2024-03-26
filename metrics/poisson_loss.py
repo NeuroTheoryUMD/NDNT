@@ -12,7 +12,7 @@ import torch
 from torch import nn
 
 
-#### LOSS FUNCTIONS: could ideally be in separate file and imported directly
+#### LOSS FUNCTIONS: could ideally be in separate file and imported directly7
 class PoissonLoss_datafilter(nn.Module):
     """
     This is initialized with default behavior that requires no knowledge of the dataset:
@@ -44,8 +44,17 @@ class PoissonLoss_datafilter(nn.Module):
     #     return s 
 
     def set_log_epsilon( self, epsilon=None ):
-        """Changes the floor of the poisson loss function (the epsilon in the logarithm). Leave epsilon
-        blank or None if want to reset to default (1e-8)"""
+        """
+        Changes the floor of the poisson loss function (the epsilon in the logarithm). Leave epsilon
+        blank or None if want to reset to default (1e-8).
+        
+        Args:
+            epsilon (float): floor of the poisson loss function
+
+        Returns:
+            None
+        """
+
         if epsilon is None:
             self.loss = nn.PoissonNLLLoss(log_input=False, reduction='mean')
             self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
@@ -63,7 +72,17 @@ class PoissonLoss_datafilter(nn.Module):
                 1 'data_filters': weight each neuron individually by the amount of data
                 2 'av_batch_size': weight by average batch size. Needs av_batch_size set/initialized from dataset info
                 -1 'unnormalized': no weighing at all. this will implicitly increase with batch size
+
+        Args:
+            batch_weighting (int): 0, 1, 2, -1
+            unit_weighting (bool): whether to weight units
+            unit_weights (torch.tensor): weights for each unit
+            av_batch_size (int): average batch size
+
+        Returns:
+            None
         """
+
         import numpy as np  # added as zero-weighting kluge (for np.maximum)
 
         if batch_weighting is not None:
@@ -81,7 +100,19 @@ class PoissonLoss_datafilter(nn.Module):
     # END PoissonLoss_datafilter.set_loss_weighting
 
     def forward(self, pred, target, data_filters=None ):        
-        
+        """
+        This is the forward function for the loss function. It calculates the loss based on the input and target data.
+        The loss is calculated as the Poisson negative log likelihood between the prediction and target data.
+
+        Args:
+            pred (torch.tensor): prediction data
+            target (torch.tensor): target data
+            data_filters (torch.tensor): data filters for each unit
+
+        Returns:
+            loss (torch.tensor): loss value
+        """
+
         unit_weights = torch.ones( pred.shape[1], device=pred.device)
         if self.batch_weighting == 0:  # batch_size
             unit_weights /= pred.shape[0]
@@ -107,8 +138,19 @@ class PoissonLoss_datafilter(nn.Module):
     # END PoissonLoss_datafilter.forward
 
     def unit_loss(self, pred, target, data_filters=None, temporal_normalize=True ):        
-        """This should be equivalent of forward, without sum over units
-        Currently only true if batch_weighting = 'data_filter'"""
+        """
+        This should be equivalent of forward, without sum over units
+        Currently only true if batch_weighting = 'data_filter'.
+        
+        Args:
+            pred (torch.tensor): prediction data
+            target (torch.tensor): target data
+            data_filters (torch.tensor): data filters for each unit
+            temporal_normalize (bool): whether to normalize by time steps
+
+        Returns:
+            unitloss (torch.tensor): loss value for each unit
+        """
 
         if data_filters is None:
             unitloss = torch.sum(
@@ -169,7 +211,17 @@ class SimplePoissonLoss(nn.Module):
                 1 'data_filters': weight each neuron individually by the amount of data
                 2 'av_batch_size': weight by average batch size. Needs av_batch_size set/initialized from dataset info
                 -1 'unnormalized': no weighing at all. this will implicitly increase with batch size
+
+        Args:
+            batch_weighting (int): 0, 1, 2, -1
+            unit_weighting (bool): whether to weight units
+            unit_weights (torch.tensor): weights for each unit
+            av_batch_size (int): average batch size
+
+        Returns:
+            None
         """
+
         import numpy as np  # added as zero-weighting kluge (for np.maximum)
 
         if batch_weighting is not None:
@@ -188,7 +240,18 @@ class SimplePoissonLoss(nn.Module):
     # END PoissonLoss_datafilter.set_loss_weighting
 
     def forward(self, pred, target, data_filters=None ):        
-        
+        """
+        This is the forward function for the loss function. It calculates the loss based on the input and target data.
+        The loss is calculated as the Poisson negative log likelihood between the prediction and target data.
+
+        Args:
+            pred (torch.tensor): prediction data
+            target (torch.tensor): target data
+            data_filters (torch.tensor): data filters for each unit
+
+        Returns:
+            loss (torch.tensor): loss value
+        """
         if data_filters is None:
             # Currently this does not apply unit_norms
             loss = self.loss(pred, target)
@@ -202,8 +265,19 @@ class SimplePoissonLoss(nn.Module):
     # END PoissonLoss_datafilter.forward
 
     def unit_loss(self, pred, target, data_filters=None, temporal_normalize=True ):        
-        """This should be equivalent of forward, without sum over units
-        Currently only true if batch_weighting = 'data_filter'"""
+        """
+        This should be equivalent of forward, without sum over units
+        Currently only true if batch_weighting = 'data_filter'.
+        
+        Args:
+            pred (torch.tensor): prediction data
+            target (torch.tensor): target data
+            data_filters (torch.tensor): data filters for each unit
+            temporal_normalize (bool): whether to normalize by time steps
+
+        Returns:
+            unitloss (torch.tensor): loss value for each unit
+        """
 
         if data_filters is None:
             unitloss = torch.sum(

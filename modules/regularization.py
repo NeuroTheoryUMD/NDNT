@@ -7,9 +7,14 @@ from copy import deepcopy
 import numpy as np
 
 class Regularization(nn.Module):
-    """Class for handling layer-wise regularization
+    """
+    Class for handling layer-wise regularization. 
     
-    Attributes:
+    This class stores all info for regularization, 
+    and sets up regularization modules for training, 
+    and returns reg_penalty from layer when passed in weights.
+    
+    Args:
         vals (dict): values for different types of regularization stored as
             floats
         vals_ph (dict): placeholders for different types of regularization to
@@ -24,18 +29,17 @@ class Regularization(nn.Module):
             matrices
         num_outputs (int): dimension of layer output size; for generating 
             target weights in norm2
-
     """
 
     def __init__(self, filter_dims=None, vals=None, num_outputs=None, 
                  normalize=False, pos_constraint=False, folded_lags=False, **kwargs):
-        """Constructor for Regularization class. This stores all info for regularization, and 
+        """
+        Constructor for Regularization class. This stores all info for regularization, and 
         sets up regularization modules for training, and returns reg_penalty from layer when passed in weights
         
         Args:
             input_dims (list of ints): dimension of input size (for building reg mats)
             vals (dict, optional): key-value pairs specifying value for each type of regularization 
-            
             Note: to pass in boundary_condition information, use a dict in vals with the values corresponding to
             particular regularization, e,g., 'BCs':{'d2t':1, 'd2x':0} (1=on, 0=off)
             
@@ -43,10 +47,11 @@ class Regularization(nn.Module):
             TypeError: If `input_dims` is not specified
             TypeError: If `num_outputs` is not specified
         
-        Note that I'm using my old regularization matrices, which is made for the following 3-dimensional
-        weights with dimensions ordered in [NX, NY, num_lags]. Currently, filter_dims is 4-d: 
-        [num_filters, NX, NY, num_lags] so this will need to rearrage so num_filters gets folded into last 
-        dimension so that it will work with d2t regularization, if reshape is necessary]
+        Notes:
+            I'm using my old regularization matrices, which is made for the following 3-dimensional 
+            weights with dimensions ordered in [NX, NY, num_lags]. Currently, filter_dims is 4-d: 
+            [num_filters, NX, NY, num_lags] so this will need to rearrage so num_filters gets folded into last 
+            dimension so that it will work with d2t regularization, if reshape is necessary]
         """
 
         super(Regularization, self).__init__()

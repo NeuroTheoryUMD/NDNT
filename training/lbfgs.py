@@ -9,7 +9,8 @@ from torch.optim import Optimizer
 def is_legal(v):
     """
     Checks that tensor is not NaN or Inf.
-    Inputs:
+
+    Args:
         v (tensor): tensor to be checked
     """
     legal = not torch.isnan(v).any() and not torch.isinf(v)
@@ -26,16 +27,19 @@ def polyinterp(points, x_min_bound=None, x_max_bound=None, plot=False):
     modifications.
     Implemented by: Hao-Jun Michael Shi and Dheevatsa Mudigere
     Last edited 12/6/18.
-    Inputs:
+
+    Args:
         points (nparray): two-dimensional array with each point of form [x f g]
         x_min_bound (float): minimum value that brackets minimum (default: minimum of points)
         x_max_bound (float): maximum value that brackets minimum (default: maximum of points)
         plot (bool): plot interpolating polynomial
-    Outputs:
+
+    Returns:
         x_sol (float): minimizer of interpolating polynomial
         F_min (float): minimum of interpolating polynomial
+
     Note:
-      . Set f or g to np.nan if they are unknown
+        Set f or g to np.nan if they are unknown
     """
     no_points = points.shape[0]
     order = np.sum(1 - np.isnan(points[:, 1:3]).astype('int')) - 1
@@ -151,10 +155,12 @@ class LBFGS(Optimizer):
     and Michael Overton's weak Wolfe line search MATLAB code.
     Implemented by: Hao-Jun Michael Shi and Dheevatsa Mudigere
     Last edited 10/20/20.
+
     Warnings:
       . Does not support per-parameter options and parameter groups.
       . All parameters have to be on a single device.
-    Inputs:
+
+    Args:
         lr (float): steplength or learning rate (default: 1)
         history_size (int): update history size (default: 10)
         line_search (str): designates line search to use (default: 'Wolfe')
@@ -164,6 +170,7 @@ class LBFGS(Optimizer):
                 'Wolfe': uses Armijo-Wolfe bracketing line search
         dtype: data type (default: torch.float)
         debug (bool): debugging mode
+
     References:
     [1] Berahas, Albert S., Jorge Nocedal, and Martin Takác. "A Multi-Batch L-BFGS 
         Method for Machine Learning." Advances in Neural Information Processing 
@@ -187,7 +194,6 @@ class LBFGS(Optimizer):
     [9] Wang, Xiao, et al. "Stochastic Quasi-Newton Methods for Nonconvex Stochastic 
         Optimization." SIAM Journal on Optimization 27.2 (2017): 927-956.
     """
-
     def __init__(self, params, lr=1., history_size=10, line_search='Wolfe',
                  dtype=torch.float, debug=False):
 
@@ -261,7 +267,7 @@ class LBFGS(Optimizer):
         """
         Switches line search option.
         
-        Inputs:
+        Args:
             line_search (str): designates line search to use
                 Options:
                     'None': uses steplength designated in algorithm
@@ -278,8 +284,10 @@ class LBFGS(Optimizer):
     def two_loop_recursion(self, vec):
         """
         Performs two-loop recursion on given vector to obtain Hv.
-        Inputs:
+
+        Args:
             vec (tensor): 1-D tensor to apply two-loop recursion to
+
         Output:
             r (tensor): matrix-vector product Hv
         """
@@ -321,7 +329,8 @@ class LBFGS(Optimizer):
     def curvature_update(self, flat_grad, eps=1e-2, damping=False):
         """
         Performs curvature update.
-        Inputs:
+
+        Args:
             flat_grad (tensor): 1-D tensor of flattened gradient for computing 
                 gradient difference with previously stored gradient
             eps (float): constant for curvature pair rejection or damping (default: 1e-2)
@@ -403,7 +412,8 @@ class LBFGS(Optimizer):
     def _step(self, p_k, g_Ok, g_Sk=None, options=None):
         """
         Performs a single optimization step.
-        Inputs:
+        
+        Args:
             p_k (tensor): 1-D tensor specifying search direction
             g_Ok (tensor): 1-D tensor of flattened gradient over overlap O_k used
                             for gradient differencing in curvature pair update
@@ -411,6 +421,7 @@ class LBFGS(Optimizer):
                             used for curvature pair damping or rejection criterion,
                             if None, will use g_Ok (default: None)
             options (dict): contains options for performing line search (default: None)
+
         Options for Armijo backtracking line search:
             'closure' (callable): reevaluates model and returns function value
             'current_loss' (tensor): objective value at current iterate (default: F(x_k))
@@ -421,6 +432,7 @@ class LBFGS(Optimizer):
             'interpolate' (bool): flag for using interpolation (default: True)
             'inplace' (bool): flag for inplace operations (default: True)
             'ls_debug' (bool): debugging mode for line search
+
         Options for Wolfe line search:
             'closure' (callable): reevaluates model and returns function value
             'current_loss' (tensor): objective value at current iterate (default: F(x_k))
@@ -432,6 +444,7 @@ class LBFGS(Optimizer):
             'interpolate' (bool): flag for using interpolation (default: True)
             'inplace' (bool): flag for inplace operations (default: True)
             'ls_debug' (bool): debugging mode for line search
+
         Outputs (depends on line search):
           . No line search:
                 t (float): steplength
@@ -463,6 +476,7 @@ class LBFGS(Optimizer):
                 fail (bool): failure flag
                     True: line search reached maximum number of iterations, failed
                     False: line search succeeded
+                    
         Notes:
           . If encountering line search failure in the deterministic setting, one
             should try increasing the maximum number of line search steps max_ls.
@@ -964,7 +978,8 @@ class FullBatchLBFGS(LBFGS):
     Warnings:
       . Does not support per-parameter options and parameter groups.
       . All parameters have to be on a single device.
-    Inputs:
+      
+    Args:
         lr (float): steplength or learning rate (default: 1)
         history_size (int): update history size (default: 10)
         line_search (str): designates line search to use (default: 'Wolfe')
@@ -984,12 +999,13 @@ class FullBatchLBFGS(LBFGS):
     def step(self, options=None):
         """
         Performs a single optimization step.
-        Inputs:
+        Args:
             options (dict): contains options for performing line search (default: None)
             
         General Options:
             'eps' (float): constant for curvature pair rejection or damping (default: 1e-2)
             'damping' (bool): flag for using Powell damping (default: False)
+
         Options for Armijo backtracking line search:
             'closure' (callable): reevaluates model and returns function value
             'current_loss' (tensor): objective value at current iterate (default: F(x_k))
@@ -1000,6 +1016,7 @@ class FullBatchLBFGS(LBFGS):
             'interpolate' (bool): flag for using interpolation (default: True)
             'inplace' (bool): flag for inplace operations (default: True)
             'ls_debug' (bool): debugging mode for line search
+
         Options for Wolfe line search:
             'closure' (callable): reevaluates model and returns function value
             'current_loss' (tensor): objective value at current iterate (default: F(x_k))
@@ -1011,6 +1028,7 @@ class FullBatchLBFGS(LBFGS):
             'interpolate' (bool): flag for using interpolation (default: True)
             'inplace' (bool): flag for inplace operations (default: True)
             'ls_debug' (bool): debugging mode for line search
+
         Outputs (depends on line search):
           . No line search:
                 t (float): steplength
@@ -1042,6 +1060,7 @@ class FullBatchLBFGS(LBFGS):
                 fail (bool): failure flag
                     True: line search reached maximum number of iterations, failed
                     False: line search succeeded
+                    
         Notes:
           . If encountering line search failure in the deterministic setting, one
             should try increasing the maximum number of line search steps max_ls.

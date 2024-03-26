@@ -18,7 +18,7 @@ class LBFGSNew(Optimizer):
         This is a very memory intensive optimizer (it requires additional
         ``param_bytes * (history_size + 1)`` bytes). If it doesn't fit in memory
         try reducing the history size, or use a different algorithm.
-    Arguments:
+    Args:
         lr (float): learning rate (fallback value when line search fails. not really needed) (default: 1)
         max_iter (int): maximal number of iterations per optimization step
             (default: 10)
@@ -116,7 +116,7 @@ class LBFGSNew(Optimizer):
     #FF line search xk=self._params, pk=step direction, gk=gradient, alphabar=max. step size
     def _linesearch_backtrack(self,closure,pk,gk,alphabar):
         """Line search (backtracking)
-        Arguments:
+        Args:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
             pk: step direction vector
@@ -192,7 +192,7 @@ class LBFGSNew(Optimizer):
     #FF line search xk=self._params, pk=gradient
     def _linesearch_cubic(self,closure,pk,step):
         """Line search (strong-Wolfe)
-        Arguments:
+        Args:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
             pk: gradient vector 
@@ -319,7 +319,7 @@ class LBFGSNew(Optimizer):
     def _cubic_interpolate(self,closure,xk,pk,a,b,step):
         """ Cubic interpolation within interval [a,b] or [b,a] (a>b is possible)
           
-           Arguments:
+           Args:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
             xk: copy of parameter values 
@@ -411,7 +411,7 @@ class LBFGSNew(Optimizer):
     # xk: copy of parameters, use it to refresh self._param 
     def _linesearch_zoom(self,closure,xk,pk,a,b,phi_0,gphi_0,sigma,rho,t1,t2,t3,step):
         """Zoom step in line search
-        Arguments:
+        Args:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
             xk: copy of parameter values 
@@ -495,8 +495,10 @@ class LBFGSNew(Optimizer):
 
 
     def step(self, closure):
-        """Performs a single optimization step.
-        Arguments:
+        """
+        Performs a single optimization step.
+        
+        Args:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
         """

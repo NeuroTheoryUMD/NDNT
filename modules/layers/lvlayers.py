@@ -9,7 +9,8 @@ import numpy as np
 
 
 class LVLayer(NDNLayer):
-    """Generates output at based on a number of LVs, sampled by time point.
+    """
+    Generates output at based on a number of LVs, sampled by time point.
     Each LV has T weights, and can be many LVs (so weight matrix is T x NLVs.
     Requires specifically formatted input that passes in indices of LVs and relative
     weight, so will linearly interpolate. Also, can have trial-structure so will have 
@@ -26,8 +27,18 @@ class LVLayer(NDNLayer):
         norm_type=0,
         weights_initializer='normal',
         **kwargs):
-        """if num_trials is None, then assumes one continuous sequence, otherwise will assume num_time_pnts
-        is per-trial, and dimensionality of filter is [num_trials, 1, 1, num_time_pnts]"""
+        """
+        If num_trials is None, then assumes one continuous sequence, otherwise will assume num_time_pnts
+        is per-trial, and dimensionality of filter is [num_trials, 1, 1, num_time_pnts].
+        
+        Args:
+            num_time_pnts: int, number of time points
+            num_lvs: int, number of latent variables
+            num_trials: int, number of trials
+            norm_type: int, normalization type
+            weights_initializer: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            **kwargs: keyword arguments to pass to the parent class
+        """
 
         if num_trials is None:
             num_trials = 1
@@ -47,6 +58,12 @@ class LVLayer(NDNLayer):
     # END LVLayer.__init__()
         
     def preprocess_weights(self):
+        """
+        Preprocesses weights by applying positivity constraint and normalization.
+
+        Returns:
+            w: torch.Tensor, preprocessed weights
+        """
         if self.pos_constraint:
             #w = F.relu(self.weight)
             w = torch.square(self.weight)
@@ -60,8 +77,15 @@ class LVLayer(NDNLayer):
     # END preprocess_weights
             
     def forward( self, x ):
-        """Assumes input of B x 3 (where three numbers are indexes of 2 surrounding LV and relative weight of LV1)"""
+        """
+        Assumes input of B x 3 (where three numbers are indexes of 2 surrounding LV and relative weight of LV1).
+        
+        Args:
+            x: torch.Tensor, input tensor.
 
+        Returns:
+            y: torch.Tensor, output tensor.
+        """
         weights = self.preprocess_weights()
 
         if self.use_tent_basis:
@@ -92,6 +116,13 @@ class LVLayer(NDNLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            num_time_pnts: int, number of time points
+            num_lvs: int, number of latent variables
+            num_trials: int, number of trials
+            weights_initializer: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            **kwargs: keyword arguments to pass to the parent class
         """
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'LVlayer'
@@ -114,15 +145,9 @@ class LVLayer(NDNLayer):
 
 
 class LVLayerOLD(NDNLayer):
-    """No input. Produces LVs sampled from mu/sigma at each time step
+    """
+    No input. Produces LVs sampled from mu/sigma at each time step
     Could make tent functions for smoothness over time as well
-    Inputs:
-        num_time_points
-        num_lvs: default 1
-        init_mu_range: default 0.1
-        init_sigma: 
-        sm_reg: smoothness regularization penalty
-        gauss_type: isotropic
     """
 
     def __init__(self, 
@@ -133,7 +158,15 @@ class LVLayerOLD(NDNLayer):
         sigma_shape='lv',  # 'full', 'lv' (one sigma for each LV), or 'time' (one sigma for each time)
         input_dims=[1,1,1,1],  # ignored if not entered, otherwise overwritten
         **kwargs):
-
+        """
+        Args:
+            num_time_points
+            num_lvs: default 1
+            init_mu_range: default 0.1
+            init_sigma: 
+            sm_reg: smoothness regularization penalty
+            gauss_type: isotropic
+        """
         assert num_time_pnts is not None, "LVLayer: Must specify num_time_pnts explicitly"
         # Determine whether one- or two-dimensional fixation
 
@@ -184,7 +217,11 @@ class LVLayerOLD(NDNLayer):
     def forward(self, x):
         """
         Input has to be time-indices of what data is being indexed
+
+        Args:
             x: time-indices of LVs
+        
+        Returns:
             z: output LVs
         """
 
@@ -230,6 +267,17 @@ class LVLayerOLD(NDNLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            num_time_pnts: int, number of time points
+            num_lvs: int, number of latent variables
+            init_mu: float, initial mean value
+            init_sigma: float, initial sigma value
+            sigma_shape: str, 'full', 'lv', or 'time'
+            **kwargs: keyword arguments to pass to the parent class
+
+        Returns:
+            Ldict: dict, dictionary of layer parameters
         """
         assert num_time_pnts is not None, "LVLayer: Must specify num_time_pnts"
         Ldict = super().layer_dict(**kwargs)

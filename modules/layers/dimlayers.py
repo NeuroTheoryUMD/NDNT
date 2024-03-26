@@ -5,8 +5,7 @@ import numpy as np
 
 class Dim0Layer(NDNLayer):
     """
-    Filters that act solely on filter-dimension (dim-0)
-
+    Filters that act solely on filter-dimension (dim-0).
     """ 
 
     def __init__(self,
@@ -14,7 +13,11 @@ class Dim0Layer(NDNLayer):
             num_filters=None,
             **kwargs,
         ):
-
+        """
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+        """
         assert input_dims is not None, "Dim0Layer: Must specify input_dims"
         assert input_dims[0] > 1, "Dim0Layer: Dim-0 of input must be non-trivial"
         assert num_filters is not None, "Dim0Layer: num_filters must be specified"
@@ -35,7 +38,13 @@ class Dim0Layer(NDNLayer):
     # END Dim0Layer.__init__
 
     def forward(self, x):
+        """
+        Args:
+            x: torch.Tensor, input tensor of shape [B, C, H, W, L]
 
+        Returns:
+            y: torch.Tensor, output tensor of shape [B, N, H, W, L]
+        """
         w = self.preprocess_weights()
 
         # Reshape input to expose dim0 and put last
@@ -70,6 +79,13 @@ class Dim0Layer(NDNLayer):
         This uses the methods in the init to determine the input_dims, output_dims, filter_dims, and actual size of
         the weight tensor (weight_shape), given inputs, and package in a dictionary. This should be overloaded with each
         child of NDNLayer if want to use -- but this is external to function of actual layer.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+
+        Returns:
+            dinfo: dictionary with keys 'input_dims', 'filter_dims', 'output_dims', 'num_outputs', 'weight_shape'
         """
         assert input_dims is not None, "NDNLayer: Must include input_dims."
         assert num_filters is not None, "NDNLayer: Must include num_filters."
@@ -115,7 +131,11 @@ class ChannelLayer(NDNLayer):
             num_filters=None,
             **kwargs,
         ):
-
+        """
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+        """
         assert input_dims is not None, "ChannelLayer: Must specify input_dims"
         assert input_dims[0] > 1, "ChannelLayer: Dim-0 of input must be non-trivial"
         if num_filters is None:
@@ -146,6 +166,13 @@ class ChannelLayer(NDNLayer):
     # END [classmethod] ChannelLayer.layer_dict
 
     def forward(self, x):
+        """
+        Args:
+            x: torch.Tensor, input tensor of shape [B, C, H, W, L]
+
+        Returns:
+            y: torch.Tensor, output tensor of shape [B, N, H, W, L]
+        """
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
 
@@ -183,7 +210,12 @@ class DimSPLayer(NDNLayer):
             transparent=False,
             **kwargs,
         ):
-
+        """
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            transparent: if True, one spatial filter for each channel
+        """
         assert input_dims is not None, "DimSPLayer: Must specify input_dims"
         assert np.prod(input_dims[1:3]) > 1, "DimSPLayer: Spatial dims of input must be non-trivial"
         assert num_filters is not None, "DimSPLayer: num_filters must be specified"
@@ -211,7 +243,13 @@ class DimSPLayer(NDNLayer):
     # END DimSPLayer.__init__
 
     def forward(self, x):
+        """
+        Args:
+            x: torch.Tensor, input tensor of shape [B, C, H, W, L]
 
+        Returns:
+            y: torch.Tensor, output tensor of shape [B, N, H, W, L]
+        """
         w = self.preprocess_weights()
 
         # Reshape input to expose spatial dims -- note a lag-dim will screw this up without a permute
@@ -265,8 +303,7 @@ class DimSPLayer(NDNLayer):
 
 class DimSPTLayer(NDNLayer):
     """
-    Filters that act solely on spatial-dimensions (dims-1,3)
-
+    Filters that act solely on spatial-dimensions (dims-1,3).
     """ 
 
     def __init__(self,
@@ -275,7 +312,12 @@ class DimSPTLayer(NDNLayer):
             transparent=False,
             **kwargs,
         ):
-
+        """
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            transparent: if True, one spatial filter for each channel
+        """
         assert input_dims is not None, "DimSPTLayer: Must specify input_dims"
         assert np.prod(input_dims[1:]) > 1, "DimSPTLayer: Spatial dims of input must be non-trivial"
         assert num_filters is not None, "DimSPTLayer: num_filters must be specified"
@@ -297,7 +339,13 @@ class DimSPTLayer(NDNLayer):
     # END DimSPLayer.__init__
 
     def forward(self, x):
+        """
+        Args:
+            x: torch.Tensor, input tensor of shape [B, C, H, W, L]
 
+        Returns:
+            y: torch.Tensor, output tensor of shape [B, N, H, W, L]
+        """
         w = self.preprocess_weights()
 
         # Reshape input to expose spatial dims 

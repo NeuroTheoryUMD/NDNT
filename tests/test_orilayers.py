@@ -3,7 +3,7 @@ sys.path.append('../../') # to have access to NDNT
 
 import torch
 import NDNT.utils as utils # some other utilities
-import NDNT.NDNT as NDN
+import NDNT.NDN as NDN
 from NDNT.modules.layers import *
 from NDNT.networks import *
 

@@ -14,7 +14,14 @@ class BinocLayer1D(ConvLayer):
     """ 
 
     def __init__(self, input_dims=None, num_filters=None, padding=None, **kwargs ):
-        """Same arguments as ConvLayer, but will reshape output to divide space in half"""
+        """
+        Same arguments as ConvLayer, but will reshape output to divide space in half
+        
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            padding: 'same' or 'valid' (default 'same')
+        """
 
         assert padding is None, "Should not enter padding: will be set to 'same'"
         NF, NX2, a, b = input_dims
@@ -37,6 +44,15 @@ class BinocLayer1D(ConvLayer):
     # END BinocLayer1D.__init__
 
     def forward(self, x):
+        """
+        Call conv forward, but then option to reshape
+
+        Args:
+            x: tensor of shape [batch, num_channels, height, width, lags]
+
+        Returns:
+            y: tensor of shape [batch, num_outputs]
+        """
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
 
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3) # B, C, T, X, Y
@@ -115,11 +131,22 @@ class BinocLayer1D(ConvLayer):
 class BiConvLayer1D(ConvLayer):
     """
     Filters that act solely on filter-dimension (dim-0)
-
     """ 
 
     def __init__(self, **kwargs ):
-        """Same arguments as ConvLayer, but will reshape output to divide space in half"""
+        """
+        Same arguments as ConvLayer, but will reshape output to divide space in half.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_dims: width of convolutional kernel (int or list of ints)
+            padding: 'same' or 'valid' (default 'same')
+            weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            bias_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            bias: bool, whether to include bias term
+            NLtype: str, 'lin', 'relu', 'tanh', 'sigmoid', 'elu', 'none'
+        """
 
         super().__init__(**kwargs)
 
@@ -155,7 +182,19 @@ class BiSTconv1D(NDNLayer):
 
     def __init__(self, input_dims=None, num_filters=None, filter_dims=None, norm_type=None,
                  NLtype='relu', **kwargs ):
-        """Same arguments as ConvLayer, but will reshape output to divide space in half"""
+        """
+        Same arguments as ConvLayer, but will reshape output to divide space in half.
+        
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_dims: width of convolutional kernel (int or list of ints)
+            padding: 'same' or 'valid' (default 'same')
+            weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            bias_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+            bias: bool, whether to include bias term
+            NLtype: str, 'lin', 'relu', 'tanh', 'sigmoid', 'elu', 'none'
+        """
 
         assert input_dims is not None, "BIMIX: Input_dims necessary"
         assert filter_dims is None, "BIMIX: filter_dims invalid"
@@ -182,7 +221,15 @@ class BiSTconv1D(NDNLayer):
     # END BinConvLayer1D.__init__
 
     def forward(self, x):
+        """
+        Call conv forward, but then option to reshape.
 
+        Args:
+            x: tensor of shape [batch, num_channels, height, width, lags]
+
+        Returns:
+            y: tensor of shape [batch, num_outputs]
+        """
         x = x.reshape([-1, self.input_dims[0], 2, self.output_dims[1]])
         bw = F.sigmoid(self.weight)
 
@@ -221,6 +268,7 @@ class ChannelConvLayer(ConvLayer):
         input_dims: tuple or list of ints, (num_channels, height, width, lags)
         num_filters: number of output filters
         filter_dims: width of convolutional kernel (int or list of ints)
+
     Args (optional):
         padding: 'same' or 'valid' (default 'same')
         weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
@@ -244,6 +292,17 @@ class ChannelConvLayer(ConvLayer):
             window=None,
             **kwargs,
             ):
+        """
+        Same arguments as ConvLayer, but will reshape output to divide space in half.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_width: width of convolutional kernel (int or list of ints)
+            temporal_tent_spacing: spacing of tent-basis functions in time
+            output_norm: normalization to apply to output
+            window: window function to apply to output
+        """
 
         assert input_dims is not None, "ChannelConvLayer: Must specify input_dims"
         assert num_filters is not None, "ChannelConvLayer: Must specify num_filters"
@@ -299,8 +358,16 @@ class ChannelConvLayer(ConvLayer):
     # END ChannelConvLayer.layer_dict
 
     def forward(self, x):
-        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        """
+        Call conv forward, but then option to reshape.
 
+        Args:
+            x: tensor of shape [batch, num_channels, height, width, lags]
+
+        Returns:
+            y: tensor of shape [batch, num_outputs]
+        """
+        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3) # B, C, T, X, Y
 
         w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)

@@ -18,6 +18,7 @@ class IterLayer(ConvLayer):
         input_dims: tuple or list of ints, (num_channels, height, width, lags)
         num_filters: number of output filters
         filter_width: width of convolutional kernel (int or list of ints)
+    
     Args (optional):
         padding: 'same' or 'valid' (default 'same')
         weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
@@ -39,7 +40,22 @@ class IterLayer(ConvLayer):
             LN_reverse=False,
             **kwargs,
             ):
+        """
+        Initialize IterLayer with specified parameters.
 
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_width: width of convolutional kernel (int or list of ints)
+            num_iter: number of iterations to apply the layer
+            output_config: 'last' or 'full' (default 'last')
+            temporal_tent_spacing: spacing of temporal tent-basis functions (default None)
+            output_norm: 'batch', 'batchX', or None (default None)
+            window: 'hamming' or None (default None)
+            res_layer: bool, whether to include a residual connection (default True)
+            LN_reverse: bool, whether to apply layer normalization after nonlinearity (default False)
+            **kwargs: additional arguments to pass to ConvLayer
+        """
         super().__init__(
             input_dims=input_dims,
             num_filters=num_filters,
@@ -89,6 +105,17 @@ class IterLayer(ConvLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            filter_width: width of convolutional kernel (int or list of ints)
+            num_iter: number of iterations to apply the layer
+            output_config: 'last' or 'full' (default 'last')
+            res_layer: bool, whether to include a residual connection (default True)
+            LN_reverse: bool, whether to apply layer normalization after nonlinearity (default False)
+            **kwargs: additional arguments to pass to ConvLayer
+
+        Returns:
+            Ldict: dictionary of layer parameters
         """
 
         Ldict = super().layer_dict(**kwargs)
@@ -113,8 +140,17 @@ class IterLayer(ConvLayer):
         return Ldict
     
     def forward(self, x):
-        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        """
+        Forward pass through the IterLayer.
 
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            y: torch.Tensor, output tensor
+        """
+
+        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
         #return x + super().forward(x)
         ## THIS IS CUT-AND-PASTE FROM ConvLayer -- with mods
 
@@ -211,6 +247,7 @@ class IterTlayer(TconvLayer):
         input_dims: tuple or list of ints, (num_channels, height, width, lags)
         num_filters: number of output filters
         filter_dims: width of convolutional kernel (int or list of ints)
+    
     Args (optional):
         padding: 'same' or 'valid' (default 'same')
         weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
@@ -232,7 +269,20 @@ class IterTlayer(TconvLayer):
             #window=None,
             **kwargs,
             ):
+        """
+        Initialize IterLayer with specified parameters.
 
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_width: width of convolutional kernel (int or list of ints)
+            num_iter: number of iterations to apply the layer
+            num_lags: number of lags in spatiotemporal filter
+            res_layer: bool, whether to include a residual connection (default True)
+            output_config: 'last' or 'full' (default 'last')
+            output_norm: 'batch', 'batchX', or None (default None)
+            **kwargs: additional arguments to pass to ConvLayer
+        """
         filter_dims = [input_dims[0], filter_width, filter_width, num_lags]
         if input_dims[2] == 1:
             filter_dims[2] = 1
@@ -284,6 +334,17 @@ class IterTlayer(TconvLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            filter_width: width of convolutional kernel (int or list of ints)
+            num_iter: number of iterations to apply the layer
+            num_lags: number of lags in spatiotemporal filter
+            res_layer: bool, whether to include a residual connection (default True)
+            output_config: 'last' or 'full' (default 'last')
+            **kwargs: additional arguments to pass to ConvLayer
+
+        Returns:
+            Ldict: dictionary of layer parameters
         """
 
         Ldict = super().layer_dict(**kwargs)
@@ -307,8 +368,16 @@ class IterTlayer(TconvLayer):
     # END IterLayerT.LayerDict
     
     def forward(self, x):
-        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        """
+        Forward pass through the IterLayer.
 
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            y: torch.Tensor, output tensor
+        """
+        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
         w = self.preprocess_weights()
 
         if self.is1D:
@@ -385,13 +454,13 @@ class IterSTlayer(STconvLayer):
         input_dims: tuple or list of ints, (num_channels, height, width, lags)
         num_filters: number of output filters
         filter_dims: width of convolutional kernel (int or list of ints)
+    
     Args (optional):
         padding: 'same' or 'valid' (default 'same')
         weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
         bias_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
         bias: bool, whether to include bias term
         NLtype: str, 'lin', 'relu', 'tanh', 'sigmoid', 'elu', 'none'
-
     """
     def __init__(self,
             input_dims=None,  # [C, W, H, T]
@@ -406,6 +475,20 @@ class IterSTlayer(STconvLayer):
             #window=None,
             **kwargs,
             ):
+        """
+        Initialize IterLayer with specified parameters.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_width: width of convolutional kernel (int or list of ints)
+            num_iter: number of iterations to apply the layer
+            num_lags: number of lags in spatiotemporal filter
+            res_layer: bool, whether to include a residual connection (default True)
+            output_config: 'last' or 'full' (default 'last')
+            output_norm: 'batch', 'batchX', or None (default None)
+            **kwargs: additional arguments to pass to ConvLayer
+        """
 
         filter_dims = [input_dims[0], filter_width, filter_width, num_lags]
         if input_dims[2] == 1:
@@ -458,6 +541,17 @@ class IterSTlayer(STconvLayer):
         -- All layer-specific inputs are included in the returned dict
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
+
+        Args:
+            filter_width: width of convolutional kernel (int or list of ints)
+            num_iter: number of iterations to apply the layer
+            num_lags: number of lags in spatiotemporal filter
+            res_layer: bool, whether to include a residual connection (default True)
+            output_config: 'last' or 'full' (default 'last')
+            **kwargs: additional arguments to pass to ConvLayer
+
+        Returns:
+            Ldict: dictionary of layer parameters
         """
 
         Ldict = super().layer_dict(**kwargs)
@@ -481,8 +575,16 @@ class IterSTlayer(STconvLayer):
     # END IterSTlayer.LayerDict
     
     def forward(self, x):
-        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        """
+        Forward pass through the IterLayer.
 
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            y: torch.Tensor, output tensor
+        """
+        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
         w = self.preprocess_weights()
 
         if self.is1D:
