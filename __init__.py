@@ -1,3 +1,9 @@
+"""
+## Welcome to the documentation for NDNT!
+
+#### Click on the links on the left (or use the searchbar) to navigate through the documentation.
+"""
+
 from NDNT import modules
 from NDNT.modules import layers
 from NDNT import metrics
