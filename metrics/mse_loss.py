@@ -21,15 +21,10 @@ class MseLoss_datafilter(nn.Module):
         self.loss = nn.MSELoss(reduction='mean')
         self.lossNR = nn.MSELoss(reduction='none')
         self.unit_weighting = False
-        self.batch_weighting = 0
+        self.batch_weighting = 1
         self.register_buffer('unit_weights', None)  
         self.register_buffer('av_batch_size', None) 
     # END MseLoss_datafilter.__init__
-
-    # def __repr__(self):
-    #     s = super().__repr__()
-    #     s += 'mse'
-    #     return s 
 
     def set_loss_weighting( self, batch_weighting=None, unit_weighting=None, unit_weights=None, av_batch_size=None ):
         """
@@ -61,7 +56,7 @@ class MseLoss_datafilter(nn.Module):
         if unit_weights is not None:
             self.unit_weights = torch.tensor(unit_weights, dtype=torch.float32)
 
-        assert self.batch_weighting in [-1, 0, 1, 2], "LOSS: Invalid batch_weighting"
+        assert self.batch_weighting in [0, 1, 2, -1], "LOSS: Invalid batch_weighting"
         
         if av_batch_size is not None:
             self.av_batch_size = torch.tensor(av_batch_size, dtype=torch.float32)
@@ -97,10 +92,11 @@ class MseLoss_datafilter(nn.Module):
             # Currently this does not apply unit_norms
             loss = self.loss(pred, target)
         else:
-            loss_full = self.lossNR(pred, target)
+            #loss_full = self.lossNR(pred, target)
+            loss_full=(pred-target)**2
             # divide by number of valid time points
-            
-            loss = torch.sum(torch.mul(unit_weights, torch.mul(loss_full, data_filters))) / len(unit_weights)
+            loss = torch.sum(
+                torch.mul(unit_weights, torch.mul(loss_full, data_filters))) / len(unit_weights)
         return loss
     # END PoissonLoss_datafilter.forward
 
