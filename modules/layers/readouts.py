@@ -18,7 +18,7 @@ class ReadoutLayer(NDNLayer):
             batch_sample=True,
             init_mu_range=0.1,
             init_sigma=0.2,
-            gauss_type: str='uncorrelated', # 'isotropic', 'uncorrelated', or 'full'
+            gauss_type: str='isotropic', # 'isotropic', 'uncorrelated', or 'full'
             align_corners=False,
             mode='bilinear',  # 'nearest' is also possible
             **kwargs):
@@ -143,9 +143,9 @@ class ReadoutLayer(NDNLayer):
     def sample_grid(self, batch_size, sample=None):
         """
         Returns the grid locations from the core by sampling from a Gaussian distribution
-        DAN: more specifically, it returns sampled positions for each batch over all elements, given mus and sigmas
-        DAN: if not 'sample', it just gives mu back (so testing has no randomness)
-        DAN: this is some funny bit of code, but don't think I need to touch it past what I did
+        More specifically, it returns sampled positions for each batch over all elements, given mus and sigmas
+        If 'sample' is false, it just gives mu back (so testing has no randomness)
+        This code is inherited and then modified, so different style than most other
 
         Args:
             batch_size (int): size of the batch
@@ -156,7 +156,7 @@ class ReadoutLayer(NDNLayer):
                            if sample is True/False, overrides the model_state (i.e training or eval) and does as instructed
         """
         with torch.no_grad():
-            self.mu.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
+            #self.mu.clamp(min=-1, max=1)  # at eval time, only self.mu is used so it must belong to [-1,1]
             if self.gauss_type != 'full':
                 self.sigma.clamp(min=0)  # sigma/variance is always a positive quantity
 
@@ -307,8 +307,48 @@ class ReadoutLayer(NDNLayer):
         self.set_parameters(val=False)
         self.sample = False
 
+    def fit_mus( self, val=None, sigma=None, verbose=True ):
+        """
+        Quick function that turns on or off fitting mus/sigmas and toggles sample
+        
+        Args:
+            val (bool): True or False -- must specify
+            sigma (float): choose starting sigma value (default no choice)
+        """
+        assert val is not None, "fit_mus(): must set val to be True or False"
+        self.sample = val
+        self.set_parameters(val=val, name='mu')
+        self.set_parameters(val=val, name='sigma')
+        if sigma is not None:
+            self.sigma.data.fill_(sigma)
+        if verbose:
+            if val:
+                print("  ReadoutLayer: fitting mus")
+            else:
+                print("  ReadoutLayer: not fitting mus")
+    # END ReadoutLayer.fit_mus()
+
+    def enforce_grid( self ):
+        """
+        Function that adjusts mus to correspond to precise points on pixel grid
+        
+        Args:
+            None
+        """
+        L = self.input_dims[1]
+
+        pixels = (L*(self.mu.clone().detach()+1) - 1)/2
+        pixels[pixels > (L-1)] = L-1
+        pixels[pixels < 0] = 0
+        pixels = torch.round(pixels)
+
+        # Convert back to mu values
+        self.mu.data = (2*pixels+1)/L - 1
+    # END ReadoutLayer.enforce_grid()
+
+
     @classmethod
-    def layer_dict(cls, NLtype='softplus', **kwargs):
+    def layer_dict(cls, NLtype='softplus', mode='bilinear', **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -329,9 +369,9 @@ class ReadoutLayer(NDNLayer):
         Ldict['batch_sample'] = True
         Ldict['init_mu_range'] = 0.1
         Ldict['init_sigma'] = 0.2
-        Ldict['gauss_type'] = 'uncorrelated'
+        Ldict['gauss_type'] = 'isotropic' #'uncorrelated'
         Ldict['align_corners'] = False
-        Ldict['mode'] = 'bilinear'  # also 'nearest'
+        Ldict['mode'] = mode  # also 'nearest'
         # Change default -- readouts will usually be softplus
         Ldict['NLtype'] = NLtype
 

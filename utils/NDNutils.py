@@ -59,6 +59,62 @@ def fit_lbfgs(mod, data, val_data=None,
     return loss
 
 
+def fit_lbfgs_batch(mod, data, val_data=None,
+              parameters=None,
+              optimizer=None,
+              verbose=True,
+              max_iter=1000,
+              lr=1,
+              line_search='strong_wolfe',
+              history_size=100,
+              tolerance_change=1e-7,
+              tolerance_grad=1e-7):
+    '''
+    Runs fullbatch LBFGS on a Pytorch model and data dictionary
+    Inputs:
+    Model: Pytorch model
+    data: Dictionary to used with Model.training_step(data)
+    '''
+    losses, vlosses = [], []
+    optimizer = torch.optim.LBFGS(model.model.net[1].parameters(), lr=1, max_iter=max_iter)
+    patience = 200
+    ds_size = len(ds[train_inds]["stim"])
+    best_model = model.state_dict()
+
+    with tqdm(total=max_iter) as pbar:
+        def closure():
+            global patience
+            if patience < 0:
+                print("patience exhausted")
+                return
+            optimizer.zero_grad()
+            loss = 0
+            for b in tqdm(train_dl, position=0, leave=True):
+                l = model.wrapped_model.training_step(b)["loss"]*len(b["stim"])
+                l.backward()
+                del b
+            loss = loss/ds_size
+            losses.append(loss.item())
+            with torch.no_grad():
+                model.eval()
+                vlosses.append(-eval_model_fast(model, val_dl).mean())
+                model.train()
+                if min(vlosses) == vlosses[-1]:
+                    global best_model
+                    best_model = model.state_dict()
+                    patience = 200
+                else:
+                    patience -= 1
+            print("loss:", losses[-1], "vloss:", vlosses[-1], "step:", len(losses))
+            pbar.update(1)
+            return loss
+        try:
+            optimizer.step(closure)
+        except KeyboardInterrupt:
+            print("Keyboard interrupt")
+        except TypeError:
+            print("stopped early")
+
 #################### CREATE OTHER PARAMETER-DICTS ####################
 def create_optimizer_params(
         optimizer_type='AdamW',
