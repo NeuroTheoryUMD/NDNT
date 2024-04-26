@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from functools import reduce
 from copy import deepcopy
@@ -194,8 +195,12 @@ class FFnetwork(nn.Module):
 
     def preprocess_input(self, inputs):
         """
-        Preprocess input to network.
-
+        Preprocess inputs to the ffnetwork according to the network type. If there
+        is only one batch passed in, it does not matter what network type. But mutiple
+        inputs (in a list) either:
+            'normal': concatenates
+            'add': adds inputs together (not must be same size or broadcastable)
+            'mult': multiplies x1*(1+x2)*(1+x3+...) with same size req as 'add' 
         Args:
             inputs (list, torch.Tensor): The input to the network.
 
@@ -469,18 +474,14 @@ class ScaffoldNetwork(FFnetwork):
             if isinstance(scaffold_levels, list):
                 scaffold_levels = np.array(scaffold_levels, dtype=np.int64)
             self.scaffold_levels = scaffold_levels 
+
         # Determine output dimensions
-        #assert self.layers[self.scaffold_levels[0]].output_dims[3] == 1, "Scaffold: cannot currently handle lag dimensions"
         self.spatial_dims = self.layers[self.scaffold_levels[0]].output_dims[1:3]
         self.filter_count = np.zeros(len(self.scaffold_levels))
         self.filter_count[0] = self.layers[self.scaffold_levels[0]].output_dims[0]
 
-        #Tchomps = np.zeros(self.scaffold_levels)
         for ii in range(1, len(self.scaffold_levels)):
             assert self.layers[self.scaffold_levels[ii]].output_dims[1:3] == self.spatial_dims, "Spatial dims problem layer %d"%self.scaffold_levels[ii] 
-            #assert self.layers[self.scaffold_levels[ii]].output_dims[3] == 1, "Scaffold: cannot currently handle lag dimensions"
-            #if self.layers[self.scaffold_levels[ii]].output_dims[3] > 1:
-            #    Tchomps[ii] = self.layers[self.scaffold_levels[ii]].output_dims[3]-1
             self.filter_count[ii] = self.layers[self.scaffold_levels[ii]].output_dims[0]
 
         # Construct output dimensions
@@ -496,7 +497,10 @@ class ScaffoldNetwork(FFnetwork):
 
     def forward(self, inputs):
         """
-        Forward pass through the network.
+        Forward pass through the network: passes input sequentially through layers
+        and concatenates the based on the self.scaffold_levels argument. Note that if
+        there are lags, it will either chomp to the last, or keep number specified
+        by self.num_lags_out
 
         Args:
             inputs (list, torch.Tensor): The input to the network.
@@ -563,11 +567,8 @@ class ScaffoldNetwork(FFnetwork):
 
 class ScaffoldNetwork3d(ScaffoldNetwork):
     """
-    Like scaffold network above, but preserves the third dimension.
-
-    This essentially used the constructor for Point1DGaussian, with dicationary input.
-    Currently there is no extra code required at the network level. I think the constructor
-    can be left off entirely, but leaving in in case want to add something.
+    Like scaffold network above, but preserves the third dimension so in order
+    to have shaped filters designed to process in subsequent network components.
 
     Args:
         num_lags_out (int): The number of lags out.
@@ -582,14 +583,23 @@ class ScaffoldNetwork3d(ScaffoldNetwork):
         s += self.__class__.__name__
         return s
 
-    def __init__(self, num_lags_out=None, **kwargs):
+    def __init__(self, layer_list=None, num_lags_out=None, **kwargs):
         assert num_lags_out is not None, "should be using num_lags_out with the scaffold3d network"
 
-        super().__init__(**kwargs)
+        # layer_list might have to be modified before passed up the chain
+        # but for now, modifying afterwards
+        super().__init__(layer_list=layer_list, **kwargs)
         self.network_type = 'scaffold3d'
 
         self.num_lags_out = num_lags_out  # Makes output equal to number of lags
         self.output_dims[-1] = self.num_lags_out
+
+        # Possibility of broadcasting third dim if those networks don't have it
+        self.broadcast_last_dim = [False]*len(layer_list)
+        for ii in range(len(layer_list)):
+            if layer_list[ii]['output_dims'][3] == 1:  # could write this boolean-like too
+                self.broadcast_last_dim[ii] = True
+                print( "  Scaffold3d: broadcasting layer %d"%ii )
     # END ScaffoldNetwork3d.__init__
 
     def forward(self, inputs):
@@ -612,24 +622,18 @@ class ScaffoldNetwork3d(ScaffoldNetwork):
         out = [] # returned 
         x = self.preprocess_input(inputs)
 
-        for layer in self.layers:
-            x = layer(x)
-            nt = x.shape[0]
-            #if self.num_lags_out is None and layer.output_dims[3] > 1:
-                # reshape y to combine the filters and lags in the second dimension
-                # batch x filters x (width x height) x lags
-            #    y = x.reshape([nt, layer.output_dims[0], -1, layer.output_dims[3]])
-                # move the lag dimension after the filters (batch, filter, lag, width x height)
-            #    y = y.permute(0, 1, 3, 2)
-                # flatten the filter and lag dimensions to be filters x lags
-            #    y = y.reshape([nt, -1])
-            #    out.append(y)
-            #elif self.num_lags_out is not None and layer.output_dims[3] > self.num_lags_out:
-                # Need to return just first lag (lag0) -- 'chomp'
-            #    y = x.reshape([nt, -1, layer.output_dims[3]])[..., :(self.num_lags_out)]
-            #    out.append( y.reshape((nt, -1) ))
-            #else:
-            out.append(x)
+        for ii in range(len(self.layers)):
+        #for layer in self.layers:
+            #x = layer(x)
+            x = self.layers[ii](x)  # push x through
+            
+            if self.broadcast_last_dim[ii]:
+                # This has to pad with zeros this output by num_lags_out
+                #ndim = x.shape[1]
+                #npads = ndim*(self.num_lags_out-1)
+                out.append(F.pad(x,[0,0,0, x.shape[1]*(self.num_lags_out-1)] ))
+            else:
+                out.append(x)
         
         # this concatentates across the filter dimension
         return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
