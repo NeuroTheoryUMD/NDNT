@@ -565,7 +565,7 @@ class ScaffoldNetwork(FFnetwork):
 # END ScaffoldNetwork
 
 
-class ScaffoldNetwork3d(ScaffoldNetwork):
+class ScaffoldNetwork3D(ScaffoldNetwork):
     """
     Like scaffold network above, but preserves the third dimension so in order
     to have shaped filters designed to process in subsequent network components.
@@ -595,11 +595,11 @@ class ScaffoldNetwork3d(ScaffoldNetwork):
         self.output_dims[-1] = self.num_lags_out
 
         # Possibility of broadcasting third dim if those networks don't have it
-        self.broadcast_last_dim = [False]*len(layer_list)
-        for ii in range(len(layer_list)):
-            if layer_list[ii]['output_dims'][3] == 1:  # could write this boolean-like too
-                self.broadcast_last_dim[ii] = True
-                print( "  Scaffold3d: broadcasting layer %d"%ii )
+        #self.broadcast_last_dim = [False]*len(layer_list)
+        #for ii in range(len(layer_list)):
+        #    if layer_list[ii]['output_dims'][3] == 1:  # could write this boolean-like too
+        #        self.broadcast_last_dim[ii] = True
+        #        print( "  Scaffold3d: broadcasting layer %d"%ii )
     # END ScaffoldNetwork3d.__init__
 
     def forward(self, inputs):
@@ -627,11 +627,12 @@ class ScaffoldNetwork3d(ScaffoldNetwork):
             #x = layer(x)
             x = self.layers[ii](x)  # push x through
             
-            if self.broadcast_last_dim[ii]:
+            #if self.broadcast_last_dim[ii]:
+            if (self.layers[ii].output_dims[-1] < self.num_lags_out) & (ii in self.scaffold_levels):
                 # This has to pad with zeros this output by num_lags_out
                 #ndim = x.shape[1]
                 #npads = ndim*(self.num_lags_out-1)
-                out.append(F.pad(x,[0,0,0, x.shape[1]*(self.num_lags_out-1)] ))
+                out.append(F.pad(x,[0, x.shape[1]*(self.num_lags_out-1),0,0] ))
             else:
                 out.append(x)
         

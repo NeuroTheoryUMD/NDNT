@@ -461,7 +461,7 @@ class OriConvLayer(ConvLayer):
                       self.output_dims[1], 
                       self.output_dims[2])
         # reshape y to have the orientiations in the last column
-        y = y.permute(0, 1, 3, 4, 2)
+        y = y.permute(0, 1, 3, 4, 2) # output will be [BCWHQ]
         # flatten the last dimensions
         return y.reshape(-1, # the batch dimension
                          self.num_outputs)
