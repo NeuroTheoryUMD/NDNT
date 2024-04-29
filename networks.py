@@ -630,12 +630,15 @@ class ScaffoldNetwork3D(ScaffoldNetwork):
             #if self.broadcast_last_dim[ii]:
             if (self.layers[ii].output_dims[-1] < self.num_lags_out) & (ii in self.scaffold_levels):
                 # This has to pad with zeros this output by num_lags_out
-                #ndim = x.shape[1]
-                #npads = ndim*(self.num_lags_out-1)
-                out.append(F.pad(x,[0, x.shape[1]*(self.num_lags_out-1),0,0] ))
+                out.append(
+                    F.pad( 
+                        x[:, :, None], 
+                        [0, self.num_lags_out-1] 
+                        #[0, x.shape[1]*(self.num_lags_out-1)] 
+                        ).reshape([x.shape[0], -1]) ) 
+                #print(ii, 'reshaped', out[ii].shape)
             else:
                 out.append(x)
-        
         # this concatentates across the filter dimension
         return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
     # END ScaffoldNetwork3d.forward()
@@ -761,22 +764,22 @@ class ReadoutNetwork(FFnetwork):
 
     def get_readout_locations(self):
         """
-        Returns the readout locations.
+        Returns the positions in the readout layer (within this network)
 
         Args:
             None
 
         Returns:
-            The readout locations.
+            The readout locations
         """
         return self.layers[0].get_readout_locations()
 
     def set_readout_locations(self, locs):
         """
-        Sets the readout locations.
+        Sets the readout locations
 
         Args:
-            locs: The readout locations.
+            locs: the readout locations
 
         Returns:
             None

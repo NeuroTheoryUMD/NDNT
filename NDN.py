@@ -1137,7 +1137,7 @@ class NDN(nn.Module):
     
         # handle the block_sample case separately
         num_cells = self.networks[-1].output_dims[0]
-    
+
         if self.block_sample:
             if device is not None:
                 self.to(device)
@@ -1166,7 +1166,6 @@ class NDN(nn.Module):
                     pred[batch_block_inds] = pred_batch
             return pred
     
-    
         if isinstance(data, dict):
             # Then assume that this is just to evaluate a sample: keep original here
             assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
@@ -1174,21 +1173,22 @@ class NDN(nn.Module):
             m0 = self.to(dev0)
             with torch.no_grad():
                 if ffnet_target is not None:
-                    pred = m0.networks[ffnet_target](data)
+                    pred = self.networks[ffnet_target](data)
                 else:
-                    pred = m0(data)
+                    pred = self(data)
     
         else:
             if batch_size is None:
-                batch_size = 2000   # default batch size for non-block_sample
+                batch_size = 500   # default batch size for non-block_sample
             dev0 = data[0]['robs'].device
-            m0 = self.to(dev0)
+            model_device = self.device
+            self = self.to(dev0)
     
             if data_inds is None:
                 data_inds = np.arange(len(data))
             NT = len(data_inds)
     
-            pred = torch.zeros([NT, num_cells])
+            pred = torch.zeros([NT, num_cells], device=dev0)
     
             # Must do contiguous sampling despite num_lags
             nblks = np.ceil(NT/batch_size).astype(int)
@@ -1197,12 +1197,14 @@ class NDN(nn.Module):
                 trange = trange[trange < NT]
                 with torch.no_grad():
                     if ffnet_target is not None:
-                        pred_tmp = m0.networks[ffnet_target](data[data_inds[trange]])
+                        pred_tmp = self.networks[ffnet_target](data[data_inds[trange]])
                     else:
-                        pred_tmp = m0(data[data_inds[trange]])
+                        pred_tmp = self(data[data_inds[trange]])
                 pred[batch_size*bb + np.arange(len(trange)-num_lags), :] = pred_tmp[num_lags:, :]
+            
+            self = self.to(model_device)
     
-        return pred.cpu()
+        return pred.cpu().detach()
 
     def change_loss( self, new_loss_type, dataset=None ):
         """
