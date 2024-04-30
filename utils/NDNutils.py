@@ -13,7 +13,7 @@ import io
 
 
 ########### LBFGS TRAINER (just a function!) #################
-def fit_lbfgs(mod, data, val_data=None,
+def fit_lbfgs(mod, data, #val_data=None,
               parameters=None,
               optimizer=None,
               verbose=True,
@@ -26,8 +26,8 @@ def fit_lbfgs(mod, data, val_data=None,
     '''
     Runs fullbatch LBFGS on a Pytorch model and data dictionary
     Inputs:
-    Model: Pytorch model
-    data: Dictionary to used with Model.training_step(data)
+        Model: Pytorch model
+        data: Dictionary to used with Model.training_step(data)
     '''
 
     mod.prepare_regularization()
@@ -35,13 +35,14 @@ def fit_lbfgs(mod, data, val_data=None,
     if parameters is None:
         parameters = mod.parameters()
     if optimizer is None:
-        optimizer = torch.optim.LBFGS(parameters,
-                                      lr=lr,
-                          history_size=history_size,
-                          max_iter=max_iter,
-                          tolerance_change=tolerance_change,
-                          line_search_fn=line_search,
-                          tolerance_grad=tolerance_grad)
+        optimizer = torch.optim.LBFGS(
+            parameters,
+            lr=lr, max_iter=max_iter,
+            history_size=history_size,
+            tolerance_change=tolerance_change,
+            line_search_fn=line_search,
+            tolerance_grad=tolerance_grad)
+        
     def closure():
         optimizer.zero_grad()
         out = mod.training_step(data)
@@ -53,61 +54,89 @@ def fit_lbfgs(mod, data, val_data=None,
         if verbose > 0:
             print('Iteration: {} | Loss: {}'.format(optimizer.state_dict()['state'][0]['n_iter'], loss.cpu().item()))
         return loss
-    loss = optimizer.step(closure)
+    
+    #loss = optimizer.step(closure)
+    try:
+        loss = optimizer.step(closure)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt")
+    except TypeError:
+        print("stopped early")
+
     optimizer.zero_grad()
     torch.cuda.empty_cache()
     return loss
 
 
-def fit_lbfgs_batch(mod, data, val_data=None,
-              parameters=None,
-              optimizer=None,
-              verbose=True,
-              max_iter=1000,
-              lr=1,
-              line_search='strong_wolfe',
-              history_size=100,
-              tolerance_change=1e-7,
-              tolerance_grad=1e-7):
+def fit_lbfgs_batch(
+        model, data_dict, verbose=True, 
+        #val_data=None,
+        val_dataset=None,
+        parameters=None, optimizer=None,
+        max_iter=1000, lr=1,
+        history_size=100,
+        tolerance_change=1e-7,
+        tolerance_grad=1e-7,
+        line_search='strong_wolfe'):
     '''
-    Runs fullbatch LBFGS on a Pytorch model and data dictionary
+    Runs LBFGS on a Pytorch model and data dictionary passing data in through 
+    batches, but accumulating full-dataset gradients for each epoch
+
     Inputs:
-    Model: Pytorch model
-    data: Dictionary to used with Model.training_step(data)
+        Model: Pytorch model
+        data_dict: Dictionary to used with Model.training_step(data)
     '''
+    from tqdm import tqdm
+
+    model.prepare_regularization()
+    model.train()
+    if parameters is None:
+        parameters = model.parameters()
+    if optimizer is None:
+        optimizer = torch.optim.LBFGS(
+            parameters, 
+            lr=lr, history_size=history_size,
+            tolerance_change=tolerance_change, tolerance_grad=tolerance_grad,
+            max_iter=max_iter, line_search_fn=line_search)
+
     losses, vlosses = [], []
-    optimizer = torch.optim.LBFGS(model.model.net[1].parameters(), lr=1, max_iter=max_iter)
+    #optimizer = torch.optim.LBFGS(model.model.net[1].parameters(), lr=1, max_iter=max_iter)
     patience = 200
-    ds_size = len(ds[train_inds]["stim"])
+    ds_size = len(data_dict[:]["stim"])
     best_model = model.state_dict()
 
+    def closure():
+        #global patience
+        #if patience < 0:
+        #    print("patience exhausted")
+        #    return
+        optimizer.zero_grad()
+        loss = 0
+        for b in tqdm(data_dict, position=0, leave=True):
+            l = model.training_step(b)['loss']*len(b['stim'])
+            l.backward()
+            del b
+        loss = loss/ds_size
+        losses.append(loss.item())
+        with torch.no_grad():
+            model.eval()
+            #vlosses.append(-eval_model_fast(model, val_dl).mean())
+            if val_dataset is not None:
+                vlosses.append(model.eval_models(val_dataset))
+            else:
+                vlosses.append(0)
+            model.train()
+            if min(vlosses) == vlosses[-1]:
+                global best_model
+                best_model = model.state_dict()
+            #    patience = 200
+            #else:
+            #    patience -= 1
+        print("loss:", losses[-1], "vloss:", vlosses[-1], "step:", len(losses))
+        pbar.update(1)
+        return loss
+
     with tqdm(total=max_iter) as pbar:
-        def closure():
-            global patience
-            if patience < 0:
-                print("patience exhausted")
-                return
-            optimizer.zero_grad()
-            loss = 0
-            for b in tqdm(train_dl, position=0, leave=True):
-                l = model.wrapped_model.training_step(b)["loss"]*len(b["stim"])
-                l.backward()
-                del b
-            loss = loss/ds_size
-            losses.append(loss.item())
-            with torch.no_grad():
-                model.eval()
-                vlosses.append(-eval_model_fast(model, val_dl).mean())
-                model.train()
-                if min(vlosses) == vlosses[-1]:
-                    global best_model
-                    best_model = model.state_dict()
-                    patience = 200
-                else:
-                    patience -= 1
-            print("loss:", losses[-1], "vloss:", vlosses[-1], "step:", len(losses))
-            pbar.update(1)
-            return loss
         try:
             optimizer.step(closure)
         except KeyboardInterrupt:

@@ -938,3 +938,10 @@ class FFnet_external(FFnetwork):
         ffnet_dict = super().ffnet_dict(**kwargs)
         ffnet_dict['ffnet_type'] = 'external'
         return ffnet_dict
+
+
+class ScaffoldNetwork3d(ScaffoldNetwork3D):
+    """Placeholder so old models are not lonely"""
+    def __init__(self, layer_list=None, num_lags_out=None, **kwargs):
+        assert num_lags_out is not None, "should be using num_lags_out with the scaffold3d network"
+        super().__init__(layer_list=layer_list, **kwargs)
