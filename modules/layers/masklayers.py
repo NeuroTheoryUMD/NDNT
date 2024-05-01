@@ -111,7 +111,8 @@ class MaskSTconvLayer(STconvLayer):
                  num_filters=None,
                  #filter_dims=None,  # absorbed by kwargs if necessary
                  mask=None,
-                  output_norm=None,
+                 initialize_center=False,
+                 output_norm=None,
                  **kwargs,
                  ):
         """
@@ -129,13 +130,16 @@ class MaskSTconvLayer(STconvLayer):
         assert num_filters is not None, "MaskSTconvLayer: num_filters must be specified"
         super().__init__(
             input_dims=input_dims, num_filters=num_filters,
-            output_norm=output_norm, 
+            output_norm=output_norm, initialize_center=False,
             **kwargs)
 
         # Now make mask
         assert mask is not None, "MaskSTConvLayer: must include mask!"
         assert np.prod(mask.shape) == np.prod(self.filter_dims)*num_filters
         self.register_buffer('mask', torch.tensor(mask.reshape([-1, num_filters]), dtype=torch.float32))
+
+        if initialize_center:
+            self.initialize_gaussian_envelope()
     # END MaskSTconvLayer.__init__
 
     def preprocess_weights( self ):
