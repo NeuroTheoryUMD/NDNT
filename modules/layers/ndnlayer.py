@@ -331,15 +331,17 @@ class NDNLayer(nn.Module):
 
     def compute_reg_loss(self):
         """
-        Compute the regularization loss for the layer.
+        Compute the regularization loss for the layer by calling reg_module function on
+        the preprocessed weights.
+
+        Args:
+            None
 
         Returns:
             reg_loss: torch.Tensor, regularization loss
         """
-        #### weight_regularization = self.reg.compute_reg_loss(self.preprocess_weights())
         return self.reg.compute_reg_loss(self.preprocess_weights())
-        # combine these two types of regularization
-        #### return weight_regularization + self.activity_regularization
+    # END NDNLayer.compute_reg_loss()
 
     def get_weights(self, to_reshape=True, time_reverse=False, num_inh=0):
         """

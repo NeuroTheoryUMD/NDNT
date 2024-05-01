@@ -98,8 +98,14 @@ class ReadoutLayer(NDNLayer):
         self.mu = Parameter(torch.Tensor(*map_size))
         self.sigma = Parameter(torch.Tensor(*self.sigma_shape))
 
+        # For use with scaffold_level_regularization
+        self.level_reg = False
+        self._level_reg_val = 0.0  # just so info is available
+        self.register_buffer("_scaffold_level_weights", torch.zeros((self.weight.shape[0], 1), dtype=torch.float32))
+
         self.initialize_spatial_mapping()
         self.sample = True
+
     # END ReadoutLayer.__init__
 
     @property
@@ -211,6 +217,60 @@ class ReadoutLayer(NDNLayer):
             ws = ws[..., None]
     
         return ws.detach().numpy()
+    # END ReadoutLayer.get_weights()
+
+    def _set_scaffold_reg(self, reg_val=None, scaffold_level_parse=None, level_exponent=1.0):
+        """
+        Set regularization that applies to scaffold level to force weights towards low levels.
+        This function should not be called directly, since will need to pass in non-local scaffold 
+        information available only at the NDN level.
+        
+        Args: 
+            reg_val (float or None): regularization weight to set, default None
+            scaffold_level_parse (np.array): level weighting with dimension of number of filters in each
+                scaffold level [4,25,8,4], but should include total number of weights (in case 4th dim)    
+            level_exponent (positive float): how much to weight each level 
+        Returns:
+            None
+         """
+        if reg_val is None:
+            self.level_reg = False
+            self._level_reg_val = 0.0
+        else:
+            self.level_reg = True
+            # Otherwise, construct weighting across filter_input dimensions
+            assert level_exponent > 0, "SCAFFOLD REG: level_exponent must be >0"
+            assert np.sum(scaffold_level_parse) == self.filter_dims[0], "SCAFFOLD REG: Internal error with scaffold_level_parse"
+
+            self._level_reg_val = reg_val  # just to keep track (should be register_buffer?)
+
+            scaffold_weights = reg_val * np.ones((self.filter_dims[0], self.filter_dims[3]), dtype=np.float32)
+            place_holder=0
+            for ii in range(len(scaffold_level_parse)):
+                scaffold_weights[place_holder+np.arange(scaffold_level_parse[ii]), :] *= ii**level_exponent
+                place_holder += scaffold_level_parse[ii]
+            self._scaffold_level_weights = torch.tensor( 
+                scaffold_weights.reshape([-1]), dtype=torch.float32, device=self.weight.device)
+    # END ReadoutLayer._set_scaffold_reg()
+
+    def compute_reg_loss(self):
+        """
+        Compute the regularization loss for the layer: superceding super, by calling reg_module to do
+        this and then adding scaffold weight regularization if needed.
+
+        Args:
+            None
+
+        Returns:
+            reg_loss: torch.Tensor, regularization loss
+        """
+        w = self.preprocess_weights()
+        regloss = self.reg.compute_reg_loss(w)
+
+        if self.level_reg:
+            regloss += torch.sum( w * self._scaffold_level_weights[:, None] ) 
+        return regloss
+        # ReadoutLayer.compute_reg_loss()
 
     def forward(self, x, shift=None):
         """

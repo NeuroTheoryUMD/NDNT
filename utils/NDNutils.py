@@ -673,6 +673,32 @@ def grid2pixel( x, L=60, force_int=True, enforce_bounds=False ):
         return p
 
 
+def set_scaffold_level_reg( ndn, reg_val=None, level_exponent=1.0, core_net=0, readout_net=1 ):
+    """
+    Sets up regularization for scaffold_level, which requires pulling scaffold structure from 
+    core network and passing it into the readout layer at beginning of readout_net
+    
+    Args:
+        ndn: model that has scaffold and readout ffnetworks
+        reg_val: scaffold_level reg value to set. None (default) resets
+        level_exponent: how much to weight each level, default 1
+        core_net: which ffnetwork is the core (default 0)
+        readout_net: which ffnetwork is the readout (default 1)
+
+    Returns:
+        None
+    """
+
+    # Pull core information 
+    #num_levels = len(ndn.networks[core_net].layers)
+    level_parse = []
+    for ii in ndn.networks[core_net].scaffold_levels:
+        level_parse.append( ndn.networks[core_net].layers[ii].output_dims[0] )
+
+    ndn.networks[readout_net].layers[0]._set_scaffold_reg(reg_val=reg_val, scaffold_level_parse=level_parse, level_exponent=level_exponent)
+# END set_scaffold_level_reg
+
+
 def save_checkpoint(state, save_path: str, is_best: bool = False, max_keep: int = None):
     """Saves torch model to checkpoint file.
     Args:

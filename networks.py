@@ -23,6 +23,7 @@ LayerTypes = {
     'conv3d': layers.ConvLayer3D,
     'oolayer': layers.OnOffLayer,
     'masklayer': layers.MaskLayer,
+    'maskSTClayer': layers.MaskSTconvLayer,
     'iter': layers.IterLayer,
     'iterT': layers.IterTlayer,
     'iterST': layers.IterSTlayer,
@@ -299,10 +300,11 @@ class FFnetwork(nn.Module):
         for layer in self.layers:
             if hasattr(layer, 'reg'):
                 layer.reg.build_reg_modules(device=device)
-            
+    # END FFnetwork.prepare_regularization()
+
     def compute_reg_loss(self):
         """
-        Computes the regularization loss.
+        Computes the regularization loss by summing reg_loss across layers.
 
         Args:
             None
@@ -315,10 +317,11 @@ class FFnetwork(nn.Module):
         for layer in self.layers:
             rloss.append(layer.compute_reg_loss())
         return reduce(torch.add, rloss)
+    # END FFnetwork.compute_reg_loss()
 
     def list_parameters(self, layer_target=None):
         """
-        Lists the parameters for the network.
+        Lists the (fittable) parameters of the network, calling through each layer
 
         Args:
             layer_target (int, optional): The layer to list the parameters for. Defaults to None.
@@ -341,12 +344,13 @@ class FFnetwork(nn.Module):
 
     def set_parameters(self, layer_target=None, name=None, val=None ):
         """
-        Sets the parameters for the listed layer or for all layers.
+        Sets the parameters as either fittable or not (depending on 'val' for the listed 
+        layer, with the default being all layers.
 
         Args:
             layer_target (int, optional): The layer to set the parameters for. Defaults to None.
-            name (str): The name of the parameter.
-            val (bool): The value to set the parameter to.
+            name (str): The name of the parameter: default is all parameters.
+            val (bool): Whether or not to fit (True) or not fit (False)
 
         Returns:
             None
@@ -361,6 +365,7 @@ class FFnetwork(nn.Module):
         for nn in layer_target:
             assert nn < len(self.layers), '  Invalid layer %d.'%nn
             self.layers[nn].set_parameters(name=name, val=val)
+    # END FFnetwork.set_parameters()
 
     def set_reg_val(self, reg_type=None, reg_val=None, layer_target=None ):
         """
@@ -384,7 +389,7 @@ class FFnetwork(nn.Module):
 
     def plot_filters(self, layer_target=0, **kwargs):
         """
-        Plots the filters for the listed layer.
+        Plots the filters for the listed layer, passed down to layer's call
 
         Args:
             layer_target (int, optional): The layer to plot the filters for. Defaults to 0.
@@ -479,7 +484,7 @@ class ScaffoldNetwork(FFnetwork):
         self.spatial_dims = self.layers[self.scaffold_levels[0]].output_dims[1:3]
         self.filter_count = np.zeros(len(self.scaffold_levels))
         self.filter_count[0] = self.layers[self.scaffold_levels[0]].output_dims[0]
-
+        
         for ii in range(1, len(self.scaffold_levels)):
             assert self.layers[self.scaffold_levels[ii]].output_dims[1:3] == self.spatial_dims, "Spatial dims problem layer %d"%self.scaffold_levels[ii] 
             self.filter_count[ii] = self.layers[self.scaffold_levels[ii]].output_dims[0]
