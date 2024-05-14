@@ -1436,8 +1436,8 @@ class NDN(nn.Module):
         torch.save(self.state_dict(), ckpt_filename)
         # zip up the two files
         with zipfile.ZipFile(filename + '.zip', 'w') as myzip:
-            myzip.write(json_filename)
-            myzip.write(ckpt_filename)
+            myzip.write(json_filename, os.path.basename(json_filename))
+            myzip.write(ckpt_filename, os.path.basename(ckpt_filename))
         # remove the two files
         os.remove(json_filename)
         os.remove(ckpt_filename)
@@ -1476,7 +1476,7 @@ class NDN(nn.Module):
         model.prepare_regularization() # this will build the reg_modules
         # load the state_dict
         state_dict = torch.load(filename + '.ckpt')
-        model.load_state_dict(state_dict)
+        model.load_state_dict(state_dict, strict=False)
         # remove the two files
         os.remove(filename + '.json')
         os.remove(filename + '.ckpt')
