@@ -695,5 +695,209 @@ class IterSTlayer(STconvLayer):
         return torch.reshape(outputs, (-1, self.num_outputs))
     # END IterSTlayer.forward
 
+### THIS IS INCOMPLETE -- WILL TEST IN OTHER CONTEXT BEFORE FINISHING
+class ResnetBlock(IterLayer):
+    """
+    Residual network layer based on conv-net setup but with different forward.
+    Namely, the forward includes a skip-connection, and has to be 'same'
+
+    Args (required):
+        input_dims: tuple or list of ints, (num_channels, height, width, lags)
+        num_filters: number of output filters
+        filter_width: width of convolutional kernel (int or list of ints)
+    
+    Args (optional):
+        padding: 'same' or 'valid' (default 'same')
+        weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+        bias_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
+        bias: bool, whether to include bias term
+        NLtype: str, 'lin', 'relu', 'tanh', 'sigmoid', 'elu', 'none'
+
+    """
+    def __init__(self,
+            input_dims=None,
+            num_filters=None,
+            filter_width=None,
+            num_iter=1, 
+            res_layer=True,
+            #output_norm=None,  #inherited
+            #window=None,       #inherited
+            #temporal_tent_spacing=None, # probably not use
+            #output_config='last',  # Dont use
+            #LN_reverse=False, # dont use
+            **kwargs,
+            ):
+        """
+        Initialize IterLayer with specified parameters.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_width: width of convolutional kernel (int or list of ints)
+            num_iter: number of iterations to apply the layer
+            output_config: 'last' or 'full' (default 'last')
+            temporal_tent_spacing: spacing of temporal tent-basis functions (default None)
+            output_norm: 'batch', 'batchX', or None (default None)
+            window: 'hamming' or None (default None)
+            res_layer: bool, whether to include a residual connection (default True)
+            LN_reverse: bool, whether to apply layer normalization after nonlinearity (default False)
+            **kwargs: additional arguments to pass to ConvLayer
+        """
+        super().__init__(
+            input_dims=input_dims,
+            num_filters=num_filters,
+            filter_dims=filter_width,
+            num_iter=num_iter, 
+            output_config='last',
+            res_layer=res_layer,
+            **kwargs)
+        
+        #self.num_iter = num_iter  # set in super         
+        #self.res_layer = res_layer  # set in super
+        # Make second set of internal weights
+        
+    # END ResnetBlock.init()
+
+    @classmethod
+    def layer_dict(cls, filter_width=None, num_iter=1, res_layer=True, output_norm='batch', **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+
+        Args:
+            filter_width: width of convolutional kernel (int or list of ints)
+            num_iter: number of iterations to apply the layer
+            output_config: 'last' or 'full' (default 'last')
+            res_layer: bool, whether to include a residual connection (default True)
+            LN_reverse: bool, whether to apply layer normalization after nonlinearity (default False)
+            **kwargs: additional arguments to pass to ConvLayer
+
+        Returns:
+            Ldict: dictionary of layer parameters
+        """
+
+        Ldict = super().layer_dict(
+            filter_width=filter_width, res_layer=res_layer, num_iter=num_iter, output_norm=output_norm,
+            **kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'resnet'
+        Ldict['filter_width'] = filter_width
+        Ldict['num_iter'] = num_iter
+        #Ldict['temporal_tent_spacing'] = 1
+        Ldict['output_norm'] = output_norm
+        Ldict['window'] = None  # could be 'hamming'
+        Ldict['res_layer'] = res_layer
+        #Ldict['LN_reverse'] = LN_reverse
+        #Ldict['stride'] = 1
+        #Ldict['dilation'] = 1
+        # These are options we are taking away
+        del Ldict['stride']
+        del Ldict['dilation']
+        del Ldict['padding']
+        del Ldict['filter_dims']
+
+        return Ldict
+    # END ResnetBlock.layer_dict()
+
+    def forward(self, x):
+        """
+        Forward pass through the ResnetBlock: input filtering (one layer wit filter width) followed
+        by some number of filter_width-1 conv layers
+
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            y: torch.Tensor, output tensor
+        """
+
+        # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
+        #return x + super().forward(x)
+        ## THIS IS CUT-AND-PASTE FROM ConvLayer -- with mods
+
+        # Prepare stimulus
+        x = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
+        if self.is1D:
+            x = torch.reshape( x, (-1, self.folded_dims, self.input_dims[1]) )
+        else:
+            x = torch.reshape( x, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
+
+        # Prepare weights
+        w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)
+        # puts output_dims first, as required for conv
+
+        outputs = None
+        for iter in range(self.num_iter):
+
+            if self.LN_reverse:
+                if self.NL is not None:
+                    x = self.NL(x)
+
+            if self.is1D:
+
+                if self._fullpadding:
+                    #s = F.pad(s, self._npads, "constant", 0)
+                    y = F.conv1d(
+                        F.pad(x, self._npads, "constant", 0),
+                        w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                        bias=self.bias,
+                        stride=self.stride, dilation=self.dilation)
+                else:
+                    y = F.conv1d(
+                        x,
+                        w.view([-1, self.folded_dims, self.filter_dims[1]]), 
+                        bias=self.bias,
+                        padding=self._npads[0],
+                        stride=self.stride, dilation=self.dilation)
+            else:
+
+                if self._fullpadding:
+                    x = F.pad(x, self._npads, "constant", 0)
+                    y = F.conv2d(
+                        x, # we do our own padding
+                        w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
+                        bias=self.bias,
+                        stride=self.stride,
+                        dilation=self.dilation)
+                else:
+                    # functional pads since padding is simple
+                    y = F.conv2d(
+                        x, 
+                        w.reshape([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
+                        padding=(self._npads[2], self._npads[0]),
+                        bias=self.bias,
+                        stride=self.stride,
+                        dilation=self.dilation)
+
+
+            # Nonlinearity
+            if (self.NL is not None) &  (not self.LN_reverse):
+                y = self.NL(y)
+
+            if self.res_layer:
+                y = y + x  # Add input back in
+
+            if self._ei_mask is not None:
+                if self.is1D:
+                    y = y * self._ei_mask[None, :, None]
+                else:
+                    y = y * self._ei_mask[None, :, None, None]
+
+            if self.output_norm is not None:
+                y = self.output_norm[iter](y)
+
+            if (self.output_config == 'full') | (iter == self.num_iter-1):
+                if outputs is None:
+                    outputs = y
+                else:
+                    outputs = torch.cat( (outputs, y), dim=1)
+            x = y
+        # end of iteration loop
+
+        return torch.reshape(outputs, (-1, self.num_outputs))
+    # END IterLayer.forward
 
     
