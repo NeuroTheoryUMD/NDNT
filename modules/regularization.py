@@ -731,7 +731,7 @@ class ActivityReg(RegModule):
         assert reg_type in _valid_reg_types, '{} is not a valid Locality Reg type'.format(reg_type)
 
         super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
-        self.acitivity_penalty = 0.0
+        self.activity_penalty = 0.0
     # END ActivityReg.__init__
 
     def compute_activity_penalty(self, acts ):

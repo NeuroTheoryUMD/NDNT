@@ -11,8 +11,9 @@ from .convlayers import STconvLayer
 
 class IterLayer(ConvLayer):
     """
-    Residual network layer based on conv-net setup but with different forward.
-    Namely, the forward includes a skip-connection, and has to be 'same'
+    Residual network composed of many layers (num_iter) with weight-sharing across layers.
+    It is based on conv-net setup, and can output from all layers or just last (output_config)
+    Also, num_inh is setup for only output layers by default
 
     Args (required):
         input_dims: tuple or list of ints, (num_channels, height, width, lags)
@@ -78,7 +79,9 @@ class IterLayer(ConvLayer):
         if self.output_config != 'last':  # then 'full'
             self.output_dims[0] *= num_iter
             self.num_outputs *= num_iter
-
+            self.ei_output_only = False
+        else:
+            self.ei_output_only = True
         self.res_layer = res_layer
 
         if output_norm in ['batch', 'batchX']:
@@ -98,7 +101,8 @@ class IterLayer(ConvLayer):
     # END IterLayer.Init
 
     @classmethod
-    def layer_dict(cls, filter_width=None, num_iter=1, output_config='last', res_layer=True, LN_reverse=False, **kwargs):
+    def layer_dict(
+        cls, filter_width=None, num_iter=1, output_config='last', res_layer=True, LN_reverse=False, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -175,7 +179,6 @@ class IterLayer(ConvLayer):
             if self.is1D:
 
                 if self._fullpadding:
-                    #s = F.pad(s, self._npads, "constant", 0)
                     y = F.conv1d(
                         F.pad(x, self._npads, "constant", 0),
                         w.view([-1, self.folded_dims, self.filter_dims[1]]), 
@@ -218,10 +221,11 @@ class IterLayer(ConvLayer):
                 y = y + x  # Add input back in
 
             if self._ei_mask is not None:
-                if self.is1D:
-                    y = y * self._ei_mask[None, :, None]
-                else:
-                    y = y * self._ei_mask[None, :, None, None]
+                if (not self.ei_output_only) or (iter == self.num_iter-1):
+                    if self.is1D:
+                        y = y * self._ei_mask[None, :, None]
+                    else:
+                        y = y * self._ei_mask[None, :, None, None]
 
             if self.output_norm is not None:
                 y = self.output_norm[iter](y)
@@ -270,7 +274,7 @@ class IterTlayer(TconvLayer):
             **kwargs,
             ):
         """
-        Initialize IterLayer with specified parameters.
+        Initialize IterTLayer with specified parameters.
 
         Args:
             input_dims: tuple or list of ints, (num_channels, height, width, lags)
