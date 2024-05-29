@@ -731,13 +731,16 @@ class ActivityReg(RegModule):
         assert reg_type in _valid_reg_types, '{} is not a valid Locality Reg type'.format(reg_type)
 
         super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
-        self.activity_penalty = 0.0
+
+        #self.register_buffer( 'activity_penalty', torch.zeros(1) )
+        self.activity_penalty = torch.zeros(1)
     # END ActivityReg.__init__
 
     def compute_activity_penalty(self, acts ):
         """Computes activity penalty from activations -- called in layer forward"""
         # Can put conditionals if there is more than one reg module
         self.activity_penalty = torch.mean(torch.sum(acts**2, axis=1), axis=0)
+        #test = torch.mean(torch.sum(acts**2, axis=1), axis=0)  
 
     def compute_reg_penalty(self, weights):
         """Compute regularization penalty for locality"""

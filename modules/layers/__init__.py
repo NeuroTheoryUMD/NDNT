@@ -22,4 +22,5 @@ from .masklayers import MaskLayer
 from .masklayers import MaskSTconvLayer
 from .orilayers import OriLayer
 from .orilayers import OriConvLayer
+from .orilayers import HermiteOriConvLayer
 from .orilayers import ConvLayer3D

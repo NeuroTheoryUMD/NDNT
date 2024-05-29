@@ -20,6 +20,7 @@ LayerTypes = {
     #'channelconv': layers.ChannelConvLayer,
     'ori': layers.OriLayer,
     'oriconv': layers.OriConvLayer,
+    'oriconvH': layers.HermiteOriConvLayer,
     'conv3d': layers.ConvLayer3D,
     'oolayer': layers.OnOffLayer,
     'masklayer': layers.MaskLayer,
