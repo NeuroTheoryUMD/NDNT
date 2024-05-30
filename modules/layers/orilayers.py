@@ -2,13 +2,15 @@ from numpy.lib.arraysetops import isin
 import torch
 from torch.nn import functional as F
 import torch.nn as nn
-
+import math
 from .ndnlayer import NDNLayer
 from .convlayers import ConvLayer, TconvLayer
 import numpy as np
+from numpy import pi
 import torchvision
 import torchvision.transforms.functional as TF
-
+from scipy.special import gamma
+from numpy.polynomial.polynomial import polyval
 class OriLayer(NDNLayer):
     """
     Orientation layer.
@@ -646,248 +648,12 @@ class ConvLayer3D(ConvLayer):
         Ldict['ori_filter_width'] = ori_filter_width
         return Ldict
 
-
-class HermiteConvLayer(ConvLayer):
-    "HermiteConv Layer: A ConvLayer whose filters are expressed in Hermite basis functions. From Ecker et al (2019)"
-    #better summary 
-    def __init__(self, input_dims=None, num_filters=None,
-                 hermite_rank=None, #I guess we toss this in here? 
-                 hermite_dims=None,  # absorbed by kwargs if necessary
-                  output_norm=None,
-                 **kwargs,
-                 ):
-        assert input_dims is not None, "HermiteConvLayer: input_dims must be specified"
-        assert hermite_rank is not None, "HermiteConvLayer: must specify max rank of Hermite polynomial" 
-        assert num_filters is not None, "HermiteConvLayer: must specify number of filters"
-        #Figure out what to do with these guys later. 
-        assert hermite_dims is not None, "HermiteConvLayer: Hermite filter dims must be specified"
-        assert input_dims[2] != 1, "HermiteConv Layer: only has 2D Hermite polynomials" 
-        num_coeffs=hermite_rank*(hermite_rank+1)//2
-        self.hermite_rank=hermite_rank
-        self.hermite_dims=hermite_dims
-        #self.num_filters=num_filters
-        super().__init__(
-            input_dims=input_dims, num_filters=num_filters, filter_dims=[num_coeffs, 1, 1, 1],
-            output_norm=output_norm, 
-            **kwargs) #This makes the class 
-        self.hermite_rank=hermite_rank
-        self.hermite_dims=hermite_dims
-        H, _, _=self.hermite_2d(self.hermite_rank, self.hermite_dims[1], 2*np.sqrt(self.hermite_rank))
-        self.register_buffer("H", H)   #Okay, you do need to redefine the padding
-    def hermcgen(self, mu, nu):
-        """Generate coefficients of 2D Hermite functions"""
-        nur = np.arange(nu + 1)
-        num = gamma(mu + nu + 1) * gamma(nu + 1) * ((-2) ** (nu - nur))
-        denom = gamma(mu + 1 + nur) * gamma(1 + nur) * gamma(nu + 1 - nur)
-        return num / denom
-
-
-    def hermite_2d(self, N, npts, xvalmax=None):
-        """Generate 2D Hermite function basis
-
-        Arguments:
-        N           -- the maximum rank.
-        npts        -- the number of points in x and y
-
-        Keyword arguments:
-        xvalmax     -- the maximum x and y value (default: 2.5 * sqrt(N))
-
-        Returns:
-        H           -- Basis set of size N*(N+1)/2 x npts x npts
-        desc        -- List of descriptors specifying for each
-                       basis function whether it is:
-                            'z': rotationally symmetric
-                            'r': real part of quadrature pair
-                            'i': imaginary part of quadrature pair
-
-        """
-        xvalmax = xvalmax or 2.5 * np.sqrt(N)
-        ranks = range(N)
-
-        # Gaussian envelope
-        xvalmax *= 1 - 1 / npts
-        xvals = np.linspace(-xvalmax, xvalmax, npts, endpoint=True)[...,None]
-
-        gxv = np.exp(-xvals ** 2 / 4)
-        gaussian = np.dot(gxv, gxv.T)
-
-        # Hermite polynomials
-        mu = np.array([])
-        nu = np.array([])
-        desc = []
-        for i, rank in enumerate(ranks):
-            muadd = np.sort(np.abs(np.arange(-rank, rank + 0.1, 2)))
-            mu = np.hstack([mu, muadd])
-            nu = np.hstack([nu, (rank - muadd) / 2])
-            if not (rank % 2):
-                desc.append('z')
-            desc += ['r', 'i'] * int(np.floor((rank + 1) / 2))
-
-        theta = np.arctan2(xvals, xvals.T)
-        radsq = xvals ** 2 + xvals.T ** 2
-        nbases = mu.size
-        H = np.zeros([nbases, npts, npts])
-        for i, (mui, nui, desci) in enumerate(zip(mu, nu, desc)):
-            radvals = polyval(radsq, self.hermcgen(mui, nui))
-            basis = gaussian * (radsq ** (mui / 2)) * radvals * np.exp(1j * mui * theta)
-            basis /= np.sqrt(2 ** (mui + 2 * nui) * pi * math.factorial(int(mui + nui)) * math.factorial(int(nui)))
-            if desci == 'z':
-                H[i] = basis.real / np.sqrt(2)
-            elif desci == 'r':
-                H[i] = basis.real
-            elif desci == 'i':
-                H[i] = basis.imag
-
-        # normalize
-        return torch.tensor(H / np.sqrt(np.sum(H ** 2, axis=(1, 2), keepdims=True)), dtype=torch.float32), desc, mu
-    @property
-    def padding(self):
-        return self._padding
-    
-    @padding.setter
-    def padding(self, value):
-        assert value in ['valid', 'same', 'circular'], "ConvLayer: incorrect value entered for padding"
-        self._padding = value
-        self._fullpadding = False
-
-        sz = self.hermite_dims[1:3] # handle 2D if necessary
-        if self._padding == 'valid':
-            self._npads = (0, 0, 0, 0)
-        else:  # same number of pads for 'circular' and'same'
-            assert self.stride == 1, "Warning: padding not yet implemented when stride > 1 if not 'valid' padding"
-            self._fullpadding = self.hermite_dims[1]%2 == 0
-            self._npads = (sz[1]//2, (sz[1]-1)//2, sz[0]//2, (sz[0]-1)//2)  # F.pad wants things backwards dims
-            self._fullpadding = self._fullpadding or (self.hermite_dims[2]%2 == 0)
-
-        # Also adjust output dims
-        new_output_dims = [
-            self.num_filters, 
-            self.input_dims[1] - sz[0] + 1 + self._npads[0]+self._npads[1], 
-            1, 1]
-        new_output_dims[2] = self.input_dims[2] - sz[1] + 1 + self._npads[2]+self._npads[3]
-        
-        self.output_dims = new_output_dims
-        
-    def forward(self, x):
-        # Reshape stim matrix LACKING temporal dimension [bcwh] 
-        # and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
-        # pytorch likes 3D convolutions to be [B,C,T,W,H].
-        # I benchmarked this and it'sd a 20% speedup to put the "Time" dimension first.
-        #s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3)
-        w_base= self.preprocess_weights()
-        s = torch.reshape( x, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
-            # Alternative location of batch_norm:
-            #if self.output_norm is not None:
-            #    s = self.output_norm(s)
-        w=torch.tensordot(w_base, self.H, dims=[[0], [0]])
-        if self._padding == 'circular':
-            pad_type = 'circular'
-        else:
-            pad_type = 'constant'
-
-        if self._fullpadding:
-            s = F.pad(s, self._npads, pad_type, 0)
-            y = F.conv2d(
-                s, # we do our own padding
-                w.view([-1, self.folded_dims, self.hermite_dims[1], self.hermite_dims[2]]),
-                bias=self.bias,
-                stride=self.stride,
-                dilation=self.dilation)
-        else:
-            # functional pads since padding is simple
-            if self.padding == 'circular':
-                s = F.pad(s, self._npads, pad_type, 0)
-
-                y = F.conv2d(
-                    s, 
-                    w.reshape([-1, self.folded_dims, self.hermite_dims[1], self.hermite_dims[2]]),
-                    #padding=(self._npads[2], self._npads[0]),
-                    #bias=self.bias,
-                    stride=self.stride,
-                    dilation=self.dilation)
-            else:  # this is faster if not circular
-                y = F.conv2d(
-                    s, 
-                    w.reshape([-1, self.folded_dims, self.hermite_dims[1], self.hermite_dims[2]]),
-                    padding=(self._npads[2], self._npads[0]),
-                    #bias=self.bias,
-                    stride=self.stride,
-                    dilation=self.dilation)
-
-        if not self.res_layer:
-            if self.output_norm is not None:
-                y = self.output_norm(y)
-
-        # Nonlinearity
-        if self.NL is not None:
-            y = self.NL(y)
-
-        if self._ei_mask is not None:
-            y = y * self._ei_mask[None, :, None, None]
-            # y = torch.einsum('bchw, c -> bchw* self.ei_mask
-            # w = torch.einsum('nctw,tz->nczw', w, self.tent_basis)
-
-        if self.res_layer:
-            # s is with dimensions: B, C, T, X, Y 
-            y = y + torch.reshape( s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
-
-        if self.output_norm is not None:
-            y = self.output_norm(y)
-
-        y = torch.reshape(y, (-1, int(self.num_outputs)))
-        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
-            self.reg.compute_activity_regularization(y)
-
-        return y
-    
-    def get_weights(self, num_inh=0):
-        """
-        num-inh can take into account previous layer inhibition weights.
-        
-        Args:
-            to_reshape: bool, whether to reshape the weights to the original filter shape
-            time_reverse: bool, whether to reverse the time dimension
-            num_inh: int, number of inhibitory units
-
-        Returns:
-            ws: np.ndarray, weights of the layer, on the CPU
-        """
-
-        ws = self.preprocess_weights()
-        w=torch.tensordot(self.H, ws, dims=[[0], [0]])
-        return w.detach().cpu().numpy().reshape(self.hermite_dims+[-1]).squeeze()
-    
-    @classmethod
-    def layer_dict(cls, hermite_rank=None, hermite_dims=None, basis=None, **kwargs):
-        """
-        This outputs a dictionary of parameters that need to input into the layer to completely specify.
-        Output is a dictionary with these keywords. 
-        -- All layer-specific inputs are included in the returned dict
-        -- Values that must be set are set to empty lists
-        -- Other values will be given their defaults
-
-        Args:
-            num_angles: number of rotations 
-            **kwargs: additional arguments to pass to NDNLayer
-
-        Returns:
-            Ldict: dict, dictionary of layer parameters
-        """
-
-        Ldict = super().layer_dict(**kwargs)
-        # Added arguments
-        Ldict['layer_type'] = 'HermiteConvLayer'
-        Ldict['hermite_rank'] = hermite_rank
-        Ldict['hermite_dims'] = hermite_dims
-        Ldict["basis"] = basis
-        #Ldict['mask'] = mask
-        return Ldict
     
 
 class HermiteOriConvLayer(ConvLayer):
-    "HermiteConv Layer: A ConvLayer whose filters are expressed in Hermite basis functions. From Ecker et al (2019)"
+    "HermiteOriConv Layer: An OriConvLayer whose filters are expressed in Hermite basis functions. From Ecker et al (2019)"
     #better summary 
-    def __init__(self, input_dims=None, num_filters=None,
+    def __init__(self, input_dims=None, num_filters=None, filter_dims=None,
                  hermite_rank=None, #I guess we toss this in here? 
                  hermite_dims=None, angles=None, # absorbed by kwargs if necessary
                   output_norm=None,
@@ -905,18 +671,25 @@ class HermiteOriConvLayer(ConvLayer):
         self.hermite_dims=hermite_dims
         #self.num_filters=num_filters
         super().__init__(
-            input_dims=input_dims, num_filters=num_filters, filter_dims=[num_coeffs, 1, 1, 1],
+            input_dims=input_dims, num_filters=num_filters, filter_dims=[input_dims[0], 1, 1, num_coeffs],
             output_norm=output_norm, 
             **kwargs) #This makes the class 
         self.hermite_rank=hermite_rank
         self.hermite_dims=hermite_dims
         self.angles=angles 
-        self.folded_dims = self.filter_dims[0] # input filters * lags
+        #self.folded_dims = self.filter_dims[0] # input filters * lags
         # we need to set the entire output_dims so that num_outputs gets updated in the setter
         #self.filter_dims=Hfilter_dims
         self.output_dims = [self.output_dims[0], self.output_dims[1], self.output_dims[2], len(self.angles)]
         H, _, _=self.hermite_2d(self.hermite_rank, self.hermite_dims[1], 2*np.sqrt(self.hermite_rank))
         self.register_buffer("H", H)   #Okay, you do need to redefine the padding
+        if output_norm in ['batch', 'batchX']:
+            if output_norm == 'batchX':
+                affine = False
+            else:
+                affine = True
+            self.output_norm = nn.BatchNorm2d(self.num_filters*len(angles), affine=affine)
+            
     def hermcgen(self, mu, nu):
         """Generate coefficients of 2D Hermite functions"""
         nur = np.arange(nu + 1)
@@ -1026,20 +799,21 @@ class HermiteOriConvLayer(ConvLayer):
             pad_type = 'constant'
         
         s = x.reshape(-1, self.input_dims[0], self.input_dims[1], self.input_dims[2])
-
-        w= self.preprocess_weights()
-        w_expanded=torch.tensordot(self.H, w, dims=[[0], [0]]).reshape([self.num_filters, self.hermite_dims[1], self.hermite_dims[2]])
-        rotated_ws=torch.zeros((self.num_filters, self.hermite_dims[1], self.hermite_dims[2], len(self.angles)))
-        rotated_ws[:, :, :, 0]=w_expanded 
+        
+        w= self.preprocess_weights().squeeze().reshape(-1, self.input_dims[0], self.num_filters)
+        w_expanded=torch.tensordot(w, self.H, dims=[[0], [0]])
+        rotated_ws=torch.zeros((self.input_dims[0], self.num_filters, self.hermite_dims[1], self.hermite_dims[2], len(self.angles)), device=s.device)
+        rotated_ws[:, :, :, :, 0]=w_expanded 
         for i in range(1, len(self.angles)):
-            for j in range(self.num_filters):
-                image_rot=TF.rotate(
-                img=w_expanded[j, :, :].reshape(1, self.hermite_dims[1], self.hermite_dims[2]),
-                interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
-                angle=float(self.angles[i]))
-                rotated_ws[j, :, :, i]=image_rot
+            for j in range(self.input_dims[0]):
+                for k in range(self.num_filters):
+                    image_rot=TF.rotate(
+                    img=w_expanded[j, k, :, :].reshape(-1, self.hermite_dims[1], self.hermite_dims[2]),
+                    interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
+                    angle=float(self.angles[i]))
+                    rotated_ws[j, k, :, :, i]=image_rot
         rotated_ws_reshaped = rotated_ws.reshape((self.num_filters,
-                                                  self.hermite_dims[0], # in filters
+                                                  self.input_dims[0], # in filters
                                                   self.hermite_dims[1], # width
                                                   self.hermite_dims[2], # height
                                                   len(self.angles)))
@@ -1047,9 +821,9 @@ class HermiteOriConvLayer(ConvLayer):
         # and combine the filters and angles into the folded_dims dimension
         # since we are convolving in the folded_dims dimension to do all filters at once
         rotated_ws_reshaped = rotated_ws_reshaped.reshape((self.num_filters*len(self.angles),
-                                                           self.hermite_dims[0],
+                                                           self.input_dims[0],
                                                            self.hermite_dims[1],
-                                                           self.hermite_dims[2]))
+                                                          self.hermite_dims[2]))
         if self._fullpadding:
             s_padded = F.pad(s, self.npads, pad_type, 0)
             y = F.conv2d(s_padded,
@@ -1070,6 +844,7 @@ class HermiteOriConvLayer(ConvLayer):
                              bias=self.bias.repeat(len(self.angles)),
                              stride=self.stride,
                              dilation=self.dilation)
+                
 
         if not self.res_layer:
             if self.output_norm is not None:
@@ -1114,17 +889,18 @@ class HermiteOriConvLayer(ConvLayer):
             ws: np.ndarray, weights of the layer, on the CPU
         """
 
-        w= self.preprocess_weights().squeeze()
-        w_expanded=torch.tensordot(self.H, w, dims=[[0], [0]]).reshape([self.num_filters, self.hermite_dims[1], self.hermite_dims[2]])
-        rotated_ws=torch.zeros((self.num_filters, self.hermite_dims[1], self.hermite_dims[2], len(self.angles)))
-        rotated_ws[:, :, :, 0]=w_expanded 
+        w= self.preprocess_weights().squeeze().reshape(-1, self.num_filters, self.input_dims[0])
+        w_expanded=torch.tensordot(w, self.H, dims=[[0], [0]]).reshape([self.num_filters, self.input_dims[0], self.hermite_dims[1], self.hermite_dims[2]])
+        rotated_ws=torch.zeros((self.num_filters, self.input_dims[0], self.hermite_dims[1], self.hermite_dims[2], len(self.angles)))
+        rotated_ws[:, :, :, :, 0]=w_expanded 
         for i in range(1, len(self.angles)):
             for j in range(self.num_filters):
-                image_rot=TF.rotate(
-                img=w_expanded[j].reshape(1, self.hermite_dims[1], self.hermite_dims[2]),
-                interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
-                angle=float(self.angles[i]))
-                rotated_ws[j, :, :, i]=image_rot
+                for k in range(self.input_dims[0]):
+                    image_rot=TF.rotate(
+                    img=w_expanded[j, k, :, :].reshape(-1, self.hermite_dims[1], self.hermite_dims[2]),
+                    interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
+                    angle=float(self.angles[i]))
+                    rotated_ws[j, k, :, :, i]=image_rot
         return rotated_ws.detach().cpu().numpy().squeeze()
     
     @classmethod
