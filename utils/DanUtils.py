@@ -159,6 +159,20 @@ def load_python_data( filename, show_keys=False ):
     return data
 
 
+def chunker(seq, size):
+    """
+    This function chunks a sequence into chunks of size size. (from Matt J)
+
+    Args:
+        seq: the sequence
+        size: the size of the chunks
+
+    Returns:
+        a list of chunks
+    """
+    return [seq[pos:pos + size] for pos in range(0, len(seq), size)]
+
+
 def fold_sample( num_items, folds=5, random_gen=False, which_fold=None):
     """Divide fold sample deterministically or randomly distributed over number of items. More options
     can be added, but his captures the basics."""

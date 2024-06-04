@@ -69,10 +69,12 @@ def fit_lbfgs(mod, data, #val_data=None,
 
 
 def fit_lbfgs_batch(
-        model, data_dict, verbose=True, 
-        #val_data=None,
-        val_dataset=None,
-        parameters=None, optimizer=None,
+        model, dataset,
+        batch_size=1000,
+        num_chunks=None, 
+        verbose=True, 
+        #val_dataset=None,
+        #parameters=None, optimizer=None,
         max_iter=1000, lr=1,
         history_size=100,
         tolerance_change=1e-7,
@@ -84,65 +86,81 @@ def fit_lbfgs_batch(
 
     Inputs:
         Model: Pytorch model
-        data_dict: Dictionary to used with Model.training_step(data)
+        dataset: Dataset that can be sampled
+        batch_size: size of chunk to sample; superceded by num_chunks
+        num_chunks: divide dataset into number of chunks -> sets batch_size (def: None)
+        verbose: output to screen
+
     '''
-    from tqdm import tqdm
+    #from tqdm import tqdm
+    from .DanUtils import chunker
+
+    ds_size = len(dataset[:]['stim'])
+    if num_chunks is not None:
+        batch_size = int(np.ceil(ds_size)/num_chunks)
+        if verbose:
+            print('Setting batch size to', batch_size)
 
     model.prepare_regularization()
     model.train()
-    if parameters is None:
-        parameters = model.parameters()
-    if optimizer is None:
-        optimizer = torch.optim.LBFGS(
-            parameters, 
-            lr=lr, history_size=history_size,
-            tolerance_change=tolerance_change, tolerance_grad=tolerance_grad,
-            max_iter=max_iter, line_search_fn=line_search)
 
-    losses, vlosses = [], []
+    #if parameters is None:
+    #    parameters = model.parameters()
+    #if optimizer is None:
+    optimizer = torch.optim.LBFGS(
+        model.parameters(), 
+        lr=lr, history_size=history_size,
+        tolerance_change=tolerance_change, tolerance_grad=tolerance_grad,
+        max_iter=max_iter, line_search_fn=line_search)
+
+    losses = [] #, vlosses = [], []
     #optimizer = torch.optim.LBFGS(model.model.net[1].parameters(), lr=1, max_iter=max_iter)
     patience = 200
-    ds_size = len(data_dict[:]["stim"])
-    best_model = model.state_dict()
 
+    #best_model = model.state_dict()
+    # Need to make iterable for tqqm
     def closure():
         #global patience
         #if patience < 0:
         #    print("patience exhausted")
         #    return
         optimizer.zero_grad()
+        #for b in tqdm( chunker(range(ds_size), batch_size), position=0, leave=True ):
         loss = 0
-        for b in tqdm(data_dict, position=0, leave=True):
-            l = model.training_step(b)['loss']*len(b['stim'])
-            l.backward()
-            del b
+        for b in chunker(range(ds_size), batch_size):
+            loss += model.training_step(dataset[b])['loss']*len(b)  # weights by number of time steps
         loss = loss/ds_size
+        loss.backward()
+            #del b
         losses.append(loss.item())
-        with torch.no_grad():
-            model.eval()
+        #with torch.no_grad():
+        #    model.eval()
             #vlosses.append(-eval_model_fast(model, val_dl).mean())
-            if val_dataset is not None:
-                vlosses.append(model.eval_models(val_dataset))
-            else:
-                vlosses.append(0)
-            model.train()
-            if min(vlosses) == vlosses[-1]:
-                global best_model
-                best_model = model.state_dict()
+            #if val_dataset is not None:
+            #    vlosses.append(model.eval_models(val_dataset))
+            #else:
+            #    vlosses.append(0)
+        #    model.train()
+        #    if min(vlosses) == vlosses[-1]:
+        #        global best_model
+        #        best_model = model.state_dict()
             #    patience = 200
             #else:
             #    patience -= 1
-        print("loss:", losses[-1], "vloss:", vlosses[-1], "step:", len(losses))
-        pbar.update(1)
+        if verbose:
+            #print("loss:", losses[-1], "vloss:", vlosses[-1], "step:", len(losses))
+            print("%5d:%12.7f"%(len(losses), losses[-1]))
+        #pbar.update(1)
         return loss
 
-    with tqdm(total=max_iter) as pbar:
-        try:
-            optimizer.step(closure)
-        except KeyboardInterrupt:
-            print("Keyboard interrupt")
-        except TypeError:
-            print("stopped early")
+    #with tqdm(total=max_iter) as pbar:
+    try:
+        optimizer.step(closure)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt")
+    except TypeError:
+        print("stopped early")
+# END fit_lbfgs_batch
 
 #################### CREATE OTHER PARAMETER-DICTS ####################
 def create_optimizer_params(
