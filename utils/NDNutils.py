@@ -65,8 +65,8 @@ def fit_lbfgs(mod, data, #val_data=None,
 
     optimizer.zero_grad()
     torch.cuda.empty_cache()
-    return loss
-
+    #return loss
+# END fit_lbfgs
 
 def fit_lbfgs_batch(
         model, dataset,
@@ -227,6 +227,7 @@ def create_optimizer_params(
                 max_epochs = 100
             else:
                 max_epochs = 30
+        
 
         optpar = {
             'optimizer_type': optimizer_type,
@@ -248,6 +249,8 @@ def create_optimizer_params(
             'log_activations': log_activations, 
             'device': device,
             'optimize_graph': optimize_graph} 
+        if optimizer_type in ['sgd', 'SGD']:
+            optpar['momentum'] = 0.9  # extra term for SGD -- although doesnt have the others
 
     return optpar
 # END create_optimizer_params

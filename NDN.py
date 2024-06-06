@@ -514,6 +514,7 @@ class NDN(nn.Module):
             weight_decay=0.01,
             amsgrad=False,
             betas=(0.9, 0.999),
+            momentum=0.9,  # for SGD
             max_iter=10,
             history_size=4,
             tolerance_change=1e-3,
@@ -564,6 +565,16 @@ class NDN(nn.Module):
                     lr=learning_rate,
                     betas=betas)
 
+        elif (optimizer_type=='SGD') | (optimizer_type=='sgd'):
+            optimizer = torch.optim.SGD(
+                self.parameters(), 
+                lr=learning_rate, 
+                momentum=momentum, 
+                weight_decay=weight_decay)
+            #torch.optim.SGD(params, lr=0.001, momentum=0, dampening=0, 
+            #  weight_decay=0, nesterov=False, *, maximize=False, foreach=None, 
+            #  differentiable=False, fused=None)
+            
         elif optimizer_type=='LBFGS':
 
             optimizer = torch.optim.LBFGS(

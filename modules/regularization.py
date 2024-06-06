@@ -733,7 +733,7 @@ class ActivityReg(RegModule):
         super().__init__(reg_type, reg_val, input_dims, num_dims, **kwargs)
 
         #self.register_buffer( 'activity_penalty', torch.zeros(1) )
-        self.activity_penalty = torch.zeros(1)
+        self.activity_penalty = 0.0
     # END ActivityReg.__init__
 
     def compute_activity_penalty(self, acts ):
