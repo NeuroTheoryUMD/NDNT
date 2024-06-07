@@ -1400,18 +1400,18 @@ class NDN(nn.Module):
         self.networks[ffnet_target].plot_filters(**kwargs)
 
     def save_model_zip(self, 
-                       filename,
+                       path,
                        ffnet_list=None,
                        ffnet_out=None,
                        loss_type='poisson',
                        model_name=None,
                        working_dir='./checkpoints'):
         """
-        Save the model as a zip file containing a json file with the model parameters
+        Save the model as a zip file (with extension .ndn) containing a json file with the model parameters
         and a .ckpt file with the state_dict.
 
         Args:
-            filename: The name of the zip file to save.
+            path: The name of the zip file to save.
             ffnet_list: The list of feedforward networks. (if this is set, it uses the ffnet_list, ffnet_out, loss_type, model_name, and working_dir arguments)
             ffnet_out: The output layer of the feedforward network.
             loss_type: The loss type.
@@ -1422,8 +1422,18 @@ class NDN(nn.Module):
             None
         """
 
-        if filename.endswith('.zip'):
-            filename = filename[:-4]
+        # the directory and name of the desired file to save
+        file_dir = os.path.dirname(path)
+        file_name = os.path.basename(path).split('.')[0] # remove the .zip extension (if it exists)
+
+        # make a temporary directory in the same location as the zip file
+        # where we will extract the two files
+        import uuid
+        temp_dir = os.path.join(file_dir, str(uuid.uuid4()))
+        temp_name = os.path.join(temp_dir, file_name)
+
+        # make the temporary directory
+        os.mkdir(temp_dir)
 
         # package params
         if ffnet_list is None:
@@ -1440,44 +1450,56 @@ class NDN(nn.Module):
                           'working_dir': working_dir}
 
         # make zip_filename and ckpt_filename in the same directory as the filename
-        json_filename = filename + '.json'
-        ckpt_filename = filename + '.ckpt'
+        json_filename = temp_name + '.json'
+        ckpt_filename = temp_name + '.ckpt'
         with open(json_filename, 'w') as f:
             json.dump(ndn_params, f, cls=NpEncoder)
         torch.save(self.state_dict(), ckpt_filename)
-        # zip up the two files
-        with zipfile.ZipFile(filename + '.zip', 'w') as myzip:
+        
+        # zip up the two files and save to the file_dir
+        with zipfile.ZipFile(os.path.join(file_dir, file_name) + '.ndn', 'w') as myzip:
             myzip.write(json_filename, os.path.basename(json_filename))
             myzip.write(ckpt_filename, os.path.basename(ckpt_filename))
-        # remove the two files
+
+        # remove the two files and the temporary directory
         os.remove(json_filename)
         os.remove(ckpt_filename)
+        os.rmdir(temp_dir)
 
     @classmethod
-    def load_model_zip(cls, filename):
+    def load_model_zip(cls, path):
         """
-        Load the model from a zip file containing a json file with the model parameters
+        Load the model from an a zip file (with extension .ndn) containing a json file with the model parameters
         and a .ckpt file with the state_dict.
 
         Args:
-            filename: The name of the zip file to load.
+            path: The name of the zip file to load.
 
         Returns:
             NDN: The loaded model.
         """
 
-        if filename.endswith('.zip'):
-            filename = filename[:-4]
+        # get the file directory and name
+        file_dir = os.path.dirname(path)
+        file_name = os.path.basename(path).split('.')[0] # remove the .ndn extension (if it exists)
+
+        # make a temporary directory in the same location as the zip file
+        # where we will extract the two files
+        import uuid
+        temp_dir = os.path.join(file_dir, str(uuid.uuid4()))
+        temp_name = os.path.join(temp_dir, file_name)
+
         # open the zip file
-        with zipfile.ZipFile(filename + '.zip', 'r') as myzip:
-            myzip.extractall()
-        with open(filename + '.json', 'r') as f:
+        with zipfile.ZipFile(path, 'r') as myzip:
+            myzip.extractall(temp_dir)
+        with open(temp_name+'.json', 'r') as f:
             params = json.load(f)
         ffnet_list = params['ffnet_list']
         loss_type = params['loss_type']
         ffnet_out = params['ffnet_out']
         model_name = params['model_name']
         working_dir = params['working_dir']
+
         # make an NDN object with the ffnet_list
         model = cls(ffnet_list=ffnet_list, 
                     loss_type=loss_type,
@@ -1486,11 +1508,14 @@ class NDN(nn.Module):
                     working_dir=working_dir)
         model.prepare_regularization() # this will build the reg_modules
         # load the state_dict
-        state_dict = torch.load(filename + '.ckpt')
+        state_dict = torch.load(temp_name+'.ckpt')
         model.load_state_dict(state_dict, strict=False)
-        # remove the two files
-        os.remove(filename + '.json')
-        os.remove(filename + '.ckpt')
+
+        # remove the two files and the temporary directory
+        os.remove(temp_name+'.json')
+        os.remove(temp_name+'.ckpt')
+        os.rmdir(temp_dir)
+
         return model
 
     def save_model(self, filename=None, pt=False ):
