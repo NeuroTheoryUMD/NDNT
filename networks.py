@@ -8,40 +8,6 @@ from copy import deepcopy
 
 from NDNT.modules import layers
 
-LayerTypes = {
-    'normal': layers.NDNLayer,
-    'conv': layers.ConvLayer,
-    'divnorm': layers.DivNormLayer,
-    'tconv': layers.TconvLayer,
-    'stconv': layers.STconvLayer,
-    'tlayer': layers.Tlayer,
-    'biconv': layers.BiConvLayer1D,
-    'bistconv': layers.BiSTconv1D,
-    #'channelconv': layers.ChannelConvLayer,
-    'ori': layers.OriLayer,
-    'oriconv': layers.OriConvLayer,
-    'oriconvH': layers.HermiteOriConvLayer,
-    'conv3d': layers.ConvLayer3D,
-    'oolayer': layers.OnOffLayer,
-    'masklayer': layers.MaskLayer,
-    'maskSTClayer': layers.MaskSTconvLayer,
-    'iter': layers.IterLayer,
-    'iterT': layers.IterTlayer,
-    'iterST': layers.IterSTlayer,
-    'readout': layers.ReadoutLayer,
-    'readout3d': layers.ReadoutLayer3d,
-    'fixation': layers.FixationLayer,
-    'lag': layers.LagLayer,
-    'time': layers.TimeLayer,
-    'dim0': layers.Dim0Layer,
-    'dimSP': layers.DimSPLayer,
-    'dimSPT': layers.DimSPTLayer,
-    'channel': layers.ChannelLayer,
-    'LVlayer': layers.LVLayer,
-    'l1layer': layers.L1convLayer
-    # 'external': layers.ExternalLayer,    
-    #'res': layers.ResLayer,
-}
 
 _valid_ffnet_types = ['normal', 'add', 'mult', 'readout', 'scaffold', 'scaffold3d']
       
@@ -80,6 +46,43 @@ class FFnetwork(nn.Module):
         
         super().__init__()
         
+        self.LayerTypes = {
+            'normal': layers.NDNLayer,
+            'conv': layers.ConvLayer,
+            'divnorm': layers.DivNormLayer,
+            'tconv': layers.TconvLayer,
+            'stconv': layers.STconvLayer,
+            'tlayer': layers.Tlayer,
+            'biconv': layers.BiConvLayer1D,
+            'bistconv': layers.BiSTconv1D,
+            #'channelconv': layers.ChannelConvLayer,
+            'ori': layers.OriLayer,
+            'oriconv': layers.OriConvLayer,
+            'oriconvH': layers.HermiteOriConvLayer,
+            'conv3d': layers.ConvLayer3D,
+            'oolayer': layers.OnOffLayer,
+            'masklayer': layers.MaskLayer,
+            'maskSTClayer': layers.MaskSTconvLayer,
+            'iter': layers.IterLayer,
+            'iterT': layers.IterTlayer,
+            'iterST': layers.IterSTlayer,
+            'readout': layers.ReadoutLayer,
+            'readout3d': layers.ReadoutLayer3d,
+            'fixation': layers.FixationLayer,
+            'lag': layers.LagLayer,
+            'time': layers.TimeLayer,
+            'dim0': layers.Dim0Layer,
+            'dimSP': layers.DimSPLayer,
+            'dimSPT': layers.DimSPTLayer,
+            'channel': layers.ChannelLayer,
+            'LVlayer': layers.LVLayer,
+            'l1layer': layers.L1convLayer
+            # 'external': layers.ExternalLayer,    
+            #'res': layers.ResLayer,
+        }
+
+
+
         self.network_type = ffnet_type
         #print("FFnet: network type:", self.network_type)
         assert self.network_type in _valid_ffnet_types, "ffnet_type " + self.network_type + " is unknown."
@@ -118,7 +121,9 @@ class FFnetwork(nn.Module):
                 else:
                     self.layer_list[ll]['input_dims'] = deepcopy(self.layers[ll-1].output_dims)
             Ltype = self.layer_list[ll]['layer_type']
-            self.layers.append( LayerTypes[Ltype](**self.layer_list[ll]) )
+            #print(Ltype)
+            #print(LayerTypes[Ltype])
+            self.layers.append( self.LayerTypes[Ltype](**self.layer_list[ll]) )
 
         # output dims determined by last layer
         self.output_dims = self.layers[-1].output_dims

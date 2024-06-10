@@ -649,39 +649,41 @@ class ConvLayer3D(ConvLayer):
         return Ldict
 
     
-
 class HermiteOriConvLayer(ConvLayer):
     "HermiteOriConv Layer: An OriConvLayer whose filters are expressed in Hermite basis functions. From Ecker et al (2019)"
     #better summary 
-    def __init__(self, input_dims=None, num_filters=None, filter_dims=None,
-                 hermite_rank=None, #I guess we toss this in here? 
-                 hermite_dims=None, angles=None, # absorbed by kwargs if necessary
-                  output_norm=None,
-                 **kwargs,
-                 ):
+
+    def __init__(
+            self, input_dims=None, num_filters=None,
+            hermite_rank=None, filter_width=None, 
+            output_norm=None,
+            angles=None,
+            **kwargs):
+        
         assert input_dims is not None, "HermiteOriConvLayer: input_dims must be specified"
         assert hermite_rank is not None, "HermiteOriConvLayer: must specify max rank of Hermite polynomial" 
         assert num_filters is not None, "HermiteOriConvLayer: must specify number of filters"
-        #Figure out what to do with these guys later. 
-        assert hermite_dims is not None, "HermiteOriConvLayer: Hermite filter dims must be specified"
+        assert filter_width is not None, 'Dummy gotta set the filter_width'
         assert input_dims[2] != 1, "HermiteOriConv Layer: only has 2D Hermite polynomials" 
         assert angles is not None, "Hermite OriConv Layer: must include angles" 
-        num_coeffs=hermite_rank*(hermite_rank+1)//2
+
+        num_coeffs = hermite_rank*(hermite_rank+1)//2
         self.hermite_rank=hermite_rank
-        self.hermite_dims=hermite_dims
-        #self.num_filters=num_filters
+        self.hermite_dims=filter_width
+
         super().__init__(
-            input_dims=input_dims, num_filters=num_filters, filter_dims=[input_dims[0], 1, 1, num_coeffs],
-            output_norm=output_norm, 
-            **kwargs) #This makes the class 
+            input_dims=input_dims, num_filters=num_filters, 
+            filter_dims=[input_dims[0], 1, 1, num_coeffs],  # num_coeff can be regularized in time dim
+            output_norm = output_norm, 
+            **kwargs) 
+
         self.hermite_rank=hermite_rank
-        self.hermite_dims=hermite_dims
+        self.hermite_dims=filter_width
         self.angles=angles 
-        #self.folded_dims = self.filter_dims[0] # input filters * lags
         # we need to set the entire output_dims so that num_outputs gets updated in the setter
         #self.filter_dims=Hfilter_dims
         self.output_dims = [self.output_dims[0], self.output_dims[1], self.output_dims[2], len(self.angles)]
-        H, _, _=self.hermite_2d(self.hermite_rank, self.hermite_dims[1], 2*np.sqrt(self.hermite_rank))
+        H, _, _ = self.hermite_2d(self.hermite_rank, self.hermite_dims, 2*np.sqrt(self.hermite_rank))
         self.register_buffer("H", H)   #Okay, you do need to redefine the padding
         if output_norm in ['batch', 'batchX']:
             if output_norm == 'batchX':
@@ -766,14 +768,14 @@ class HermiteOriConvLayer(ConvLayer):
         self._padding = value
         self._fullpadding = False
 
-        sz = self.hermite_dims[1:3] # handle 2D if necessary
+        sz = [self.hermite_dims, self.hermite_dims]
         if self._padding == 'valid':
             self._npads = (0, 0, 0, 0)
         else:  # same number of pads for 'circular' and'same'
             assert self.stride == 1, "Warning: padding not yet implemented when stride > 1 if not 'valid' padding"
-            self._fullpadding = self.hermite_dims[1]%2 == 0
+            self._fullpadding = self.hermite_dims%2 == 0
             self._npads = (sz[1]//2, (sz[1]-1)//2, sz[0]//2, (sz[0]-1)//2)  # F.pad wants things backwards dims
-            self._fullpadding = self._fullpadding or (self.hermite_dims[2]%2 == 0)
+            #self._fullpadding = self._fullpadding or (self.hermite_dims[2]%2 == 0)
 
         # Also adjust output dims
         new_output_dims = [
@@ -783,6 +785,7 @@ class HermiteOriConvLayer(ConvLayer):
         new_output_dims[2] = self.input_dims[2] - sz[1] + 1 + self._npads[2]+self._npads[3]
         
         self.output_dims = new_output_dims
+
     def forward(self, x):
         """
         Forward pass through the layer.
@@ -802,28 +805,28 @@ class HermiteOriConvLayer(ConvLayer):
         
         w= self.preprocess_weights().squeeze().reshape(-1, self.input_dims[0], self.num_filters)
         w_expanded=torch.tensordot(w, self.H, dims=[[0], [0]])
-        rotated_ws=torch.zeros((self.input_dims[0], self.num_filters, self.hermite_dims[1], self.hermite_dims[2], len(self.angles)), device=s.device)
+        rotated_ws=torch.zeros((self.input_dims[0], self.num_filters, self.hermite_dims, self.hermite_dims, len(self.angles)), device=s.device)
         rotated_ws[:, :, :, :, 0]=w_expanded 
         for i in range(1, len(self.angles)):
             for j in range(self.input_dims[0]):
                 for k in range(self.num_filters):
                     image_rot=TF.rotate(
-                    img=w_expanded[j, k, :, :].reshape(-1, self.hermite_dims[1], self.hermite_dims[2]),
+                    img=w_expanded[j, k, :, :].reshape(-1, self.hermite_dims, self.hermite_dims),
                     interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
                     angle=float(self.angles[i]))
                     rotated_ws[j, k, :, :, i]=image_rot
         rotated_ws_reshaped = rotated_ws.reshape((self.num_filters,
                                                   self.input_dims[0], # in filters
-                                                  self.hermite_dims[1], # width
-                                                  self.hermite_dims[2], # height
+                                                  self.hermite_dims, # width
+                                                  self.hermite_dims, # height
                                                   len(self.angles)))
         rotated_ws_reshaped = rotated_ws_reshaped.permute(0, 4, 1, 2, 3)
         # and combine the filters and angles into the folded_dims dimension
         # since we are convolving in the folded_dims dimension to do all filters at once
         rotated_ws_reshaped = rotated_ws_reshaped.reshape((self.num_filters*len(self.angles),
                                                            self.input_dims[0],
-                                                           self.hermite_dims[1],
-                                                          self.hermite_dims[2]))
+                                                           self.hermite_dims,
+                                                          self.hermite_dims))
         if self._fullpadding:
             s_padded = F.pad(s, self.npads, pad_type, 0)
             y = F.conv2d(s_padded,
@@ -852,8 +855,10 @@ class HermiteOriConvLayer(ConvLayer):
         
         if self.NL is not None:
             y = self.NL(y)
+        #print(y.shape, self._ei_mask.shape)
         if self._ei_mask is not None:
             y = y*self._ei_mask[None, :, None, None]
+            # this needs to clone the ei_mask in current state since dims are not in separate dim
 
         # if self.res_layer:
         #     y = y+torch.reshape(s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
@@ -890,21 +895,21 @@ class HermiteOriConvLayer(ConvLayer):
         """
 
         w= self.preprocess_weights().squeeze().reshape(-1, self.num_filters, self.input_dims[0])
-        w_expanded=torch.tensordot(w, self.H, dims=[[0], [0]]).reshape([self.num_filters, self.input_dims[0], self.hermite_dims[1], self.hermite_dims[2]])
-        rotated_ws=torch.zeros((self.num_filters, self.input_dims[0], self.hermite_dims[1], self.hermite_dims[2], len(self.angles)))
+        w_expanded=torch.tensordot(w, self.H, dims=[[0], [0]]).reshape([self.num_filters, self.input_dims[0], self.hermite_dims, self.hermite_dims])
+        rotated_ws=torch.zeros((self.num_filters, self.input_dims[0], self.hermite_dims, self.hermite_dims, len(self.angles)))
         rotated_ws[:, :, :, :, 0]=w_expanded 
         for i in range(1, len(self.angles)):
             for j in range(self.num_filters):
                 for k in range(self.input_dims[0]):
                     image_rot=TF.rotate(
-                    img=w_expanded[j, k, :, :].reshape(-1, self.hermite_dims[1], self.hermite_dims[2]),
+                    img=w_expanded[j, k, :, :].reshape(-1, self.hermite_dims, self.hermite_dims),
                     interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
                     angle=float(self.angles[i]))
                     rotated_ws[j, k, :, :, i]=image_rot
         return rotated_ws.detach().cpu().numpy().squeeze()
     
     @classmethod
-    def layer_dict(cls, hermite_rank=None, hermite_dims=None, basis=None, angles=None, **kwargs):
+    def layer_dict(cls, hermite_rank=None, filter_width=None, basis=None, angles=None, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -924,7 +929,7 @@ class HermiteOriConvLayer(ConvLayer):
         # Added arguments
         Ldict['layer_type'] = 'oriconvH'
         Ldict['hermite_rank'] = hermite_rank
-        Ldict['hermite_dims'] = hermite_dims
+        Ldict['filter_width'] = filter_width
         Ldict["angles"] = angles 
         Ldict["basis"] = basis
         #Ldict['mask'] = mask
