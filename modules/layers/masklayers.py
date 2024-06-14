@@ -49,20 +49,27 @@ class MaskLayer(NDNLayer):
             reg_vals: dict, regularization values
             **kwargs: additional arguments to pass to NDNLayer
         """
+        
         super().__init__(
             input_dims=input_dims, num_filters=num_filters,
             #filter_dims=None,  # for now, not using so Non is correct
             NLtype=NLtype, norm_type=norm_type,
             pos_constraint=pos_constraint, num_inh=num_inh,
             bias=bias, weights_initializer=weights_initializer,
-            output_norm=output_norm, initialize_center=initialize_center,
+            output_norm=output_norm, initialize_center=False,
             bias_initializer=bias_initializer, reg_vals=reg_vals,
             **kwargs)
 
-        # Now make mask
-        assert mask is not None, "MASKLAYER: must include mask, dodo"
+        #assert mask is not None, "MASKLAYER: must include mask, dodo"
+        if mask is None: # then make default mask (ones) and assume will be updated
+            print( "  WARNING: MaskLayer currently has default mask", self.filter_dims, 'x', self.num_filters)
+            mask = np.ones([np.prod(self.filter_dims), self.num_filters])
         assert np.prod(mask.shape) == np.prod(self.filter_dims)*num_filters
         self.register_buffer('mask', torch.tensor(mask.reshape([-1, num_filters]), dtype=torch.float32))
+
+        # Must be done after mask is filled in
+        if initialize_center:
+            self.initialize_gaussian_envelope()
     # END MaskLayer.__init__
 
     def preprocess_weights( self ):
@@ -134,7 +141,10 @@ class MaskSTconvLayer(STconvLayer):
             **kwargs)
 
         # Now make mask
-        assert mask is not None, "MaskSTConvLayer: must include mask!"
+        #assert mask is not None, "MaskSTConvLayer: must include mask!"
+        if mask is None: # then make default mask (ones) and assume will be updated
+            print( "  WARNING: MaskLayer currently has default mask", self.filter_dims, self.num_filters)
+            mask = np.ones([np.prod(self.filter_dims), self.num_filters])
         assert np.prod(mask.shape) == np.prod(self.filter_dims)*num_filters
         self.register_buffer('mask', torch.tensor(mask.reshape([-1, num_filters]), dtype=torch.float32))
 
