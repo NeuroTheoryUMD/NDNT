@@ -255,6 +255,11 @@ def design_matrix_drift( NT, anchors, zero_left=True, zero_right=False, const_ri
 
     return X
 
+##### GENERAL UTILITY FUNCTIONS? ########
+def dist_mean( p ):
+    xs = np.arange(len(p))
+    return np.sum(xs*p)/np.sum(p)
+
 
 def max_multiD(k):
     num_dims = len(k.shape)
