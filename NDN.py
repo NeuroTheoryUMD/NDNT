@@ -69,7 +69,6 @@ class NDN(nn.Module):
             np.random.seed(seed)
             torch.manual_seed(seed)
             torch.cuda.manual_seed(seed)
-
         if ffnet_list is None:
             # then must be a single ffnet specified by layer_list
             assert layer_list is not None, "NDN: must specify either ffnet_list or layer_list."
@@ -836,6 +835,9 @@ class NDN(nn.Module):
         shuffle_data=True  # no condition when we don't want it shuffled, right?
 
         from torch.utils.data import DataLoader
+        
+        if seed is not None:
+            torch.manual_seed(seed)
         train_dl = DataLoader( train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
         valid_dl = DataLoader( val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
 
@@ -1032,6 +1034,7 @@ class NDN(nn.Module):
                 if device != dev0:
                     "For dictionary-based evaluation, constrained to the device the data is on."
 
+            d0 = next(self.parameters()).device  # device the model is currently on
             m0 = self.to(dev0)
             yhat = m0(data)
             y = data['robs']
@@ -1071,7 +1074,7 @@ class NDN(nn.Module):
                     LLnulls = np.log(np.maximum(rbar, 1e-6))-1
 
                     LLneuron = -LLneuron - LLnulls             
-
+            self = self.to(d0)
             return LLneuron  # end of the old method
 
         else:
@@ -1113,6 +1116,7 @@ class NDN(nn.Module):
                     Tsum += torch.sum(data_sample['dfs'], axis=0)
                     Rsum += torch.sum(torch.mul(dfs, data_sample['robs']), axis=0)
             LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
+            self = self.to(d0)  # move back to original device
 
             # Null-adjust
             if null_adjusted:
