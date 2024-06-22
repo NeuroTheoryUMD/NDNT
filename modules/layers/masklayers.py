@@ -17,7 +17,7 @@ class MaskLayer(NDNLayer):
     def __init__(self, input_dims=None,
                  num_filters=None,
                  #filter_dims=None,  # absorbed by kwargs if necessary
-                 mask=None,
+                 #mask=None,  # cant pass in as part of dictionary
                  NLtype:str='lin',
                  norm_type:int=0,
                  pos_constraint=0,
@@ -36,7 +36,7 @@ class MaskLayer(NDNLayer):
         Args:
             input_dims: tuple or list of ints, (num_channels, height, width, lags)
             num_filters: number of output filters
-            mask: np.ndarray, mask to apply to the weights
+            ## NOT CANT BE PART OF DICTIONARY mask: np.ndarray, mask to apply to the weights
             NLtype: str, 'lin', 'relu', 'tanh', 'sigmoid', 'elu', 'none'
             norm_type: int, normalization type
             pos_constraint: int, whether to enforce non-negative weights
@@ -61,16 +61,30 @@ class MaskLayer(NDNLayer):
             **kwargs)
 
         #assert mask is not None, "MASKLAYER: must include mask, dodo"
-        if mask is None: # then make default mask (ones) and assume will be updated
-            print( "  WARNING: MaskLayer currently has default mask", self.filter_dims, 'x', self.num_filters)
-            mask = np.ones([np.prod(self.filter_dims), self.num_filters])
-        assert np.prod(mask.shape) == np.prod(self.filter_dims)*num_filters
-        self.register_buffer('mask', torch.tensor(mask.reshape([-1, num_filters]), dtype=torch.float32))
+        self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
+        self.mask_is_set = False
 
         # Must be done after mask is filled in
         if initialize_center:
             self.initialize_gaussian_envelope()
     # END MaskLayer.__init__
+
+    def set_mask( self, mask=None ):
+        """
+        Sets mask -- instead of plugging in by hand. Registers mask as being set, and checks dimensions.
+        Can also use to rest to have trivial mask (all 1s)
+        Mask will be numpy, leave mask blank if want to set to default mask (all ones)
+        
+        Args:
+            mask: numpy array of size of filters (filter_dims x num_filters)
+        """
+        self.mask_is_set = True
+        if mask is None:
+            self.mask[:,:] = 1.0
+        else:
+            assert np.prod(mask.shape) == np.prod(self.filter_dims)*self.num_filters
+            self.mask = torch.tensor( mask.reshape([-1, self.num_filters]))
+    # END MaskLayer.set_mask()
 
     def preprocess_weights( self ):
         """
@@ -83,8 +97,13 @@ class MaskLayer(NDNLayer):
         return w*self.mask
     # END MaskLayer.preprocess_weights()
 
+    def forward( self, x):
+        assert self.mask_is_set, "ERROR: Must set mask before using MaskLayer"
+        super().forward(x)
+    # END MaskLayer.forward()
+
     @classmethod
-    def layer_dict(cls, mask=None, **kwargs):
+    def layer_dict(cls, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -103,8 +122,7 @@ class MaskLayer(NDNLayer):
         Ldict = super().layer_dict(**kwargs)
         # Added arguments
         Ldict['layer_type'] = 'masklayer'
-        Ldict['mask'] = mask
-    
+        #Ldict['mask'] = mask
         return Ldict
     # END MaskLayer.layer_dict()
 
@@ -117,7 +135,7 @@ class MaskSTconvLayer(STconvLayer):
     def __init__(self, input_dims=None,
                  num_filters=None,
                  #filter_dims=None,  # absorbed by kwargs if necessary
-                 mask=None,
+                 #mask=None,
                  initialize_center=False,
                  output_norm=None,
                  **kwargs,
@@ -135,6 +153,7 @@ class MaskSTconvLayer(STconvLayer):
 
         assert input_dims is not None, "MaskSTconvLayer: input_dims must be specified"
         assert num_filters is not None, "MaskSTconvLayer: num_filters must be specified"
+
         super().__init__(
             input_dims=input_dims, num_filters=num_filters,
             output_norm=output_norm, initialize_center=False,
@@ -142,15 +161,28 @@ class MaskSTconvLayer(STconvLayer):
 
         # Now make mask
         #assert mask is not None, "MaskSTConvLayer: must include mask!"
-        if mask is None: # then make default mask (ones) and assume will be updated
-            print( "  WARNING: MaskLayer currently has default mask", self.filter_dims, self.num_filters)
-            mask = np.ones([np.prod(self.filter_dims), self.num_filters])
-        assert np.prod(mask.shape) == np.prod(self.filter_dims)*num_filters
-        self.register_buffer('mask', torch.tensor(mask.reshape([-1, num_filters]), dtype=torch.float32))
+        self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))       
 
         if initialize_center:
             self.initialize_gaussian_envelope()
     # END MaskSTconvLayer.__init__
+
+    def set_mask( self, mask=None ):
+        """
+        Sets mask -- instead of plugging in by hand. Registers mask as being set, and checks dimensions.
+        Can also use to rest to have trivial mask (all 1s)
+        Mask will be numpy, leave mask blank if want to set to default mask (all ones)
+        
+        Args:
+            mask: numpy array of size of filters (filter_dims x num_filters)
+        """
+        self.mask_is_set = True
+        if mask is None:
+            self.mask[:,:] = 1.0
+        else:
+            assert np.prod(mask.shape) == np.prod(self.filter_dims)*self.num_filters
+            self.mask = torch.tensor( mask.reshape([-1, self.num_filters]))
+    # END MaskSTconvLayer.set_mask()
 
     def preprocess_weights( self ):
         """
@@ -163,8 +195,13 @@ class MaskSTconvLayer(STconvLayer):
         return w*self.mask
     # END MaskSTconvLayer.preprocess_weights()
 
+    def forward( self, x):
+        assert self.mask_is_set, "ERROR: Must set mask before using MaskSTconvLayer"
+        super().forward(x)
+    # END MaskSTconvLayer.forward()
+        
     @classmethod
-    def layer_dict(cls, mask=None, **kwargs):
+    def layer_dict(cls, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -183,7 +220,6 @@ class MaskSTconvLayer(STconvLayer):
         Ldict = super().layer_dict(**kwargs)
         # Added arguments
         Ldict['layer_type'] = 'maskSTClayer'
-        Ldict['mask'] = mask
-    
+        #Ldict['mask'] = mask    
         return Ldict
     # END MaskSTconvLayer.layer_dict()
