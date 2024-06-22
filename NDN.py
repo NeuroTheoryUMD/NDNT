@@ -1459,11 +1459,15 @@ class NDN(nn.Module):
         with open(json_filename, 'w') as f:
             json.dump(ndn_params, f, cls=NpEncoder)
         torch.save(self.state_dict(), ckpt_filename)
+
         
         # zip up the two files and save to the file_dir
-        with zipfile.ZipFile(os.path.join(file_dir, file_name) + '.ndn', 'w') as myzip:
+        fn = os.path.join(file_dir, file_name) + '.ndn'
+        with zipfile.ZipFile(fn, 'w') as myzip:
             myzip.write(json_filename, os.path.basename(json_filename))
             myzip.write(ckpt_filename, os.path.basename(ckpt_filename))
+
+        print( '  Model saved: ', fn)
 
         # remove the two files and the temporary directory
         os.remove(json_filename)
