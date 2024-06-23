@@ -83,7 +83,7 @@ class MaskLayer(NDNLayer):
             self.mask[:,:] = 1.0
         else:
             assert np.prod(mask.shape) == np.prod(self.filter_dims)*self.num_filters
-            self.mask = torch.tensor( mask.reshape([-1, self.num_filters]))
+            self.mask = torch.tensor( mask.reshape([-1, self.num_filters]), dtype=torch.float32)
     # END MaskLayer.set_mask()
 
     def preprocess_weights( self ):
@@ -99,7 +99,7 @@ class MaskLayer(NDNLayer):
 
     def forward( self, x):
         assert self.mask_is_set, "ERROR: Must set mask before using MaskLayer"
-        super().forward(x)
+        return super().forward(x)
     # END MaskLayer.forward()
 
     @classmethod
@@ -181,7 +181,7 @@ class MaskSTconvLayer(STconvLayer):
             self.mask[:,:] = 1.0
         else:
             assert np.prod(mask.shape) == np.prod(self.filter_dims)*self.num_filters
-            self.mask = torch.tensor( mask.reshape([-1, self.num_filters]))
+            self.mask = torch.tensor( mask.reshape([-1, self.num_filters]), dtype=torch.float32)
     # END MaskSTconvLayer.set_mask()
 
     def preprocess_weights( self ):
@@ -197,7 +197,7 @@ class MaskSTconvLayer(STconvLayer):
 
     def forward( self, x):
         assert self.mask_is_set, "ERROR: Must set mask before using MaskSTconvLayer"
-        super().forward(x)
+        return super().forward(x)
     # END MaskSTconvLayer.forward()
         
     @classmethod
