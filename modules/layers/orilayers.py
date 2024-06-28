@@ -178,6 +178,206 @@ class OriLayer(NDNLayer):
 
 class OriConvLayer(ConvLayer):
     """
+    Orientation-Convolutional layer.
+
+    Will detect if needs to expand to multiple orientations (first layer, original OriConv) or use group-convolutions
+
+    2-d conv layer that creates and maintains a third convolutional dimension through grouping and weight sharing. In
+    other words, a third convolutional dimension is passed in, but the filters here act on each element of that third
+    dimension, and weight-share between different groups. 
+
+    """
+
+    def __init__(self, input_dims=None, num_filters=None, res_layer=False,
+                 filter_width=None, padding="valid", output_norm=None, angles=None, **kwargs): 
+        """
+        Initialize orientation layer.
+
+        Args:
+            input_dims: input dimensions
+            num_filters: number of filters
+            filter_width: filter spatial width -- the rest of filter dims is determined
+            angles: angles for rotation (in degrees)
+        """
+        # input validation
+        assert input_dims is not None, "OriConvLayer: Must specify input dimensions"
+        #assert len(input_dims) == 4, "OriConvLayer: Stimulus must be 2-D"
+        #assert input_dims[3] == 1, "OriConvLayer: Stimulus must be 2-D"
+        assert num_filters is not None, "OriConvLayer: Must specify number of filters"
+        assert angles is not None, "OriConvLayer: Must specify angles for rotation"
+        assert not res_layer, "OriConvLayer: res_layer not yet supported"
+
+        assert angles[0] == 0, "Angles should always start with theta=0"  # this will make calc slightly faster
+        
+        # See if gets oriented input or will need to expand
+
+        super().__init__(
+            input_dims=input_dims, num_filters=num_filters,
+            filter_dims=[input_dims[0], filter_width, filter_width, 1], padding=padding, res_layer=False,
+            output_norm=None, **kwargs)
+
+        if 'bias' in kwargs.keys():
+            assert kwargs['bias'] == False, "OriConvLayer: bias is partially implemented, but not debugged"
+
+        #self.is1D = (self.input_dims[2] == 1)
+        assert not self.is1D, "OriConvLayer: Stimulus must be 2-D"
+
+        self.angles = angles
+        NQ = len(self.angles)
+
+        self.oriented_input = input_dims[3] > 1
+        if self.oriented_input:
+            assert(input_dims[3] == NQ), "ORICONV (intermediate layer): angles input does not match stim input"
+
+        # Fix output norm to be 3d
+        if output_norm in ['batch', 'batchX']:
+            if output_norm == 'batchX':
+                affine = False
+            else:
+                affine = True
+            self.output_norm = nn.BatchNorm2d(self.num_filters*len(angles), affine=affine)
+
+        # make the ei mask and store it as a buffer,
+        # repeat it for each orientation (plus one for the original orientation)
+        if self._ei_mask is not None: 
+            self.register_buffer('_ei_mask', torch.cat(
+                (torch.ones((self.num_filters-self._num_inh)*NQ), -torch.ones(self._num_inh*NQ)) ))
+                                #    (torch.ones(self.num_filters-self._num_inh), 
+                                #    -torch.ones(self._num_inh))
+                                #).repeat(len(self.angles)))
+
+        # Make additional window function to make filter circular
+        L = self.filter_dims[1]
+        xs = np.arange(L)+0.5-L/2
+        rs = np.sqrt(np.repeat(xs[:,None]**2, L, axis=1) + np.repeat(xs[None,:]**2, L, axis=0))
+        win_circle = np.ones([L,L], dtype=np.float32)
+        win_circle[rs > L/2] = 0.0
+        if self.window:
+            self.window_function *= torch.tensor(win_circle, dtype=torch.float32)
+        else:
+            self.register_buffer('window_function', torch.tensor(win_circle, dtype=torch.float32))
+
+        # folded_dims is num_filter * num_angles * num_incoming_filters
+        self.folded_dims = self.input_dims[0]*self.input_dims[3] 
+        # we need to set the entire output_dims so that num_outputs gets updated in the setter
+        self.output_dims = [self.output_dims[0], self.output_dims[1], self.output_dims[2], len(self.angles)]
+
+    def forward(self, x):
+        """
+        Forward pass through the layer.
+
+        Args:
+            x: torch.Tensor, input tensor of shape (batch_size, *input_dims)
+
+        Returns:
+            y: torch.Tensor, output tensor of shape (batch_size, *output_dims)
+        """
+        if self._padding == 'circular':
+            pad_type = 'circular'
+        else:
+            pad_type = 'constant'
+        
+        if self.oriented_input:
+            s = x.reshape([-1]+self.input_dims).permute([0,4,1,2,3])
+            # Set up so group conv over angles in channel dim
+            s = s.reshape([-1, self.folded_dims, self.input_dims[1], self.input_dims[2]])
+        
+        else:
+            # First conv-layer: input expanding
+            s = x.reshape(-1, self.input_dims[0], self.input_dims[1], self.input_dims[2])
+
+        w = self.preprocess_weights()
+        # permute num_filters, input_dims[0], width, height, (no lag)
+        w = w.reshape(self.filter_dims[:3]+[self.num_filters]).permute(3, 0, 1, 2)  # -> [NCXY] Note no orientation  
+
+        w_full = w.repeat(len(self.angles),1,1,1)  # (CoutxQ), Cin, XY --> each angle output is grouped
+        
+        # use torch.sparse.mm to multiply the rotation matrices by the weights
+        for ii in range(1, len(self.angles)):  # first angle always = 0 (so explicit copy -- can skip)
+            filter_range = ii*self.num_filters + np.arange(self.num_filters)
+            # rotate using torchvision transform
+            w_full[filter_range, ...] = TF.rotate(
+                img=w,
+                interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
+                angle=float(self.angles[ii]))
+
+        # PAD
+        if self._fullpadding:
+            s_padded = F.pad(s, self.npads, pad_type, 0)
+            y = F.conv2d(s_padded,
+                         w_full, #rotated_ws_reshaped, 
+                         groups=self.input_dims[3],  ### ADDED
+                         bias=self.bias.repeat(len(self.angles)),
+                         stride=self.stride,
+                         dilation=self.dilation)
+        else:
+            if self.padding == 'circular':
+                s_padded = F.pad(s, self._npads, pad_type, 0)
+                y = F.conv2d(s_padded, w_full, #rotated_ws_reshaped,
+                             bias=self.bias.repeat(len(self.angles)),
+                             groups=self.input_dims[3],  ### ADDED
+                             stride=self.stride,
+                             dilation=self.dilation)
+            else: # this is faster if not circular
+                y = F.conv2d(s, w_full, #rotated_ws_reshaped,
+                             padding=(self._npads[2], self._npads[0]),
+                             groups=self.input_dims[3],  ### ADDED
+                             bias=self.bias.repeat(len(self.angles)),
+                             stride=self.stride,
+                             dilation=self.dilation)
+
+        if not self.res_layer:
+            if self.output_norm is not None:
+                y = self.output_norm(y)
+        
+        if self.NL is not None:
+            y = self.NL(y)
+        if self._ei_mask is not None:
+            y = y*self._ei_mask[None, :, None, None]
+
+        # if self.res_layer:
+        #     y = y+torch.reshape(s, (-1, self.folded_dims, self.input_dims[1], self.input_dims[2]) )
+        #     if self.output_norm is not None:
+        #         y = self.output_norm(y)
+        
+        # # store activity regularization to add to loss later
+        # if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+        #     self.reg.compute_activity_regularization(y)
+
+        # pull the filters and angles apart again
+        y = y.reshape(-1, # the batch dimension
+                      len(self.angles),
+                      self.num_filters,
+                      self.output_dims[1], 
+                      self.output_dims[2])
+        # reshape y to have the orientiations in the last column
+        #y = y.permute(0, 1, 3, 4, 2) # output will be [BCWHQ]
+        y = y.permute(0, 2, 3, 4, 1) # output will be [BCWHQ]
+        # flatten the last dimensions
+        return y.reshape(-1, self.num_outputs)
+    # OriConvLayer.forward
+
+    @classmethod
+    def layer_dict(cls, filter_width=None, angles=None, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+
+        Args:
+            angles: list of angles for rotation (in degrees)
+
+        Returns:
+            Ldict: dict, dictionary of layer parameters
+        """
+        Ldict = super().layer_dict(**kwargs)
+        del Ldict['filter_dims']
+        Ldict['layer_type'] = 'oriconv'
+        Ldict['angles'] = angles
+        Ldict['filter_width'] = filter_width
+        return Ldict
+
+
+class OriConvLayerOLD(ConvLayer):
+    """
     Orientation layer.
     """
 
@@ -231,16 +431,9 @@ class OriConvLayer(ConvLayer):
         # repeat it for each orientation (plus one for the original orientation)
         NQ = len(self.angles)
         if self._ei_mask is not None: 
-            self.register_buffer('_ei_mask',
-                                torch.cat(
-                                    (torch.ones((self.num_filters-self._num_inh)*NQ), 
-                                    -torch.ones(self._num_inh*NQ)) ))
-                                #    (torch.ones(self.num_filters-self._num_inh), 
-                                #    -torch.ones(self._num_inh))
-                                #).repeat(len(self.angles)))
-            #print('ei_mask', self._ei_mask.shape)
+            self.register_buffer('_ei_mask', torch.cat( (torch.ones( (self.num_filters-self.num_inh)*NQ), -torch.ones(self.num_inh*NQ)) ))
 
-        # Make additional window function to preserve rotations  
+        # Make additional window function to make circular filter
         L = self.filter_dims[1]
         xs = np.arange(L)+0.5-L/2
         rs = np.sqrt(np.repeat(xs[:,None]**2, L, axis=1) + np.repeat(xs[None,:]**2, L, axis=0))
@@ -484,6 +677,7 @@ class OriConvLayer(ConvLayer):
         Ldict["layer_type"]="oriconv"
         Ldict["angles"]=angles
         return Ldict
+
 
 
 class ConvLayer3D(ConvLayer):
