@@ -11,6 +11,8 @@ import torchvision
 import torchvision.transforms.functional as TF
 from scipy.special import gamma
 from numpy.polynomial.polynomial import polyval
+
+
 class OriLayer(NDNLayer):
     """
     Orientation layer.

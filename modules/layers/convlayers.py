@@ -312,7 +312,15 @@ class ConvLayer(NDNLayer):
         return Ldict
     
     def preprocess_weights(self):
-        w = super().preprocess_weights()
+        #w = super().preprocess_weights()
+        
+        if self.pos_constraint > 0:
+            w = torch.square(self.weight) # to promote continuous gradients around 0
+        elif self.pos_constraint < 0:
+            w = -torch.square(self.weight)  # to promote continuous gradients around 0
+        else:
+            w = self.weight
+
         if self.window:
             w = w.view(self.filter_dims+[self.num_filters]) # [C, H, W, T, D]
             if self.is1D:
@@ -320,6 +328,10 @@ class ConvLayer(NDNLayer):
             else:
                 w = torch.einsum('chwln, hw->chwln', w, self.window_function)
             w = w.reshape(-1, self.num_filters)
+
+        # Add normalization
+        if self.norm_type == 1: # so far just standard filter-specific normalization
+            w = F.normalize( w, dim=0 ) / self.weight_scale
 
         if self.tent_basis is not None:
             wdims = self.tent_basis.shape[0]
