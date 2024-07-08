@@ -463,7 +463,8 @@ class ReadoutLayer3d(ReadoutLayer):
         super().__init__(input_dims=input_dims_mod, **kwargs)
         self.input_dims = input_dims
         #print('OLD FILTER DIMS', self.filter_dims)
-        self.filter_dims = [input_dims[0], input_dims[3], 1, 1]  # making spatial so max_space can be used
+        self.filter_dims = [input_dims[0], 1, 1, input_dims[3]]
+        #self.filter_dims = [input_dims[0], input_dims[3], 1, 1]  # making spatial so max_space can be used
         #print('NEW FILTER DIMS', self.filter_dims)
         # Redo regularization with new filter_dims
       
