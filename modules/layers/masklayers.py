@@ -62,7 +62,8 @@ class MaskLayer(NDNLayer):
 
         #assert mask is not None, "MASKLAYER: must include mask, dodo"
         self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
-        self.mask_is_set = False
+        self.register_buffer('mask_is_set', torch.zeros(1, dtype=torch.int8))  # have to convert to save in state_dict
+        #self.mask_is_set = False
 
         # Must be done after mask is filled in
         if initialize_center:
@@ -78,7 +79,7 @@ class MaskLayer(NDNLayer):
         Args:
             mask: numpy array of size of filters (filter_dims x num_filters)
         """
-        self.mask_is_set = True
+        self.mask_is_set = 1
         if mask is None:
             self.mask[:,:] = 1.0
         else:
@@ -98,7 +99,7 @@ class MaskLayer(NDNLayer):
     # END MaskLayer.preprocess_weights()
 
     def forward( self, x):
-        assert self.mask_is_set, "ERROR: Must set mask before using MaskLayer"
+        assert self.mask_is_set > 0, "ERROR: Must set mask before using MaskLayer"
         return super().forward(x)
     # END MaskLayer.forward()
 
@@ -161,7 +162,8 @@ class MaskSTconvLayer(STconvLayer):
 
         # Now make mask
         #assert mask is not None, "MaskSTConvLayer: must include mask!"
-        self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))       
+        self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
+        self.register_buffer('mask_is_set', torch.zeros(1, dtype=torch.int8))     
 
         if initialize_center:
             self.initialize_gaussian_envelope()
@@ -176,7 +178,7 @@ class MaskSTconvLayer(STconvLayer):
         Args:
             mask: numpy array of size of filters (filter_dims x num_filters)
         """
-        self.mask_is_set = True
+        self.mask_is_set = 1
         if mask is None:
             self.mask[:,:] = 1.0
         else:
@@ -196,7 +198,7 @@ class MaskSTconvLayer(STconvLayer):
     # END MaskSTconvLayer.preprocess_weights()
 
     def forward( self, x):
-        assert self.mask_is_set, "ERROR: Must set mask before using MaskSTconvLayer"
+        assert self.mask_is_set > 0, "ERROR: Must set mask before using MaskSTconvLayer"
         return super().forward(x)
     # END MaskSTconvLayer.forward()
         
