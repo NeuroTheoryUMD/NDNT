@@ -471,9 +471,26 @@ class ReadoutLayer3d(ReadoutLayer):
         from ...modules.regularization import Regularization
         reg_vals = self.reg.vals
         self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals, num_outputs=self.num_filters )
+        self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
 
     # END ReadoutLayer3d.__init__
 
+    def set_mask( self, mask=None ):
+        """
+        Sets mask -- instead of plugging in by hand. Registers mask as being set, and checks dimensions.
+        Can also use to rest to have trivial mask (all 1s)
+        Mask will be numpy, leave mask blank if want to set to default mask (all ones)
+        
+        Args:
+            mask: numpy array of size of filters (filter_dims x num_filters)
+        """
+        if mask is None:
+            self.mask[:,:] = 1.0
+        else:
+            assert np.prod(mask.shape) == np.prod(self.filter_dims)*self.num_filters
+            self.mask = torch.tensor( mask.reshape([-1, self.num_filters]), dtype=torch.float32, device=self.weight.device)
+    # END MaskLayer.set_mask()
+    
     def forward(self, x, shift=None):
         """
         Propagates the input forwards through the readout
@@ -495,7 +512,7 @@ class ReadoutLayer3d(ReadoutLayer):
         #if (c_in, w_in, h_in) != (c, w, h):
         #    raise ValueError("the specified feature map dimension is not the readout's expected input dimension")
         
-        feat = self.features  # this is the filter weights for each unit
+        feat = self.features*self.mask
         feat = feat.reshape(1, -1, self.num_filters)  # 3d change -- this is num_chan x num_angles now
 
         bias = self.bias
@@ -728,3 +745,118 @@ class FixationLayer(NDNLayer):
         Ldict['input_dims'] = [1,1,1,1]
         return Ldict
     # END [classmethod] FixatonLayer.layer_dict
+
+class ReadoutLayerQsample(ReadoutLayer3d):
+    """
+    MaskReadoutLayer3d for 3d readout.
+    This is a subclass of ReadoutLayer, but with the added dimension of time.
+    """
+    def __init__(self, Qsigma=1, **kwargs):
+        """
+        ReadoutLayer3d: 3d readout layer for NDNs.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, depth, lags)
+        """
+                
+        super().__init__(**kwargs)
+
+        self.mu = Parameter(torch.Tensor(self.num_filters))
+        self.sigma = Parameter(torch.Tensor(self.num_filters))
+        self.Qsample = False
+
+    # END ReadoutLayer3d.__init__
+
+
+    def forward(self, x, shift=None):
+        """
+        Propagates the input forwards through the readout
+
+        Args:
+            x: input data
+            shift (bool): shifts the location of the grid (from eye-tracking data)
+
+        Returns:
+            y: neuronal activity
+        """
+        x = x.reshape([-1]+self.input_dims)  # 3d change -- has extra dimension at end
+        N, c, w, h, T = x.size()   # N is number of time points -- note that its full dimensional....
+        c *= T
+        # get those last filter dims up before spatial
+        x = x.permute(0,1,4,2,3).reshape([N, c, w, h]) 
+
+        #c_in, w_in, h_in = self.input_dims[:3]
+        #if (c_in, w_in, h_in) != (c, w, h):
+        #    raise ValueError("the specified feature map dimension is not the readout's expected input dimension")
+
+        if self.mask is None:
+            feat = self.features  # this is the filter weights for each unit
+        else:
+            feat = self.features*self.mask
+        feat = feat.reshape(1, -1, self.num_filters)  # 3d change -- this is num_chan x num_angles now
+
+        bias = self.bias
+        outdims = self.num_filters
+
+        if self.batch_sample:
+            # sample the grid_locations separately per sample per batch
+            grid = self.sample_grid(batch_size=N, sample=self.sample)  # sample determines sampling from Gaussian
+        else:
+            # use one sampled grid_locations for all sample in the batch
+            grid = self.sample_grid(batch_size=1, sample=self.sample).expand(N, outdims, 1, self.num_space_dims)
+        
+        if shift is not None:
+            # shifter is run outside the readout forward
+            grid = grid + shift[:, None, None, :]
+
+        y = F.grid_sample(x, grid, mode=self.sample_mode, align_corners=self.align_corners, padding_mode='border')
+        # note I switched this from the default 'zeros' so that it wont try to go past the border
+
+        # reduce grid sample for angle
+        
+        y = (y.squeeze(-1) * feat).sum(1).view(N, outdims)
+
+        if self.bias is not None:
+            y = y + bias
+        
+        if self.NL is not None:
+            y = self.NL(y)
+        
+        return y
+    # END ReadoutLayer3d.forward
+
+    def passive_readout(self):
+        """
+        This might have to be redone for readout3d to take into account extra filter dim.
+        """
+        print("WARNING: SCAF3d: this function is not vetted and likely will clunk")
+        assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
+        # Set parameters for default readout
+        self.sigma.data.fill_(0)
+        self.mu.data.fill_(0)
+        self.weight.data.fill_(0)
+        for nn in range(self.num_filters):
+            self.weight.data[nn,nn] = 1
+
+        self.set_parameters(val=False)
+
+    @classmethod
+    def layer_dict(cls, Qsigma=1, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+
+        Args:
+            None
+
+        Returns:
+            Ldict: dictionary of layer parameters
+        """
+        Ldict = super().layer_dict(**kwargs)
+        Ldict['layer_type'] = 'readoutQ'
+        Ldict['Qsigma'] = Qsigma
+        return Ldict
+    # END [classmethod] ReadoutLayer3d.layer_dict

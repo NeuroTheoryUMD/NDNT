@@ -68,6 +68,7 @@ class FFnetwork(nn.Module):
             'iterST': layers.IterSTlayer,
             'readout': layers.ReadoutLayer,
             'readout3d': layers.ReadoutLayer3d,
+            'readoutQ': layers.ReadoutLayerQsample,
             'fixation': layers.FixationLayer,
             'lag': layers.LagLayer,
             'time': layers.TimeLayer,
