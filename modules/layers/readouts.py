@@ -173,7 +173,7 @@ class ReadoutLayer(NDNLayer):
             norm = self.mu.new(*grid_shape).normal_()
         else:
             norm = self.mu.new(*grid_shape).zero_()  # for consistency and CUDA capability
-
+        
         if self.num_space_dims == 1:
             # this is dan's 1-d kluge code -- necessary because grid_sampler has to have last dimension of 2. maybe problem....
             grid2d = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
@@ -512,7 +512,7 @@ class ReadoutLayer3d(ReadoutLayer):
         #if (c_in, w_in, h_in) != (c, w, h):
         #    raise ValueError("the specified feature map dimension is not the readout's expected input dimension")
         
-        feat = self.features*self.mask
+        feat = self.features*self.mask # this is the filter weights for each unit
         feat = feat.reshape(1, -1, self.num_filters)  # 3d change -- this is num_chan x num_angles now
 
         bias = self.bias
@@ -748,51 +748,133 @@ class FixationLayer(NDNLayer):
 
 class ReadoutLayerQsample(ReadoutLayer3d):
     """
-    MaskReadoutLayer3d for 3d readout.
-    This is a subclass of ReadoutLayer, but with the added dimension of time.
+    ReadoutLayerQsample for 3d readout with sampling over angle dimension Q.
+    This is a subclass of ReadoutLayer3d.
     """
-    def __init__(self, Qsigma=1, **kwargs):
+    def __init__(self, input_dims=None, filter_dims=None, batch_Qsample=True, init_Qmu_range=0.1, init_Qsigma=0.2, Qsample_mode='bilinear', **kwargs):
         """
-        ReadoutLayer3d: 3d readout layer for NDNs.
+        ReadoutLayerQsample: 3d readout layer for NDNs.
 
         Args:
-            input_dims: tuple or list of ints, (num_channels, height, width, depth, lags)
-        """
-                
-        super().__init__(**kwargs)
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            filter_dims: tuple or list of ints, (num_channels, height, width, depth, lags)
+            batch_Qample: bool, whether to sample Qgrid locations separately per sample per batch
+            init_mu_range: float, range for uniform initialization of means
+            init_sigma: float, standard deviation for uniform initialization of sigmas
+            Qsample_mode: str, 'bilinear' or 'nearest'
 
-        self.mu = Parameter(torch.Tensor(self.num_filters))
-        self.sigma = Parameter(torch.Tensor(self.num_filters))
+        """
+
+        assert input_dims is not None, "ReadoutLayer: Must specify input_dims"
+
+        # Make sure filter_dims is filled in, and to single the spatial filter dimensions
+        if filter_dims is None:
+            filter_dims = deepcopy(input_dims)
+        
+        filter_dims[1:4] = [1,1,1]
+        print(filter_dims)
+        
+        assert filter_dims[3] == 1, 'Cant handle temporal filter dims here, yet.'
+        
+        super().__init__(input_dims=input_dims,
+            filter_dims=filter_dims,
+            **kwargs)
+    
+        self.filter_dims[3] = 1
+        print(self.filter_dims)
+
+        self.batch_Qsample = batch_Qsample
+        self.Qsample_mode = Qsample_mode
+
+        self.init_Qmu_range = init_Qmu_range
+        self.init_Qsigma = init_Qsigma
+
+        if self.init_Qmu_range > 1.0 or self.init_Qmu_range <= 0.0 or self.init_Qsigma <= 0.0:
+            raise ValueError("either init_Qmu_range doesn't belong to [0.0, 1.0] or init_Qsigma is non-positive")
+
+        self.Qgrid_shape = (1, self.num_filters,1,1)
+
+        self.Qmu = Parameter(torch.Tensor(self.num_filters,1))
+        self.Qsigma = Parameter(torch.Tensor(self.num_filters,1))
+
+        self.initialize_spatial_mapping()
         self.Qsample = False
 
-    # END ReadoutLayer3d.__init__
+    # END ReadoutLayerQsample.__init__
 
+    def initialize_Q_mapping(self):
+        """
+        Initializes the mean, and sigma of the Gaussian readout for angle dim.
 
-    def forward(self, x, shift=None):
+        Args:
+            None
+        """
+        self.Qmu.data.uniform_(-self.init_Qmu_range)  # random initializations uniformly spread....
+        # if self.gauss_type != 'full':
+        #     self.sigma.data.fill_(self.init_sigma)
+        # else:
+        #self.sigma.data.uniform_(0, self.init_sigma)
+        self.Qsigma.data.fill_(self.init_Qsigma)
+        
+        #self.weight.data.fill_(1 / self.input_dims[0])
+
+        if self.bias is not None:
+            self.bias.data.fill_(0)
+
+    def sample_Qgrid(self, batch_size, Qsample=None):
+        """
+        Returns the grid locations from the core by sampling from a Gaussian distribution
+        More specifically, it returns sampled positions for each batch over all elements, given mus and sigmas
+        If 'sample' is false, it just gives mu back (so testing has no randomness)
+        This code is inherited and then modified, so different style than most other
+
+        Args:
+            batch_size (int): size of the batch
+            sample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(mu,sigma), defined per neuron
+                            or use the mean, mu, of the Gaussian distribution without sampling.
+                           if sample is None (default), samples from the N(mu,sigma) during training phase and
+                             fixes to the mean, mu, during evaluation phase.
+                           if sample is True/False, overrides the model_state (i.e training or eval) and does as instructed
+        """
+        
+        Qgrid_shape = (batch_size,) + self.Qgrid_shape[1:3]
+                
+        Qsample = self.training if Qsample is None else Qsample
+        if Qsample:
+            norm = self.Qmu.new(*Qgrid_shape).normal_()
+        else:
+            norm = self.Qmu.new(*Qgrid_shape).zero_()  # for consistency and CUDA capability
+
+        out_norm = norm.new_zeros(*(Qgrid_shape[:3]+(2,)))  # for consistency and CUDA capability
+        ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
+        out_norm[:,:,:,1] = (norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :]).clamp(-1,1)
+          
+        return out_norm
+
+    def forward(self, x, shift=None, Qshift=None):
         """
         Propagates the input forwards through the readout
 
         Args:
             x: input data
             shift (bool): shifts the location of the grid (from eye-tracking data)
+            Qshift (bool): shifts the location of the grid
 
         Returns:
             y: neuronal activity
         """
+        
         x = x.reshape([-1]+self.input_dims)  # 3d change -- has extra dimension at end
         N, c, w, h, T = x.size()   # N is number of time points -- note that its full dimensional....
         c *= T
         # get those last filter dims up before spatial
-        x = x.permute(0,1,4,2,3).reshape([N, c, w, h]) 
+        x = x.permute(0,1,4,2,3).reshape([N, c, w, h])
 
         #c_in, w_in, h_in = self.input_dims[:3]
         #if (c_in, w_in, h_in) != (c, w, h):
         #    raise ValueError("the specified feature map dimension is not the readout's expected input dimension")
 
-        if self.mask is None:
-            feat = self.features  # this is the filter weights for each unit
-        else:
-            feat = self.features*self.mask
+        feat = self.features # this is the filter weights for each unit
         feat = feat.reshape(1, -1, self.num_filters)  # 3d change -- this is num_chan x num_angles now
 
         bias = self.bias
@@ -809,20 +891,47 @@ class ReadoutLayerQsample(ReadoutLayer3d):
             # shifter is run outside the readout forward
             grid = grid + shift[:, None, None, :]
 
+        # Might have to do sample per cell (i.e. for loop)
+        if self.batch_Qsample:
+            # sample the grid_locations separately per sample per batch
+            Qgrid = self.sample_Qgrid(batch_size=N, Qsample=self.Qsample)  # sample determines sampling from Gaussian
+        else:
+            # use one sampled grid_locations for all sample in the batch
+            Qgrid = self.sample_Qgrid(batch_size=1, Qsample=self.Qsample).expand(N, outdims,1, 1)
+        
+        if Qshift is not None:
+            # shifter is run outside the readout forward
+            Qgrid = Qgrid + Qshift[:, None, None, :]
+
+        print("x", x.shape)
+        print("gird", grid.shape)
+        
         y = F.grid_sample(x, grid, mode=self.sample_mode, align_corners=self.align_corners, padding_mode='border')
         # note I switched this from the default 'zeros' so that it wont try to go past the border
 
-        # reduce grid sample for angle
+        print("y", y.shape)
+        print("Qgird", Qgrid.shape)
         
-        y = (y.squeeze(-1) * feat).sum(1).view(N, outdims)
+        # reduce grid sample for angle
+        z = torch.zeros((N,self.input_dims[0],self.num_filters,1))
+        for i in range(self.num_filters):
+            y_i = y[:,:,i,:].reshape(N,self.input_dims[0],self.input_dims[3],1)
+            Qgrid_i = Qgrid[:,i,:,:].reshape(N,1,1,2)
+            z_i = F.grid_sample(y_i, Qgrid_i, mode=self.Qsample_mode, align_corners=self.align_corners, padding_mode='border')
+            z[:,:,i,:] = z_i.reshape(N,self.input_dims[0],1)
+            
+        print('z',z.shape)
+        print(feat.shape)
+        
+        z = (z.squeeze(-1) * feat).sum(1).view(N, outdims)
 
         if self.bias is not None:
-            y = y + bias
+            z = z + bias
         
         if self.NL is not None:
-            y = self.NL(y)
+            z = self.NL(z)
         
-        return y
+        return z
     # END ReadoutLayer3d.forward
 
     def passive_readout(self):
@@ -857,6 +966,9 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         """
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'readoutQ'
-        Ldict['Qsigma'] = Qsigma
+        Ldict['batch_Qample'] = True
+        Ldict['init_Qmu_range'] = 0.1
+        Ldict['init_Qsigma'] = 0.2
+        Ldict['Qsample_mode'] = 'bilinear'
         return Ldict
     # END [classmethod] ReadoutLayer3d.layer_dict

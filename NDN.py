@@ -1518,6 +1518,7 @@ class NDN(nn.Module):
         # load the state_dict
         state_dict = torch.load(temp_name+'.ckpt')
         model.load_state_dict(state_dict, strict=False)
+        model.eval()
 
         # remove the two files and the temporary directory
         os.remove(temp_name+'.json')
