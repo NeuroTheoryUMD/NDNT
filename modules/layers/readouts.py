@@ -772,7 +772,6 @@ class ReadoutLayerQsample(ReadoutLayer3d):
             filter_dims = deepcopy(input_dims)
         
         filter_dims[1:4] = [1,1,1]
-        print(filter_dims)
         
         assert filter_dims[3] == 1, 'Cant handle temporal filter dims here, yet.'
         
@@ -781,7 +780,6 @@ class ReadoutLayerQsample(ReadoutLayer3d):
             **kwargs)
     
         self.filter_dims[3] = 1
-        print(self.filter_dims)
 
         self.batch_Qsample = batch_Qsample
         self.Qsample_mode = Qsample_mode
@@ -847,9 +845,30 @@ class ReadoutLayerQsample(ReadoutLayer3d):
 
         out_norm = norm.new_zeros(*(Qgrid_shape[:3]+(2,)))  # for consistency and CUDA capability
         ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
+        out_norm[:,:,:,0] = (norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :]).clamp(-1,1)
         out_norm[:,:,:,1] = (norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :]).clamp(-1,1)
           
         return out_norm
+
+    def fit_Qmus( self, val=None, Qsigma=None, verbose=True ):
+        """
+        Quick function that turns on or off fitting mus/sigmas and toggles sample
+        
+        Args:
+            val (bool): True or False -- must specify
+            Qsigma (float): choose starting sigma value (default no choice)
+        """
+        assert val is not None, "fit_mus(): must set val to be True or False"
+        self.Qsample = val
+        self.set_parameters(val=val, name='Qmu')
+        self.set_parameters(val=val, name='Qsigma')
+        if sigma is not None:
+            self.Qsigma.data.fill_(Qsigma)
+        if verbose:
+            if val:
+                print("  ReadoutLayer: fitting Qmus")
+            else:
+                print("  ReadoutLayer: not fitting Qmus")
 
     def forward(self, x, shift=None, Qshift=None):
         """
@@ -902,28 +921,20 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         if Qshift is not None:
             # shifter is run outside the readout forward
             Qgrid = Qgrid + Qshift[:, None, None, :]
-
-        print("x", x.shape)
-        print("gird", grid.shape)
         
         y = F.grid_sample(x, grid, mode=self.sample_mode, align_corners=self.align_corners, padding_mode='border')
         # note I switched this from the default 'zeros' so that it wont try to go past the border
-
-        print("y", y.shape)
-        print("Qgird", Qgrid.shape)
         
         # reduce grid sample for angle
-        z = torch.zeros((N,self.input_dims[0],self.num_filters,1))
+        z = torch.zeros((N,self.input_dims[0],self.num_filters,1), dtype=torch.float32, device=self.weight.device)
         for i in range(self.num_filters):
             y_i = y[:,:,i,:].reshape(N,self.input_dims[0],self.input_dims[3],1)
             Qgrid_i = Qgrid[:,i,:,:].reshape(N,1,1,2)
             z_i = F.grid_sample(y_i, Qgrid_i, mode=self.Qsample_mode, align_corners=self.align_corners, padding_mode='border')
             z[:,:,i,:] = z_i.reshape(N,self.input_dims[0],1)
-            
-        print('z',z.shape)
-        print(feat.shape)
         
         z = (z.squeeze(-1) * feat).sum(1).view(N, outdims)
+        #z = (z.squeeze(-1)).sum(1).view(N, outdims)
 
         if self.bias is not None:
             z = z + bias
