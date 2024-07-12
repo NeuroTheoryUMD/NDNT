@@ -104,7 +104,7 @@ class ReadoutLayer(NDNLayer):
         self.register_buffer("_scaffold_level_weights", torch.zeros((self.weight.shape[0], 1), dtype=torch.float32))
 
         self.initialize_spatial_mapping()
-        self.sample = True
+        self.sample = False
 
     # END ReadoutLayer.__init__
 
@@ -643,7 +643,7 @@ class FixationLayer(NDNLayer):
         self.sigmas.data.fill_(self.init_sigma)
         self.weight.data.fill_(0.0)
         
-        self.sample = True
+        self.sample = False
     # END FixationLayer.__init__
 
     def forward(self, x, shift=None):
