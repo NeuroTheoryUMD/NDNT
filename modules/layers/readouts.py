@@ -795,7 +795,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         self.Qmu = Parameter(torch.Tensor(self.num_filters,1))
         self.Qsigma = Parameter(torch.Tensor(self.num_filters,1))
 
-        self.initialize_spatial_mapping()
+        self.initialize_Q_mapping()
         self.Qsample = False
 
     # END ReadoutLayerQsample.__init__
@@ -843,11 +843,16 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         else:
             norm = self.Qmu.new(*Qgrid_shape).zero_()  # for consistency and CUDA capability
 
+        # posision for sampling cells
+        step = 1/self.num_filters
+        cell_pos = torch.linspace(-1+step,1-step,self.num_filters)
+        cell_pos = cell_pos.repeat(1,batch_size).reshape(batch_size,self.num_filters,1)
+        
         out_norm = norm.new_zeros(*(Qgrid_shape[:3]+(2,)))  # for consistency and CUDA capability
         ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
+        out_norm[:,:,:,1] = cell_pos #(norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :]).clamp(-1,1)
         out_norm[:,:,:,0] = (norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :]).clamp(-1,1)
-        out_norm[:,:,:,1] = (norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :]).clamp(-1,1)
-          
+
         return out_norm
 
     def fit_Qmus( self, val=None, Qsigma=None, verbose=True ):
@@ -925,13 +930,20 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         y = F.grid_sample(x, grid, mode=self.sample_mode, align_corners=self.align_corners, padding_mode='border')
         # note I switched this from the default 'zeros' so that it wont try to go past the border
         
+        y = y.permute(0,1,3,2)
+        y = y.reshape(N,self.input_dims[0],self.input_dims[3],self.num_filters)
+        y = y.permute(0,1,3,2)
+
         # reduce grid sample for angle
-        z = torch.zeros((N,self.input_dims[0],self.num_filters,1), dtype=torch.float32, device=self.weight.device)
-        for i in range(self.num_filters):
-            y_i = y[:,:,i,:].reshape(N,self.input_dims[0],self.input_dims[3],1)
-            Qgrid_i = Qgrid[:,i,:,:].reshape(N,1,1,2)
-            z_i = F.grid_sample(y_i, Qgrid_i, mode=self.Qsample_mode, align_corners=self.align_corners, padding_mode='border')
-            z[:,:,i,:] = z_i.reshape(N,self.input_dims[0],1)
+        z = F.grid_sample(y, Qgrid, mode=self.Qsample_mode, align_corners=self.align_corners, padding_mode='border')
+        
+        # reduce grid sample for angle
+        #z = torch.zeros((N,self.input_dims[0],self.num_filters,1), dtype=torch.float32, device=self.weight.device)
+        #for i in range(self.num_filters):
+        #    y_i = y[:,:,i,:].reshape(N,self.input_dims[0],self.input_dims[3],1)
+        #    Qgrid_i = Qgrid[:,i,:,:].reshape(N,1,1,2)
+        #    z_i = F.grid_sample(y_i, Qgrid_i, mode=self.Qsample_mode, align_corners=self.align_corners, padding_mode='border')
+        #    z[:,:,i,:] = z_i.reshape(N,self.input_dims[0],1)
         
         z = (z.squeeze(-1) * feat).sum(1).view(N, outdims)
         #z = (z.squeeze(-1)).sum(1).view(N, outdims)
