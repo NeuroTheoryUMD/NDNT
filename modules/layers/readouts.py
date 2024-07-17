@@ -751,7 +751,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
     ReadoutLayerQsample for 3d readout with sampling over angle dimension Q.
     This is a subclass of ReadoutLayer3d.
     """
-    def __init__(self, input_dims=None, filter_dims=None, batch_Qsample=True, init_Qmu_range=0.1, init_Qsigma=0.2, Qsample_mode='bilinear', **kwargs):
+    def __init__(self, input_dims=None, filter_dims=None, batch_Qsample=True, init_Qsigma=0.5, Qsample_mode='bilinear', **kwargs):
         """
         ReadoutLayerQsample: 3d readout layer for NDNs.
 
@@ -759,7 +759,6 @@ class ReadoutLayerQsample(ReadoutLayer3d):
             input_dims: tuple or list of ints, (num_channels, height, width, lags)
             filter_dims: tuple or list of ints, (num_channels, height, width, depth, lags)
             batch_Qample: bool, whether to sample Qgrid locations separately per sample per batch
-            init_mu_range: float, range for uniform initialization of means
             init_sigma: float, standard deviation for uniform initialization of sigmas
             Qsample_mode: str, 'bilinear' or 'nearest'
 
@@ -784,40 +783,21 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         self.batch_Qsample = batch_Qsample
         self.Qsample_mode = Qsample_mode
 
-        self.init_Qmu_range = init_Qmu_range
         self.init_Qsigma = init_Qsigma
 
-        if self.init_Qmu_range > 1.0 or self.init_Qmu_range <= 0.0 or self.init_Qsigma <= 0.0:
-            raise ValueError("either init_Qmu_range doesn't belong to [0.0, 1.0] or init_Qsigma is non-positive")
+        if self.init_Qsigma <= 0.0:
+            raise ValueError("init_Qsigma is non-positive")
 
         self.Qgrid_shape = (1, self.num_filters,1,1)
 
         self.Qmu = Parameter(torch.Tensor(self.num_filters,1))
         self.Qsigma = Parameter(torch.Tensor(self.num_filters,1))
-
-        self.initialize_Q_mapping()
+        self.Qmu.data.uniform_(-1,1)
+        self.Qsigma.data.fill_(self.init_Qsigma)
+        
         self.Qsample = False
 
     # END ReadoutLayerQsample.__init__
-
-    def initialize_Q_mapping(self):
-        """
-        Initializes the mean, and sigma of the Gaussian readout for angle dim.
-
-        Args:
-            None
-        """
-        self.Qmu.data.uniform_(-self.init_Qmu_range)  # random initializations uniformly spread....
-        # if self.gauss_type != 'full':
-        #     self.sigma.data.fill_(self.init_sigma)
-        # else:
-        #self.sigma.data.uniform_(0, self.init_sigma)
-        self.Qsigma.data.fill_(self.init_Qsigma)
-        
-        #self.weight.data.fill_(1 / self.input_dims[0])
-
-        if self.bias is not None:
-            self.bias.data.fill_(0)
 
     def sample_Qgrid(self, batch_size, Qsample=None):
         """
@@ -850,8 +830,9 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         
         out_norm = norm.new_zeros(*(Qgrid_shape[:3]+(2,)))  # for consistency and CUDA capability
         ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
-        out_norm[:,:,:,1] = cell_pos #(norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :]).clamp(-1,1)
-        out_norm[:,:,:,0] = (norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :]).clamp(-1,1)
+        out_norm[:,:,:,1] = cell_pos 
+        out_norm[:,:,:,0] = ((norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :] + 1)%2)-1 # wraps around
+        
 
         return out_norm
 
@@ -867,7 +848,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         self.Qsample = val
         self.set_parameters(val=val, name='Qmu')
         self.set_parameters(val=val, name='Qsigma')
-        if sigma is not None:
+        if Qsigma is not None:
             self.Qsigma.data.fill_(Qsigma)
         if verbose:
             if val:
@@ -990,8 +971,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'readoutQ'
         Ldict['batch_Qample'] = True
-        Ldict['init_Qmu_range'] = 0.1
-        Ldict['init_Qsigma'] = 0.2
+        Ldict['init_Qsigma'] = 0.5
         Ldict['Qsample_mode'] = 'bilinear'
         return Ldict
     # END [classmethod] ReadoutLayer3d.layer_dict
