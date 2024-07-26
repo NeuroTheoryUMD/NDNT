@@ -830,9 +830,9 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         
         out_norm = norm.new_zeros(*(Qgrid_shape[:3]+(2,)))  # for consistency and CUDA capability
         ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
-        out_norm[:,:,:,1] = cell_pos 
-        out_norm[:,:,:,0] = ((norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :] + 1)%2)-1 # wraps around
-        
+        out_norm[:,:,:,1] = cell_pos
+        mu_scale = (2/(self.input_dims[3]+2))*(self.input_dims[3]/2) # scal mu values to account for circular padding
+        out_norm[:,:,:,0] = mu_scale*(((norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :] + 1)%2)-1) # wraps around
 
         return out_norm
 
@@ -904,19 +904,16 @@ class ReadoutLayerQsample(ReadoutLayer3d):
             # use one sampled grid_locations for all sample in the batch
             Qgrid = self.sample_Qgrid(batch_size=1, Qsample=self.Qsample).expand(N, outdims,1, 1)
         
-        if Qshift is not None:
-            # shifter is run outside the readout forward
-            Qgrid = Qgrid + Qshift[:, None, None, :]
-        
         y = F.grid_sample(x, grid, mode=self.sample_mode, align_corners=self.align_corners, padding_mode='border')
         # note I switched this from the default 'zeros' so that it wont try to go past the border
         
         y = y.permute(0,1,3,2)
         y = y.reshape(N,self.input_dims[0],self.input_dims[3],self.num_filters)
         y = y.permute(0,1,3,2)
-
+        y_pad = F.pad(y, (1,1,0,0), 'circular') # circular padding for angle dim)
+        
         # reduce grid sample for angle
-        z = F.grid_sample(y, Qgrid, mode=self.Qsample_mode, align_corners=self.align_corners, padding_mode='border')
+        z = F.grid_sample(y_pad, Qgrid, mode=self.Qsample_mode, align_corners=self.align_corners, padding_mode='border')
         
         # reduce grid sample for angle
         #z = torch.zeros((N,self.input_dims[0],self.num_filters,1), dtype=torch.float32, device=self.weight.device)
@@ -927,7 +924,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         #    z[:,:,i,:] = z_i.reshape(N,self.input_dims[0],1)
         
         z = (z.squeeze(-1) * feat).sum(1).view(N, outdims)
-        #z = (z.squeeze(-1)).sum(1).view(N, outdims)
+        #z = (z.squeeze(-1)).sum(1).view(N, outdims) # for testing only
 
         if self.bias is not None:
             z = z + bias
