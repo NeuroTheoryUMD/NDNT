@@ -831,7 +831,8 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         out_norm = norm.new_zeros(*(Qgrid_shape[:3]+(2,)))  # for consistency and CUDA capability
         ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
         out_norm[:,:,:,1] = cell_pos
-        mu_scale = (2/(self.input_dims[3]+2))*(self.input_dims[3]/2) # scal mu values to account for circular padding
+        mu_scale = self.input_dims[3]/(self.input_dims[3]+2) # scal mu values to account for circular padding
+        #mu_scale = 1
         out_norm[:,:,:,0] = mu_scale*(((norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :] + 1)%2)-1) # wraps around
 
         return out_norm
