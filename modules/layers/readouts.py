@@ -801,18 +801,19 @@ class ReadoutLayerQsample(ReadoutLayer3d):
 
     def sample_Qgrid(self, batch_size, Qsample=None):
         """
-        Returns the grid locations from the core by sampling from a Gaussian distribution
-        More specifically, it returns sampled positions for each batch over all elements, given mus and sigmas
-        If 'sample' is false, it just gives mu back (so testing has no randomness)
+        Returns the chosen angle (Q) from the core by sampling from a Gaussian distribution
+        More specifically, it returns sampled angle for each batch over all elements, given Qmus and Qsigmas
+        Also implements wrap around for Qmus so edge mus get mapped back to first angle
+        If 'Qsample' is false, it just gives mu back (so testing has no randomness)
         This code is inherited and then modified, so different style than most other
 
         Args:
             batch_size (int): size of the batch
-            sample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(mu,sigma), defined per neuron
-                            or use the mean, mu, of the Gaussian distribution without sampling.
-                           if sample is None (default), samples from the N(mu,sigma) during training phase and
-                             fixes to the mean, mu, during evaluation phase.
-                           if sample is True/False, overrides the model_state (i.e training or eval) and does as instructed
+            Qsample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(Qmu,Qsigma), defined per neuron
+                            or use the mean, Qmu, of the Gaussian distribution without sampling.
+                           if Qsample is None (default), samples from the N(Qmu,Qsigma) during training phase and
+                             fixes to the mean, Qmu, during evaluation phase.
+                           if Qsample is True/False, overrides the model_state (i.e training or eval) and does as instructed
         """
         
         Qgrid_shape = (batch_size,) + self.Qgrid_shape[1:3]
@@ -839,11 +840,11 @@ class ReadoutLayerQsample(ReadoutLayer3d):
 
     def fit_Qmus( self, val=None, Qsigma=None, verbose=True ):
         """
-        Quick function that turns on or off fitting mus/sigmas and toggles sample
+        Quick function that turns on or off fitting Qmus/Qsigmas and toggles sample
         
         Args:
             val (bool): True or False -- must specify
-            Qsigma (float): choose starting sigma value (default no choice)
+            Qsigma (float): choose starting Qsigma value (default no choice)
         """
         assert val is not None, "fit_mus(): must set val to be True or False"
         self.Qsample = val
@@ -857,17 +858,16 @@ class ReadoutLayerQsample(ReadoutLayer3d):
             else:
                 print("  ReadoutLayer: not fitting Qmus")
 
-    def forward(self, x, shift=None, Qshift=None):
+    def forward(self, x, shift=None):
         """
         Propagates the input forwards through the readout
 
         Args:
             x: input data
             shift (bool): shifts the location of the grid (from eye-tracking data)
-            Qshift (bool): shifts the location of the grid
 
         Returns:
-            y: neuronal activity
+            z: neuronal activity
         """
         
         x = x.reshape([-1]+self.input_dims)  # 3d change -- has extra dimension at end
