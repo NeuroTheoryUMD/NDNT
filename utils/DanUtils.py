@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 ###### GENERAL UTILITIES NOT SPECIFIC TO NDN ######
 def subplot_setup(num_rows, num_cols, row_height=2, fig_width=16, fighandle=False):
     fig, ax = plt.subplots(nrows=num_rows, ncols=num_cols)
-    fig.set_size_inches(fig_width, row_height*num_rows)
+    fig.set_size_inches(fig_width, h=row_height*num_rows)
     fig.tight_layout()
     if fighandle is True:
         return fig
