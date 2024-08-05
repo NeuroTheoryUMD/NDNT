@@ -242,12 +242,8 @@ class OriConvLayer(ConvLayer):
         # make the ei mask and store it as a buffer,
         # repeat it for each orientation (plus one for the original orientation)
         if self._ei_mask is not None: 
-            self.register_buffer('_ei_mask', torch.cat(
-                (torch.ones((self.num_filters-self._num_inh)*NQ), -torch.ones(self._num_inh*NQ)) ))
-                                #    (torch.ones(self.num_filters-self._num_inh), 
-                                #    -torch.ones(self._num_inh))
-                                #).repeat(len(self.angles)))
-
+            self.register_buffer('_ei_mask', torch.cat((torch.ones(self.num_filters-self._num_inh), -torch.ones(self._num_inh))).repeat(NQ))
+                                
         # Make additional window function to make filter circular
         L = self.filter_dims[1]
         xs = np.arange(L)+0.5-L/2
@@ -334,6 +330,7 @@ class OriConvLayer(ConvLayer):
         
         if self.NL is not None:
             y = self.NL(y)
+            
         if self._ei_mask is not None:
             y = y*self._ei_mask[None, :, None, None]
 
