@@ -704,7 +704,7 @@ class NDN(nn.Module):
             if val_inds is None:
                 if self.block_sample:
                     if hasattr(dataset, 'val_blks'):
-                        if dataset.val_inds is not None:
+                        if dataset.val_blks is not None: # changed from if dataset.val_inds is not None:
                             val_inds = dataset.val_blks
                         else:
                             print( "Warning: no val_bkls specified in dataset (block_sample)")
