@@ -71,7 +71,9 @@ def fit_lbfgs(mod, data, #val_data=None,
 def fit_lbfgs_batch(
         model, dataset,
         batch_size=1000,
-        num_chunks=None, 
+        num_chunks=None,
+        train_inds=None,
+        device=None,
         verbose=True, 
         #val_dataset=None,
         #parameters=None, optimizer=None,
@@ -81,21 +83,27 @@ def fit_lbfgs_batch(
         tolerance_grad=1e-7,
         line_search='strong_wolfe'):
     '''
-    Runs LBFGS on a Pytorch model and data dictionary passing data in through 
-    batches, but accumulating full-dataset gradients for each epoch
+    Runs LBFGS on a Pytorch model with batching a dataset into chunks. Both model and 
+    data should be on the cpu, and it copies the model and individual batches to the GPU,
+    accumulating full-dataset gradients for each epoch
 
     Inputs:
         Model: Pytorch model
         dataset: Dataset that can be sampled
         batch_size: size of chunk to sample; superceded by num_chunks
         num_chunks: divide dataset into number of chunks -> sets batch_size (def: None)
+        train_inds: since passing in dataset, need to give indices to train over
+        device: GPU device to copy everything to
         verbose: output to screen
 
     '''
     #from tqdm import tqdm
     from .DanUtils import chunker
 
-    ds_size = len(dataset[:]['stim'])
+    if train_inds is None:
+        train_inds = np.arange(ds_size)
+    ds_size = len(train_inds)
+
     if num_chunks is not None:
         batch_size = int(np.ceil(ds_size)/num_chunks)
         if verbose:
@@ -103,7 +111,9 @@ def fit_lbfgs_batch(
 
     model.prepare_regularization()
     model.train()
-
+    if device is not None:
+        d0 = model.device
+        model = model.to(device)
     #if parameters is None:
     #    parameters = model.parameters()
     #if optimizer is None:
@@ -128,7 +138,13 @@ def fit_lbfgs_batch(
         #for b in tqdm( chunker(range(ds_size), batch_size), position=0, leave=True ):
         loss = 0
         for b in chunker(range(ds_size), batch_size):
-            loss += model.training_step(dataset[b])['loss']*len(b)  # weights by number of time steps
+            data_chunk = dataset[train_inds[b]]
+            # copy data to device
+            if device is not None:
+                for dsub in data_chunk:
+                    data_chunk[dsub] = data_chunk[dsub].to(device)
+
+            loss += model.training_step(data_chunk)['loss']*len(b)  # weights by number of time steps
         loss = loss/ds_size
         loss.backward()
             #del b
@@ -160,6 +176,8 @@ def fit_lbfgs_batch(
         print("Keyboard interrupt")
     except TypeError:
         print("stopped early")
+    if device is not None:
+        model = model.to(d0)
 # END fit_lbfgs_batch
 
 #################### CREATE OTHER PARAMETER-DICTS ####################

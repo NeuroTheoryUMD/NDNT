@@ -76,7 +76,6 @@ class Tlayer(NDNLayer):
             #conv_dims[2] = num_lag_params
             filter_dims[-1] = num_lag_params
 
-
         filter_dims = input_dims[:3] + [num_lags]
         super().__init__(
             input_dims=input_dims,

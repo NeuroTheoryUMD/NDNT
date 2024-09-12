@@ -170,9 +170,13 @@ class NDN(nn.Module):
         for mm in range(num_networks):
 
             # Determine internal network input to each subsequent network (if exists)
+            if ffnet_list[mm]['xstim_n'] is None:
+                input_dims_list = []
+            else:
+                input_dims_list = [ffnet_list[mm]['layer_list'][0]['input_dims']]
+
             if ffnet_list[mm]['ffnet_n'] is not None:
                 nets_in = ffnet_list[mm]['ffnet_n']
-                input_dims_list = []
                 for ii in range(len(nets_in)):
                     assert nets_in[ii] < mm, "FFnet%d (%d): input networks must come earlier"%(mm, ii)
                     input_dims_list.append(networks[nets_in[ii]].output_dims)
@@ -208,20 +212,22 @@ class NDN(nn.Module):
         assert 'networks' in dir(self), "compute_network_outputs: No networks defined in this NDN"
 
         net_ins, net_outs = [], []
+
         for ii in range(len(self.networks)):
-            if self.networks[ii].ffnets_in is None:
+            # First, assemble inputs to network
+            if self.networks[ii].xstim_n is not None:
                 # then getting external input
-                net_ins.append( [Xs[self.networks[ii].xstim_n]] )
-                net_outs.append( self.networks[ii]( net_ins[-1] ) )
+                inputs = [Xs[self.networks[ii].xstim_n]]
             else:
+                inputs = []
+            if self.networks[ii].ffnets_in is not None:
                 in_nets = self.networks[ii].ffnets_in
                 # Assemble network inputs in list, which will be used by FFnetwork
-                inputs = []
                 for mm in range(len(in_nets)):
                     inputs.append( net_outs[in_nets[mm]] )
-                
-                net_ins.append(inputs)
-                net_outs.append( self.networks[ii](inputs) ) 
+            net_ins.append(inputs)
+            # Compute outputs
+            net_outs.append( self.networks[ii](inputs) ) 
         return net_ins, net_outs
     # END NDNT.compute_network_outputs
 

@@ -172,6 +172,8 @@ class FFnetwork(nn.Module):
             self.input_dims = input_dims_list[0]
         else: 
             num_input_networks = len(self.ffnets_in)
+            if self.xstim_n is not None:
+                num_input_networks += 1
             assert len(input_dims_list) == num_input_networks, 'Internal: misspecification of input_dims for FFnetwork.'
 
             # Go through the input dims of the other ffnetowrks to verify they are valid for the type of network
@@ -180,7 +182,7 @@ class FFnetwork(nn.Module):
                     num_cat_filters = input_dims_list[0][0]
                 else:
                     if input_dims_list[ii][1:] != input_dims_list[0][1:]:
-                        if ffnet_type == 'add':
+                        if ffnet_type in ['add', 'mult']:
                             for jj in range(2):
                                 #if (input_dims_list[ii][jj+1] > 1) | (input_dims_list[0][jj+1] == 1):
                                 if (input_dims_list[ii][jj+1] > 1) & (input_dims_list[0][jj+1] > 1):
@@ -218,7 +220,6 @@ class FFnetwork(nn.Module):
         Raises:
             ValueError: If no layers are defined.
         """
-
         # Combine network inputs (if relevant)
         if isinstance(inputs, list):
             if len(inputs) == 1:
