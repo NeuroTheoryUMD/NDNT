@@ -826,8 +826,8 @@ class ReadoutLayerQsample(ReadoutLayer3d):
 
         # posision for sampling cells
         step = 1/self.num_filters
-        cell_pos = torch.linspace(-1+step,1-step,self.num_filters)
-        cell_pos = cell_pos.repeat(1,batch_size).reshape(batch_size,self.num_filters,1)
+        cell_pos = torch.linspace(-1+step, 1-step, self.num_filters)
+        cell_pos = cell_pos.repeat(1,batch_size).reshape(batch_size, self.num_filters, 1)
         
         out_norm = norm.new_zeros(*(Qgrid_shape[:3]+(2,)))  # for consistency and CUDA capability
         ## SEEMS dim-4 HAS TO BE IN THE SECOND DIMENSION (RATHER THAN FIRST)
