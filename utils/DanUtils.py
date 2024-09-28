@@ -85,6 +85,20 @@ def find_peaks( x, clearance=10, max_peaks=10, thresh=13.0 ):
 # END find_peaks
 
 
+def chunker(seq, size):
+    """
+    This function chunks a sequence into chunks of size size.
+
+    Args:
+        seq: the sequence
+        size: the size of the chunks
+
+    Returns:
+        a list of chunks
+    """
+    return [seq[pos:pos + size] for pos in range(0, len(seq), size)]
+
+
 def filename_num2str( n, num_digits=2 ):
     if n == 0:
         num_places = 1

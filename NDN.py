@@ -12,7 +12,7 @@ import os
 from NDNT.metrics import poisson_loss as plosses
 from NDNT.metrics import mse_loss as glosses
 from NDNT.metrics import rmse_loss as rlosses
-from NDNT.utils import create_optimizer_params, NpEncoder
+from NDNT.utils import create_optimizer_params, NpEncoder, chunker
 from NDNT.modules.experiment_sampler import ExperimentSampler
 
 from NDNT import networks as NDNnetworks
@@ -1136,9 +1136,10 @@ class NDN(nn.Module):
 
         return LLneuron.detach().cpu().numpy()
 
-    def generate_predictions(self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
+    def predictions(self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
         """
-        Generate predictions for a dataset.
+        Generate predictions for the model for a dataset. Note that will need to send to device if needed, and enter 
+        batch_size information. 
 
         Args:
             data: The dataset.
@@ -1147,16 +1148,13 @@ class NDN(nn.Module):
             batch_size: The batch size to use for processing. Reduce if running out of memory.
             num_lags: The number of lags to use for prediction.
             ffnet_target: The index of the feedforward network to use for prediction. Defaults to None.
-            device: The device to use for prediction.
+            device: The device to use for prediction
 
         Returns:
-            torch.Tensor: The predictions array.
+            torch.Tensor: The predictions array (detached, on cpu)
         """
         
-        # Switch into evalulation mode
-        self.eval()
-    
-        # handle the block_sample case separately
+        self.eval()    
         num_cells = self.networks[-1].output_dims[0]
 
         if self.block_sample:
@@ -1173,10 +1171,14 @@ class NDN(nn.Module):
             data_subset_NT = np.sum([len(data.block_inds[ii]) for ii in block_inds])
             pred = torch.zeros((data_subset_NT, num_cells)).to(device)
             with torch.no_grad():
-                for i in tqdm.tqdm(range(0, total, batch_size)):
-                    batch_block_inds = [data.block_inds[ii] for ii in block_inds[i:i+batch_size]]
+                #for i in tqdm.tqdm(range(0, total, batch_size)):
+                for trs in tqdm.tqdm(chunker(np.arange(total), batch_size)):
+                    #batch_block_inds = [data.block_inds[ii] for ii in block_inds[i:i+batch_size]]
+                    batch_block_inds = [data.block_inds[ii] for ii in trs]
                     batch_block_inds = np.concatenate(batch_block_inds)
-                    data_batch = data[i:i+batch_size]
+                    batch_block_inds = batch_block_inds[batch_block_inds < data.NT]
+                    #data_batch = data[i:np.minimum(i+batch_size, total)]
+                    data_batch = data[trs]
                     if device is not None:
                         for key in data_batch.keys():
                             data_batch[key] = data_batch[key].to(device)
@@ -1185,7 +1187,8 @@ class NDN(nn.Module):
                     else:
                         pred_batch = self(data_batch)
                     pred[batch_block_inds] = pred_batch
-            return pred
+            self = self.to(model_device)
+            return pred.detach().cpu()
     
         if isinstance(data, dict):
             # Then assume that this is just to evaluate a sample: keep original here
