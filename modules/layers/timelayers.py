@@ -2,6 +2,71 @@ import torch
 import torch.nn as nn
 from .ndnlayer import NDNLayer
 import numpy as np
+
+class TimeShiftLayer(NDNLayer):
+    """
+    Layer to shift in time dimension by num_lags
+    """ 
+
+    def __init__(self,
+            input_dims=None,
+            num_lags=1,
+            **kwargs,
+        ):
+        """
+        TimeLayer: Layer to track experiment time and a weighted output.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags/angles)
+            num_lags: number of lags to shift back by
+            **kwargs: additional arguments to pass to NDNLayer
+        """
+
+        super().__init__(
+            input_dims=input_dims,
+            num_filters=1,
+            filter_dims=[1,1,1,1],
+            NLtype='lin',
+            bias=False)
+
+        self.output_dims = self.input_dims
+        self.num_outputs = int(np.prod(self.output_dims))
+        self.num_lags = num_lags
+        self.weight.requires_grad = False
+        
+    def forward(self, x):
+        """
+        Shift in batch dimesnion by num_lags and pad by 0
+
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            y: torch.Tensor, output tensor
+        """
+        
+        shift_x = torch.roll(x,self.num_lags,0)
+        shift_x[:self.num_lags,...] = 0
+        
+        return shift_x
+
+    @classmethod
+    def layer_dict(cls, input_dims=None, num_lags=1):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = {}
+        Ldict['layer_type'] = 'timeshift'
+        Ldict['input_dims'] = input_dims
+        Ldict['num_lags'] = num_lags
+        return Ldict
+
+
 class TimeLayer(NDNLayer):
     """
     Layer to track experiment time and a weighted output.
@@ -86,3 +151,4 @@ class TimeLayer(NDNLayer):
         x = x@w
         
         return x
+

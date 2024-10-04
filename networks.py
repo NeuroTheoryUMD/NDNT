@@ -77,7 +77,8 @@ class FFnetwork(nn.Module):
             'dimSPT': layers.DimSPTLayer,
             'channel': layers.ChannelLayer,
             'LVlayer': layers.LVLayer,
-            'l1layer': layers.L1convLayer
+            'l1layer': layers.L1convLayer,
+            'timeshift': layers.TimeShiftLayer
             # 'external': layers.ExternalLayer,    
             #'res': layers.ResLayer,
         }

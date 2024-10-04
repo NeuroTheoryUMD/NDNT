@@ -24,3 +24,4 @@ from .orilayers import OriLayer
 from .orilayers import OriConvLayer
 from .orilayers import HermiteOriConvLayer
 from .orilayers import ConvLayer3D
+from .timelayers import TimeShiftLayer
