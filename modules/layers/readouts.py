@@ -796,7 +796,6 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         self.Qsigma.data.fill_(self.init_Qsigma)
         
         self.Qsample = False
-
     # END ReadoutLayerQsample.__init__
 
     def sample_Qgrid(self, batch_size, Qsample=None):
@@ -936,20 +935,60 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         return z
     # END ReadoutLayer3d.forward
 
-    def passive_readout(self):
+    def degrees2mu( self, theta_deg, to_output=False, continuous=True, max_angle=180 ):
         """
-        This might have to be redone for readout3d to take into account extra filter dim.
+        Converts degrees into mu-values. If to_output=True, outputs to an array, and otherwise
+        stores in the Qmu variable. It detects whether half-circle of full circle using stored angle values
+        
+        Args:
+            theta_deg (np array): array of angles in degrees into mu values, based on 180 or 360 deg wrap-around
+            to_output (Boolean): whether to output to variable or store internally as Qmu (default: False, is the latter)
+            continuous (Boolean): whether to convert to continuous angle or closest "integer" mu value (def True, continuous)
+            max_angle: maximum angle represented in OriConv layers (default 180, but could be 360)
+        Returns:
+            Qmus: as numpy-array, if to_output is set to True, otherwise, nothing 
         """
-        print("WARNING: SCAF3d: this function is not vetted and likely will clunk")
-        assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
-        # Set parameters for default readout
-        self.sigma.data.fill_(0)
-        self.mu.data.fill_(0)
-        self.weight.data.fill_(0)
-        for nn in range(self.num_filters):
-            self.weight.data[nn,nn] = 1
+        num_angles = self.input_dims[-1]
 
-        self.set_parameters(val=False)
+        # convert inputs to np.array
+        if not isinstance(theta_deg, np.ndarray):
+            theta_deg = np.array(theta_deg, dtype=np.float32)
+        if not continuous:
+            dQ = max_angle/num_angles
+            theta_deg = dQ * np.round(theta_deg/dQ)
+        theta_deg = (theta_deg%max_angle)  # map between 0 and max_angle
+
+        mu_offset = 1/num_angles # first bin at 0 degrees is actually a shifted mu value (not right at edge)
+        Qmus = (theta_deg-max_angle/2) / (max_angle/2) + mu_offset
+        Qmus[Qmus <= -1] += 2
+        Qmus[Qmus > 1] += -2
+        if to_output:
+            return Qmus
+        assert len(Qmus) == self.Qmu.shape[0], "incorrect number of angles input %d neq %d"%(len(Qmus), self.Qmu.shape[0])
+        self.Qmu.data[:,0] = torch.tensor( Qmus.squeeze(), device=self.weight.device, dtype=torch.float32 )
+    # END ReadoutLayerQsample.degrees2mu()
+
+    def mu2degrees( self, mu=None, max_angle=180 ):
+        """
+        Converts Qmu-values into degrees. Automatically reads from Qmu variable, and outputs a numpy array
+        It detects whether half-circle of full circle using stored angle values
+        
+        Args:     
+            Qmus: if dont want to read from layer, pass in values directly (default None, using self.Qmu)       
+            max_angle: maximum angle represented in OriConv layers (default 180, but could be 360)
+
+        Returns:
+            thetas: angles in degrees (between 0 to max_angle)
+        """
+        num_angles = self.input_dims[-1]
+        if mu is None:
+            mu = self.Qmu.detach().numpy() 
+
+        mu += - 1/num_angles # first bin at 0 degrees is actually a shifted mu value (not right at edge)
+        thetas = mu*max_angle/2 + max_angle/2
+        thetas = thetas % max_angle 
+        return thetas
+    # END ReadoutLayerQsample.mu2degrees()
 
     @classmethod
     def layer_dict(cls, Qsigma=1, **kwargs):
