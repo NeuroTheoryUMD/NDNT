@@ -30,6 +30,7 @@ def fit_lbfgs(mod, data, #val_data=None,
         data: Dictionary to used with Model.training_step(data)
     '''
 
+    assert isinstance(data, dict), "data must be a dictionary"
     mod.prepare_regularization()
     mod.train()
     if parameters is None:

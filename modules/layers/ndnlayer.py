@@ -128,7 +128,7 @@ class NDNLayer(nn.Module):
         if bias:
             self.bias = Parameter(torch.Tensor(self.num_filters))
         else:
-            self.register_buffer('bias', torch.zeros(self.num_filters))
+            self.register_buffer( 'bias', torch.zeros(self.num_filters, dtype=torch.float32) )
 
         if self.pos_constraint:
             self.register_buffer("minval", torch.tensor(0.0))
@@ -142,11 +142,8 @@ class NDNLayer(nn.Module):
         ##### self.activity_regularization = 0.0
 
         # Now taken care of in model properties
-        self.num_inh = num_inh
-        #if num_inh == 0:
-        #    self.ei_mask = None
-        #else:
-        #    self.register_buffer('ei_mask', torch.cat( (torch.ones(self.num_filters-num_inh), -torch.ones(num_inh))) )
+        self.register_buffer( '_ei_mask', torch.ones(self.num_filters, dtype=torch.float32) )
+        self.num_inh = num_inh  # this will call setter function to adjust _ei_mask appropriately
 
         # check if output normalization is specified
         #if output_norm in ['batch', 'batchX']:
@@ -185,11 +182,12 @@ class NDNLayer(nn.Module):
     def num_inh(self, value):
         assert value >= 0, "num_inh cannot be negative"
         self._num_inh = value
-        if value == 0:
-            self._ei_mask = None
-        else:
-            self.register_buffer('_ei_mask',
-                                 torch.cat( (torch.ones(self.num_filters-self._num_inh), -torch.ones(self._num_inh))) )
+        self._ei_mask[:] = 1  # reset
+        if value > 0:
+            self._ei_mask[range(self.num_filters-self._num_inh, self.num_filters)] = -1
+        #        self.register_buffer(
+        #            '_ei_mask', torch.cat( (torch.ones(self.num_filters-self._num_inh, dtype=torch.float32),
+        #                                     -torch.ones(self._num_inh, dtype=torch.float32))) )
 
     def reset_parameters(self, weights_initializer=None, bias_initializer=None, param=None) -> None:
         """
@@ -262,8 +260,9 @@ class NDNLayer(nn.Module):
         Initialize the weights to have a Gaussian envelope.
         This is useful for initializing filters to have a spatial-temporal Gaussian shape.
         """
-        from NDNT.utils import initialize_gaussian_envelope
-        w_centered = initialize_gaussian_envelope( self.get_weights(to_reshape=False), self.filter_dims)
+        from NDNT.utils import initialize_gaussian_envelope as util_gaussian_envelope
+        #w_centered = initialize_gaussian_envelope( self.get_weights(to_reshape=False), self.filter_dims)
+        w_centered = util_gaussian_envelope( self.weight.clone().detach().numpy(), self.filter_dims)
         self.weight.data = torch.tensor(w_centered, dtype=torch.float32)
 
     def preprocess_weights(self):
@@ -318,7 +317,7 @@ class NDNLayer(nn.Module):
             x = self.NL(x)
 
         # Constrain output to be signed
-        if self._ei_mask is not None:
+        if self._num_inh > 0:
             x = x * self._ei_mask
 
         # store activity regularization to add to loss later

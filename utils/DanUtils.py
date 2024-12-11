@@ -156,13 +156,26 @@ def matlab_export(filename, variable_list):
 
 
 def save_python_data( filename, data ):
+    """
+    Saves python dictionary in standard binary file
+
+    Args:
+        filename: name of the file to save
+        data: dictionary to save
+    """
     with open( filename, 'wb') as f:
         np.save(f, data)
     print( 'Saved data to', filename )
 
 
 def load_python_data( filename, show_keys=False ):
+    """
+    Load python data from standard binary file
 
+    Args:
+        filename: name of the file to save
+        show_keys: to display components of dictionary (default=False)
+    """
     with open( filename, 'rb') as f:
         data = np.load(f, allow_pickle=True)
     print( 'Loaded data from', filename )

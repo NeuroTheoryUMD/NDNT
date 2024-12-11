@@ -78,7 +78,12 @@ class FFnetwork(nn.Module):
             'channel': layers.ChannelLayer,
             'LVlayer': layers.LVLayer,
             'l1layer': layers.L1convLayer,
-            'timeshift': layers.TimeShiftLayer
+            'timeshift': layers.TimeShiftLayer,
+            'partial': layers.NDNLayerPartial,
+            'partial_conv': layers.ConvLayerPartial,
+            'partial_oriconv': layers.OriConvLayerPartial,
+            #'PyrLayer': layers.PyrLayer,
+            #'ConvPyrLayer': layers.ConvPyrLayer
             # 'external': layers.ExternalLayer,    
             #'res': layers.ResLayer,
         }

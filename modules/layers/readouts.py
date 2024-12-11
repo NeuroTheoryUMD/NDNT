@@ -987,7 +987,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         mu += - 1/num_angles # first bin at 0 degrees is actually a shifted mu value (not right at edge)
         thetas = mu*max_angle/2 + max_angle/2
         thetas = thetas % max_angle 
-        return thetas
+        return thetas.squeeze()
     # END ReadoutLayerQsample.mu2degrees()
 
     @classmethod

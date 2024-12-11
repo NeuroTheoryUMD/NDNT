@@ -25,7 +25,6 @@ class ConvLayer(NDNLayer):
     def __init__(self,
             input_dims=None,
             num_filters=None,
-            #conv_dims=None,
             filter_dims=None,
             temporal_tent_spacing=None,
             output_norm=None,
@@ -34,7 +33,6 @@ class ConvLayer(NDNLayer):
             padding='same',
             res_layer=False,  # to make a residual layer
             window=None,
-            folded_lags=False,
             **kwargs,
             ):
 
@@ -43,7 +41,6 @@ class ConvLayer(NDNLayer):
         if res_layer:
             assert padding in ['same', 'circular'], "ConvLayer: padding must not be 'valid' for res_layer"
 
-        #assert (conv_dims is not None) or (filter_dims is not None), "ConvLayer: conv_dims or filter_dims must be specified"
         if 'conv_dims' in kwargs:
             print("No longer using conv_dims. Use filter_dims instead.")
 
@@ -287,7 +284,7 @@ class ConvLayer(NDNLayer):
         # handle spatial padding here, time is integrated out in conv base layer
 
     @classmethod
-    def layer_dict(cls, padding='same', filter_dims=None, folded_lags=False, res_layer=False, window=None, **kwargs):
+    def layer_dict(cls, padding='same', filter_dims=None, res_layer=False, window=None, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -307,19 +304,19 @@ class ConvLayer(NDNLayer):
         Ldict['stride'] = 1
         Ldict['dilation'] = 1
         Ldict['padding'] = padding # values can be 'same' (def), 'valid', 'circular'
-        Ldict['folded_lags'] = folded_lags
-
         return Ldict
     
-    def preprocess_weights(self):
-        #w = super().preprocess_weights()
+    def preprocess_weights(self, mod_weight=None):
         
-        if self.pos_constraint > 0:
-            w = torch.square(self.weight) # to promote continuous gradients around 0
-        elif self.pos_constraint < 0:
-            w = -torch.square(self.weight)  # to promote continuous gradients around 0
-        else:
+        if mod_weight is None:
             w = self.weight
+        else:
+            w = mod_weight
+
+        if self.pos_constraint > 0:
+            w = torch.square(w) # to promote continuous gradients around 0
+        elif self.pos_constraint < 0:
+            w = -torch.square(w)  # to promote continuous gradients around 0
 
         if self.window:
             w = w.view(self.filter_dims+[self.num_filters]) # [C, H, W, T, D]
@@ -426,7 +423,8 @@ class ConvLayer(NDNLayer):
         if self.NL is not None:
             y = self.NL(y)
 
-        if self._ei_mask is not None:
+        #if self._ei_mask is not None:
+        if self._num_inh > 0:
             if self.is1D:
                 y = y * self._ei_mask[None, :, None]
             else:
@@ -608,7 +606,8 @@ class TconvLayer(ConvLayer):
         if self.NL is not None:
             y = self.NL(y)
         
-        if self._ei_mask is not None:
+        #if self._ei_mask is not None:
+        if self._num_inh > 0:
             if self.is1D:
                 y = y * self._ei_mask[None,:,None,None]
             else:
@@ -758,7 +757,8 @@ class STconvLayer(TconvLayer):
         if self.NL is not None:
             y = self.NL(y)
         
-        if self._ei_mask is not None:
+        #if self._ei_mask is not None:
+        if self._num_inh > 0:
             if self.is1D:
                 y = y * self._ei_mask[None,:,None,None]
             else:
