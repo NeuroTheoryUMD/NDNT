@@ -430,6 +430,20 @@ class FFnetwork(nn.Module):
         """
         assert layer_target < len(self.layers), "Invalid layer_target %d"%layer_target
         return self.layers[layer_target].get_weights(**kwargs)
+    
+    def get_network_info(self, abbrev=True):
+        """
+        Prints out a description of the network structure.
+        """
+        if not abbrev:
+            for l, L in enumerate(self.layer_list):
+                output = f"  L{l}: {L['layer_type']} ({L['num_filters']}"
+                if 'conv' in L['layer_type']:
+                    output += f", {L['window']}"
+                output += f")  |  {L['output_norm']}  |  {L['NLtype']}"
+        else: 
+            output = ['not implemented yet']
+        print(output)
 
     @classmethod
     def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', scaffold_levels=None, num_lags_out=1, **kwargs):

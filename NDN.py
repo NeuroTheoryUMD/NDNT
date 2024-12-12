@@ -1399,6 +1399,14 @@ class NDN(nn.Module):
         assert ffnet_target < len(self.networks), "ffnet target too large (max = %d)"%len(self.networks)
         self.networks[ffnet_target].set_reg_val( reg_type=reg_type, reg_val=reg_val, layer_target=layer_target )
 
+    def get_network_info(self, abbrev=False):
+            """
+            Prints out a decreiption of the model structure.
+            """
+            for n, N in enumerate(self.networks):
+                print(f'N{n}: {N.network_type}')
+                N.get_network_info(abbrev=abbrev)
+
     def plot_filters(self, ffnet_target=0, **kwargs):
         """
         Plot the filters for the specified feedforward network.

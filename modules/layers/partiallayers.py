@@ -206,7 +206,7 @@ class ConvLayerPartial(ConvLayer):
                  #norm_type:int=0,
                  #pos_constraint=0,
                  #weights_initializer:str='xavier_uniform',
-                 #output_norm=None,
+                 output_norm=None,
                  #initialize_center=False,
                  #bias_initializer:str='zeros',
                  #reg_vals:dict=None,
@@ -267,11 +267,11 @@ class ConvLayerPartial(ConvLayer):
 
         super().__init__(
             input_dims=input_dims, num_filters=num_filters, bias=False, 
-            filter_dims=filter_dims, num_inh=0,
+            filter_dims=filter_dims, num_inh=0, output_norm=None,
             #NLtype=NLtype, norm_type=norm_type,
             #pos_constraint=pos_constraint, num_inh=num_inh,
             #weights_initializer=weights_initializer,
-            #output_norm=output_norm, initialize_center=initialize_center,
+            #initialize_center=initialize_center,
             #bias_initializer=bias_initializer, reg_vals=reg_vals,
             **kwargs)
 
@@ -293,6 +293,12 @@ class ConvLayerPartial(ConvLayer):
                 self.num_inh = fixed_num_inh  # this calls setter, but will put weight in wrong place)
                 self._ei_mask[:] = 1
             self._ei_mask[inh_range] = -1
+
+        if output_norm == 'batch':
+            if self.is1D:
+                self.output_norm = nn.BatchNorm2d(num_filters_tot)
+            else:
+                self.output_norm = nn.BatchNorm3d(num_filters_tot)
 
         #assert mask is not None, "MASKLAYER: must include mask, dodo"
         self.dims_mod = dims_mod
@@ -391,7 +397,7 @@ class OriConvLayerPartial(OriConvLayer):
                  #norm_type:int=0,
                  #pos_constraint=0,
                  #weights_initializer:str='xavier_uniform',
-                 #output_norm=None,
+                 output_norm=None,
                  #initialize_center=False,
                  #bias_initializer:str='zeros',
                  #reg_vals:dict=None,
@@ -451,7 +457,7 @@ class OriConvLayerPartial(OriConvLayer):
 
         super().__init__(
             input_dims=input_dims, num_filters=num_filters, bias=False, 
-            filter_width=filter_width, num_inh=0, angles=angles,
+            filter_width=filter_width, num_inh=0, angles=angles, output_norm=None,
             **kwargs)
 
         # Redo bias -- assume it will always be fit, but needs to be the full input size
@@ -463,15 +469,21 @@ class OriConvLayerPartial(OriConvLayer):
             self.bias = torch.zeros(num_filters_tot, dtype=torch.float32)
 
         # Redo EI-mask to be larger size -- buffer already created
-        self._ei_mask = torch.ones(num_filters_tot, dtype=torch.float32)
-        self.num_inh = num_inh  # this will be reduced already and make weights
-        if fixed_num_inh > 0:
-            inh_range = range( self.num_fixed_filters-self.fixed_num_inh, self.num_fixed_filters)
-            if num_inh == 0:
-                # Then need to make buffer since canceled out
-                self.num_inh = fixed_num_inh  # this calls setter, but will put weight in wrong place)
-                self._ei_mask[:] = 1
-            self._ei_mask[inh_range] = -1
+        #self.register_buffer('_ei_mask', torch.cat((torch.ones(self.num_filters-self._num_inh), -torch.ones(self._num_inh))).repeat(NQ))
+        self._ei_mask = torch.ones(num_filters_tot*len(angles), dtype=torch.float32)
+        self._num_inh = num_inh + fixed_num_inh
+        numEfixed = num_fixed_filters-fixed_num_inh
+        for qq in range(len(angles)):
+            self._ei_mask[range((qq+1)*num_filters_tot-num_inh, (qq+1)*num_filters_tot)] = -1.0
+            self._ei_mask[range(qq*num_filters_tot+numEfixed, qq*num_filters_tot+num_fixed_filters)] = -1.0
+
+        # Redo batch_norm (if its selected)
+        if output_norm in ['batch', 'batchX']:
+            if output_norm == 'batchX':
+                affine = False
+            else:
+                affine = True
+            self.output_norm = nn.BatchNorm2d(num_filters_tot*len(angles), affine=affine)
 
         self.dims_mod = dims_mod
         self.num_fixed_filters = num_fixed_filters
