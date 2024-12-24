@@ -97,7 +97,7 @@ class LVLayer(NDNLayer):
                 #y = torch.einsum('tin,ti->tn', self.weight[inds, :], w )
             #y = torch.sum( self.weight[inds, :]*w[:,:,None], axis=1 )  # seems slightly slower
         else:
-            y = weights[x.type(torch.int64)]
+            y = weights[x.type(torch.int64).squeeze()]
 
         if self.NL is not None:
             y = self.NL(y)
