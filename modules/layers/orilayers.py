@@ -356,6 +356,23 @@ class OriConvLayer(ConvLayer):
         return y.reshape(-1, self.num_outputs)
     # OriConvLayer.forward()
 
+    def plot_filters( self, **kwargs):
+        """
+        Plot the filters in the oriconvlayer (overloaded).
+
+        Args:
+            cmaps: str or colormap, colormap to use for plotting (default 'gray')
+            num_cols: int, number of columns to use in plot (default 8)
+            row_height: int, number of rows to use in plot (default 2)
+            time_reverse: bool, whether to reverse the time dimension (default depends on dimension)
+
+        Returns:
+            None
+        """
+        from utils import plot_internal_convlayer
+        plot_internal_convlayer( self.get_weights() )
+    # END OrigConvLayer.plot_filters
+
     @classmethod
     def layer_dict(cls, filter_width=None, angles=None, **kwargs):
         """

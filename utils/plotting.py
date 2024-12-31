@@ -174,6 +174,30 @@ def plot_filters_ST3D(ws, sort=False, **kwargs):
             plt.axis("off")
 
 
+def plot_internal_convlayer( wP ):
+    nch, nsp, nsp2, nf = wP.shape
+    assert nsp == nsp2, "This function only works with square space."
+    if nch > 12:
+        assert nch//2 != int(nch/2), "need even number of channel inputs"            
+        ncols = nch//2
+        nrows = nf*2
+    elif nch > 5:
+        ncols = nch
+        nrows = nf
+    else:
+        ncols = nch*2
+        nrows = int(np.ceil(nf/2))
+        
+    ss(nrows, ncols, rh=12/ncols)
+    for ii in range(nf):
+        for ch in range(nch):
+            plt.subplot(nrows, ncols, nch*ii+ch+1)
+            imagesc(wP[ch,:,:,ii], axis_labels=False)
+            plt.title("Filter %d"%ii)
+            plt.ylabel('Channel %d'%ch)
+    plt.show()
+
+
 ## Additional display-type plots
 def plot_scatter( xs, ys, clr='g' ):
     assert len(xs) == len(ys), 'data dont match'

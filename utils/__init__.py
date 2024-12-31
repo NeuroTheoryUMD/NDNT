@@ -16,6 +16,7 @@ from .plotting import plot_filters_2D
 from .plotting import plot_filters_ST1D
 from .plotting import plot_filters_ST2D
 from .plotting import plot_filters_ST3D
+from .plotting import plot_internal_convlayer
 
 # Dan-specific utilities
 from .DanUtils import *

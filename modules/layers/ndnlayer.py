@@ -34,7 +34,7 @@ class NDNLayer(nn.Module):
             use 1 if the dimension is not used
         num_filters: int, number of filters in layer
         NLtype: str, type of nonlinearity to use (see activations.py)
-        norm: int, type of filter normalization to use (0=None, 1=filters are unit vectors, 2=maxnorm?)
+        norm: int, type of filter normalization to use (0=None, 1=filters are unit vectors)
         pos_constraint: bool, whether to constrain weights to be positive
         num_inh: int, number of inhibitory units (creates ei_mask and makes "inhibitory" units have negative output)
         bias: bool, whether to include bias term
@@ -304,8 +304,8 @@ class NDNLayer(nn.Module):
 
         # Simple linear processing and bias
         x = torch.matmul(x, w)
-        if self.norm_type == 2:
-            x = x / self.weight_scale
+        #if self.norm_type == 2:
+        #    x = x / self.weight_scale
 
         x = x + self.bias
 

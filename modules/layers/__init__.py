@@ -10,7 +10,7 @@ from .dimlayers import DimSPTLayer
 from .dimlayers import ChannelLayer
 from .laglayers import LagLayer
 from .lvlayers import LVLayer
-from .bilayers import BiConvLayer1D, BiSTconv1D
+from .bilayers import BiConvLayer1D, BiSTconv1D, BinocShiftLayer
 #from .bilayers import ChannelConvLayer
 from .reslayers import IterLayer
 from .reslayers import IterTlayer

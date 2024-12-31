@@ -5,6 +5,150 @@ from .ndnlayer import NDNLayer
 from torch.nn import functional as F
 import numpy as np
 from copy import deepcopy
+from torch.nn import Parameter
+from torch.nn import GELU as gelu
+
+class BinocShiftLayer(NDNLayer):
+    """
+    This processes monocular output that spans 2*NX and fits weight for each filter (decoding binocularity)
+    and shift using mu and sigma
+    weights are across shifts for each input filter (number output filters = num inputs)
+    also chooses shift for each filter
+    """
+
+    def __init__(self, input_dims=None, num_shifts=11, num_inh=0, init_sigma=0.2, **kwargs ):
+        """
+        Same arguments as ConvLayer, but will make binocular filter with range of shifts
+        
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            filter_width: width of convolutional filter
+            num_filters: number of output filters
+
+                    """
+        assert input_dims[0] == 2, "BINOCSHIFTLAYER: Need binocular input."
+        assert input_dims[2] == 1, "BINOCSHIFTLAYER: only works for 1-d spatial inputs"
+
+        num_filters = input_dims[0]
+
+        super().__init__(
+            input_dims=input_dims, num_filters=num_filters, num_inh=num_inh,
+            filter_dims=[num_filters, 1, 1, 1], norm_type=0,
+            **kwargs)
+
+        self.NX = input_dims[1] // 2
+
+        # Make mus and sigmas
+        self.Qmu = Parameter(torch.Tensor(self.num_filters,1))
+        self.Qsigma = Parameter(torch.Tensor(self.num_filters,1))
+        self.Qmu.data.zeros_(-1,1)
+        self.Qsigma.data.fill_(self.init_sigma)
+
+        self.Qgrid_shape = (1, self.num_filters,1,1)
+
+        mids = int(np.ceil(num_shifts/4))-1
+        self.shiftsL = np.arange(-1,num_shifts-1)//2-mids
+        self.shiftsR = -(np.arange(num_shifts)//2-mids)
+
+        self.filter_dims[0] = 2
+
+        # Make filter-pos mus for sampling filter-specific information -- vertical dim in grid sample
+        step = 1.0/self.num_filters
+        self.filter_pos = torch.linspace(-1+step, 1-step, self.num_filters)
+        self.mu_scale = self.input_dims[3]/(self.input_dims[3]+2) # scal mu values to account for circular padding
+
+    # END BinocShiftLayer.__init__()
+
+    def sample_Qgrid(self, batch_size, Qsample=None):
+        """
+        Returns the chosen shift (Q) from the core by sampling from a Gaussian distribution
+        More specifically, it returns sampled angle for each batch over all elements, given Qmus and Qsigmas
+        Also implements wrap around for Qmus so edge mus get mapped back to first angle
+        If 'Qsample' is false, it just gives mu back (so testing has no randomness)
+        This code is inherited and then modified, so different style than most other
+
+        Args:
+            batch_size (int): size of the batch
+            Qsample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(Qmu,Qsigma), defined per neuron
+                            or use the mean, Qmu, of the Gaussian distribution without sampling.
+                           if Qsample is None (default), samples from the N(Qmu,Qsigma) during training phase and
+                             fixes to the mean, Qmu, during evaluation phase.
+                           if Qsample is True/False, overrides the model_state (i.e training or eval) and does as instructed
+        """
+        
+        Qgrid_shape = (batch_size,) + self.Qgrid_shape[1:3]
+                
+        Qsample = self.training if Qsample is None else Qsample
+        if Qsample:
+            norm = self.Qmu.new(*Qgrid_shape).normal_()
+        else:
+            norm = self.Qmu.new(*Qgrid_shape).zero_()  # for consistency and CUDA capability
+        
+        out_norm = norm.new_zeros(*(Qgrid_shape[:3]+(2,)))  # for consistency and CUDA capability
+
+        out_norm[:,:,:,1] = self.filter_pos.repeat(1,batch_size).reshape(batch_size, self.num_filters, 1)
+        
+        #mu_scale = 1
+        out_norm[:,:,:,0] = self.mu_scale*(((norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :] + 1)%2)-1) # wraps around
+
+        return out_norm
+    ### END BinocShiftLayer.sample_Qgrid()
+
+
+    def preprocess_weights(self):
+        """self.weight is a list of the binocular weighting of each filter """       
+        # Weights should be between zeros and 1 above 1 or below zero pushed back
+        w = 0.5*gelu(2*self.weight)
+
+        return w
+    # END BinocShiftLayer.preprocess_weights
+
+
+class BinocShiftLayerOld(ConvLayer):
+    """
+    Alternative: this processes monocular output that spans 2*NX and fits weight for each filter (decoding binocularity)
+    and shift using mu and sigma
+
+    Makes binocular filters from filter bank of monocular filters and applies to binocular stimulus. The monocular
+    filters are convolutional (filter_width x num_lags) where filter_width is specified and num_lags matches input
+    dims. Input dims should have 2 channels (and only one dim space): 2 x NX x 1 x num_lags
+    """
+
+    def __init__(self, input_dims=None, filter_width=None, num_shifts=11, num_filters=None, padding=None, **kwargs ):
+        """
+        Same arguments as ConvLayer, but will make binocular filter with range of shifts
+        
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            filter_width: width of convolutional filter
+            num_filters: number of output filters
+            padding: 'same' or 'valid' (default 'same')
+        """
+        assert input_dims[0] == 2, "BINOCSHIFTLAYER: Need binocular input."
+        assert input_dims[2] == 1, "BINOCSHIFTLAYER: only works for 1-d spatial inputs"
+
+        super().__init__(
+            input_dims=input_dims, num_filters=num_filters, padding=padding,
+            filter_dims=[1, filter_width, 1, input_dims[3]],
+            **kwargs)
+
+        mids = int(np.ceil(num_shifts/4))-1
+        self.shiftsL = np.arange(-1,num_shifts-1)//2-mids
+        self.shiftsR = -(np.arange(num_shifts)//2-mids)
+
+        self.filter_dims[0] = 2
+        self.output_dims = [num_filters, 1, 1, num_shifts+2]
+    # END BinocShiftLayer.__init__()
+
+    def preprocess_weights(self):
+        
+        # First apply regular preprocess to get monocular filter of correct form
+        w = super().preprocess_weights()
+
+        
+        return w
+    # END BinocShiftLayer.preprocess_weights
+    
 
 class BinocLayer1D(ConvLayer):
     """
