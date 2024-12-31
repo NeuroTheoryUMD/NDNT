@@ -39,6 +39,8 @@
                     <li><a href="layers/ndnlayer.html">ndnlayer</a></li>
                     <li><a href="layers/normlayers.html">normlayers</a></li>
                     <li><a href="layers/orilayers.html">orilayers</a></li>
+                    <li><a href="layers/partiallayers.html">partiallayers</a></li>
+                    <li><a href="layers/pyrlayers.html">pyrlayers</a></li>
                     <li><a href="layers/readouts.html">readouts</a></li>
                     <li><a href="layers/reslayers.html">reslayers</a></li>
                     <li><a href="layers/specialtylayers.html">specialtylayers</a></li>
@@ -76,7 +78,7 @@
 </span><span id="L-10"><a href="#L-10"><span class="linenos">10</span></a><span class="kn">from</span> <span class="nn">.dimlayers</span> <span class="kn">import</span> <span class="n">ChannelLayer</span>
 </span><span id="L-11"><a href="#L-11"><span class="linenos">11</span></a><span class="kn">from</span> <span class="nn">.laglayers</span> <span class="kn">import</span> <span class="n">LagLayer</span>
 </span><span id="L-12"><a href="#L-12"><span class="linenos">12</span></a><span class="kn">from</span> <span class="nn">.lvlayers</span> <span class="kn">import</span> <span class="n">LVLayer</span>
-</span><span id="L-13"><a href="#L-13"><span class="linenos">13</span></a><span class="kn">from</span> <span class="nn">.bilayers</span> <span class="kn">import</span> <span class="n">BiConvLayer1D</span><span class="p">,</span> <span class="n">BiSTconv1D</span>
+</span><span id="L-13"><a href="#L-13"><span class="linenos">13</span></a><span class="kn">from</span> <span class="nn">.bilayers</span> <span class="kn">import</span> <span class="n">BiConvLayer1D</span><span class="p">,</span> <span class="n">BiSTconv1D</span><span class="p">,</span> <span class="n">BinocShiftLayer</span>
 </span><span id="L-14"><a href="#L-14"><span class="linenos">14</span></a><span class="c1">#from .bilayers import ChannelConvLayer</span>
 </span><span id="L-15"><a href="#L-15"><span class="linenos">15</span></a><span class="kn">from</span> <span class="nn">.reslayers</span> <span class="kn">import</span> <span class="n">IterLayer</span>
 </span><span id="L-16"><a href="#L-16"><span class="linenos">16</span></a><span class="kn">from</span> <span class="nn">.reslayers</span> <span class="kn">import</span> <span class="n">IterTlayer</span>
@@ -90,6 +92,13 @@
 </span><span id="L-24"><a href="#L-24"><span class="linenos">24</span></a><span class="kn">from</span> <span class="nn">.orilayers</span> <span class="kn">import</span> <span class="n">OriConvLayer</span>
 </span><span id="L-25"><a href="#L-25"><span class="linenos">25</span></a><span class="kn">from</span> <span class="nn">.orilayers</span> <span class="kn">import</span> <span class="n">HermiteOriConvLayer</span>
 </span><span id="L-26"><a href="#L-26"><span class="linenos">26</span></a><span class="kn">from</span> <span class="nn">.orilayers</span> <span class="kn">import</span> <span class="n">ConvLayer3D</span>
+</span><span id="L-27"><a href="#L-27"><span class="linenos">27</span></a><span class="kn">from</span> <span class="nn">.partiallayers</span> <span class="kn">import</span> <span class="n">NDNLayerPartial</span>
+</span><span id="L-28"><a href="#L-28"><span class="linenos">28</span></a><span class="kn">from</span> <span class="nn">.partiallayers</span> <span class="kn">import</span> <span class="n">ConvLayerPartial</span>
+</span><span id="L-29"><a href="#L-29"><span class="linenos">29</span></a><span class="kn">from</span> <span class="nn">.partiallayers</span> <span class="kn">import</span> <span class="n">OriConvLayerPartial</span>
+</span><span id="L-30"><a href="#L-30"><span class="linenos">30</span></a><span class="c1">#from .pyrlayers import PyrLayer</span>
+</span><span id="L-31"><a href="#L-31"><span class="linenos">31</span></a><span class="c1">#from .pyrlayers import ConvPyrLayer</span>
+</span><span id="L-32"><a href="#L-32"><span class="linenos">32</span></a>
+</span><span id="L-33"><a href="#L-33"><span class="linenos">33</span></a><span class="kn">from</span> <span class="nn">.timelayers</span> <span class="kn">import</span> <span class="n">TimeShiftLayer</span>
 </span></pre></div>
 
 
