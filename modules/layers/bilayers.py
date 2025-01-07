@@ -6,7 +6,8 @@ from torch.nn import functional as F
 import numpy as np
 from copy import deepcopy
 from torch.nn import Parameter
-from torch.nn import GELU as gelu
+#from torch.nn import GELU as gelu
+
 
 class BinocShiftLayer(NDNLayer):
     """
@@ -16,92 +17,173 @@ class BinocShiftLayer(NDNLayer):
     also chooses shift for each filter
     """
 
-    def __init__(self, input_dims=None, num_shifts=11, num_inh=0, init_sigma=0.2, **kwargs ):
+    def __init__(self, input_dims=None, num_shifts=11, num_inh=0, init_sigma=5,
+                 weights_initializer=None, **kwargs ):
         """
-        Same arguments as ConvLayer, but will make binocular filter with range of shifts
+        Same arguments as ConvLayer, but will make binocular filter with range of shifts. This assumes
+        input from ConvLayer (not BiConv) with num_filters x 72 input dims (can adjust) 
         
         Args:
             input_dims: tuple or list of ints, (num_channels, height, width, lags)
             filter_width: width of convolutional filter
             num_filters: number of output filters
 
-                    """
-        assert input_dims[0] == 2, "BINOCSHIFTLAYER: Need binocular input."
+        """
+        
         assert input_dims[2] == 1, "BINOCSHIFTLAYER: only works for 1-d spatial inputs"
+        assert weights_initializer is None, "BINOCSHIFTLAYER: should not use weights_initializer"
 
-        num_filters = input_dims[0]
+        num_filters = input_dims[0] 
 
         super().__init__(
             input_dims=input_dims, num_filters=num_filters, num_inh=num_inh,
-            filter_dims=[num_filters, 1, 1, 1], norm_type=0,
+            weights_initializer='ones',
+            filter_dims=[1, 1, 1, 1], norm_type=0,
             **kwargs)
 
+        #self.reset_parameters(weights_initializer='uniform', param=0.5)  # get good distribution between 0 and 1
+        #self.weight.data = abs(self.weight.data)
+        self.weight.data *= 0.5
         self.NX = input_dims[1] // 2
+        self.output_dims[1] = self.NX
 
-        # Make mus and sigmas
-        self.Qmu = Parameter(torch.Tensor(self.num_filters,1))
-        self.Qsigma = Parameter(torch.Tensor(self.num_filters,1))
-        self.Qmu.data.zeros_(-1,1)
-        self.Qsigma.data.fill_(self.init_sigma)
-
-        self.Qgrid_shape = (1, self.num_filters,1,1)
-
-        mids = int(np.ceil(num_shifts/4))-1
-        self.shiftsL = np.arange(-1,num_shifts-1)//2-mids
-        self.shiftsR = -(np.arange(num_shifts)//2-mids)
-
-        self.filter_dims[0] = 2
-
+        # Make mus and sigmas -- in pixel coordinates
+        self.shifts = Parameter(torch.Tensor(self.num_filters))
+        self.sigmas = Parameter(torch.Tensor(self.num_filters))
+        self.shifts.data.fill_(0.0)
+        self.sigmas.data.fill_(init_sigma)
+        
         # Make filter-pos mus for sampling filter-specific information -- vertical dim in grid sample
         step = 1.0/self.num_filters
-        self.filter_pos = torch.linspace(-1+step, 1-step, self.num_filters)
-        self.mu_scale = self.input_dims[3]/(self.input_dims[3]+2) # scal mu values to account for circular padding
+        #self.filter_pos = torch.linspace(-1+step, 1-step, self.num_filters)
+        self.filter_pos = torch.linspace(-1+step, 1-step, self.num_filters)[:,None].repeat([1, self.NX])
+        # this results in num_filters x NX sample
+        self.gelu = torch.nn.GELU()
+        self.batch_sample = True
+        self.sample = True
+        self.sample_mode = 'bilinear'
 
+        #self.mu_scale = self.input_dims[3]/(self.input_dims[3]+2) # scal mu values to account for circular padding
+        #self.mu_scale = self.input_dims[3]/(self.input_dims[3]+2) # scal mu values to account for circular padding
+        # Locations (in mu-space) of pixels in each eye -- this is for input size = 72, but want off edge
+        #self.Rresample = torch.tensor( (np.arange(self.NX)+0.5)/self.NX, dtype=torch.float32 )
+        #self.Lresample = self.Rresample.clone() - 1.0
+        self.mult = 2.0/self.NX  # convert from pixel scale to mu scale
+        self.resample = torch.tensor(
+            (np.arange(self.NX)+0.5)*self.mult - 1.0, dtype=torch.float32 )[None, :].repeat([self.num_filters, 1])
+        # this results in num_filters x NX sample
     # END BinocShiftLayer.__init__()
 
-    def sample_Qgrid(self, batch_size, Qsample=None):
+    def norm_sample(self, batch_size, to_sample=None):
         """
-        Returns the chosen shift (Q) from the core by sampling from a Gaussian distribution
-        More specifically, it returns sampled angle for each batch over all elements, given Qmus and Qsigmas
-        Also implements wrap around for Qmus so edge mus get mapped back to first angle
-        If 'Qsample' is false, it just gives mu back (so testing has no randomness)
-        This code is inherited and then modified, so different style than most other
+        Returns a gaussian (or zeroed) sample, given the batch_size and to_sample parameter
 
         Args:
             batch_size (int): size of the batch
-            Qsample (bool/None): sample determines whether we draw a sample from Gaussian distribution, N(Qmu,Qsigma), defined per neuron
-                            or use the mean, Qmu, of the Gaussian distribution without sampling.
-                           if Qsample is None (default), samples from the N(Qmu,Qsigma) during training phase and
-                             fixes to the mean, Qmu, during evaluation phase.
-                           if Qsample is True/False, overrides the model_state (i.e training or eval) and does as instructed
+            to_sample (bool/None): determines whether we draw a sample from Gaussian distribution, 
+                N(shifts,sigmas), defined per filter or use the mean of the Gaussian distribution without 
+                sampling. If to_sample is None (default), samples from the Gaussian during training phase and
+                fixes to the mean during evaluation phase. Note that if to_sample is True/False, it overrides 
+                the model_state (i.e training or eval) and does as instructed
+        Returns:
+            out_norm: batch_size x num_filters x shifts applied to all positions
         """
-        
-        Qgrid_shape = (batch_size,) + self.Qgrid_shape[1:3]
-                
-        Qsample = self.training if Qsample is None else Qsample
-        if Qsample:
-            norm = self.Qmu.new(*Qgrid_shape).normal_()
-        else:
-            norm = self.Qmu.new(*Qgrid_shape).zero_()  # for consistency and CUDA capability
-        
-        out_norm = norm.new_zeros(*(Qgrid_shape[:3]+(2,)))  # for consistency and CUDA capability
 
-        out_norm[:,:,:,1] = self.filter_pos.repeat(1,batch_size).reshape(batch_size, self.num_filters, 1)
+        #self.Qgrid_shape = (1, self.num_filters,1,1)
+        #Qgrid_shape = (batch_size,) + self.Qgrid_shape[1:3]
+        #grid_shape = (batch_size, self.num_filters,1, 2)                
+        to_sample = self.training if to_sample is None else to_sample
+        norm_samples = self.shifts.new_zeros(batch_size, self.num_filters)
+        if to_sample:
+            #norm = self.Qmu.new(*Qgrid_shape).normal_()
+            #out_norm = self.shifts.new( (batch_size, self.num_filters) ).normal_()
+            #norm_samples = self.shifts.new( (batch_size, self.num_filters) ).normal_()
+            norm_samples.normal_() * self.sigmas[None, :]
+        #else:
+        #    norm_samples = self.shifts.new( (batch_size, self.num_filters) ).zero_()  # for consistency and CUDA capability
         
-        #mu_scale = 1
-        out_norm[:,:,:,0] = self.mu_scale*(((norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :] + 1)%2)-1) # wraps around
-
+        out_norm = norm_samples.new_zeros( (batch_size, self.num_filters, self.NX, 2) )  
+        out_norm[:,:,:,0] = self.resample[None,:,:].repeat([batch_size,1,1]) + norm_samples[:, :, None]  # T x F x NX
+        out_norm[:,:,:,1] = self.filter_pos[None,:,:].repeat([batch_size,1,1])  # T x F x NX
+        #out_norm = norm.new_zeros(*(grid_shape[:3]+(2,)))  # for consistency and CUDA capability
+        #out_norm = norm.new_zeros( (batch_size, self.num_filters,1, 2) )  # for consistency and CUDA capability
+        #out_norm[:,:,:,0] = norm * self.sigmas[None, None, None, :] + self.shifts[None, None, None, :] 
+        #out_norm[:,:,:,1] = self.filter_pos.repeat(1,batch_size).reshape(batch_size, self.num_filters, 1)
         return out_norm
-    ### END BinocShiftLayer.sample_Qgrid()
+    ### END BinocShiftLayer.norm_sample()
 
-
-    def preprocess_weights(self):
+    def preprocess_weights(self, gelu_mult=2.0):
         """self.weight is a list of the binocular weighting of each filter """       
         # Weights should be between zeros and 1 above 1 or below zero pushed back
-        w = 0.5*gelu(2*self.weight)
-
+        w = self.gelu(gelu_mult*self.weight) / gelu_mult
+        w = 1.0 - self.gelu(gelu_mult*(1.0-w)) / gelu_mult
         return w
     # END BinocShiftLayer.preprocess_weights
+
+    def forward(self, x, shift=None):
+        """
+        Propagates the input forwards through the readout
+
+        Args:
+            x: input data
+            shift (bool): shifts the location of the grid (from eye-tracking data)
+
+        Returns:
+            y: neuronal activity
+        """
+        #x = x.reshape([-1]+self.input_dims)  # 3d change -- has extra dimension at end
+        #N, c, w, h, T = x.size()   # N is number of time points -- note that its full dimensional....
+        #x = x.permute(0,1,4,2,3).reshape([N, c, w, h]) 
+        c_in, nx2 = self.input_dims[:2]
+        N = x.shape[0]
+        x = x.reshape([N, c_in, nx2])  # 3d change -- has extra dimension at end
+
+        if self.batch_sample:
+            # sample the grid_locations separately per sample per batch
+            #grid = self.sample_grid(batch_size=N, sample=self.sample)  # sample determines sampling from Gaussian
+            shifts_over_batch = self.norm_sample(batch_size=N, to_sample=self.sample)  # sample determines sampling from Gaussian
+        else:
+            # use one sampled grid_locations for all sample in the batch
+            #grid = self.sample_grid(batch_size=1, sample=self.sample).expand(N, outdims, 1, self.num_space_dims)
+            #shifts_over_batch = self.norm_sample(batch_size=1, to_sample=self.sample).expand(N, outdims, 1, self.num_space_dims)
+            shifts_over_batch = self.norm_sample(batch_size=1, to_sample=self.sample).repeat([N, 1, 1, 1])
+
+        w = self.preprocess_weights().squeeze()  # this will be a number between 0 and 1
+        Lshifts = shifts_over_batch.clone()
+        # Note: sign of shifts is such that increasing shift increases disparity (left going left, right going right)
+        Lshifts[..., 0] += (w * self.shifts * self.mult)[None,:,None]
+        Rshifts = shifts_over_batch
+        Rshifts[..., 0] += -((1-w) * self.shifts * self.mult)[None,:,None]
+
+        yL = F.grid_sample(
+            x[:,None, :,:self.NX], Lshifts, mode=self.sample_mode, align_corners=False, padding_mode='zeros')
+        yR = F.grid_sample(
+            x[:,None, :,self.NX:], Rshifts, mode=self.sample_mode, align_corners=False, padding_mode='zeros')
+        
+        y = w[None, None, :, None]*yL + (1-w)[None, None, :, None]*yR
+
+        if self.bias is not None:
+            y = y + self.bias[None, None, :, None]
+        
+        if self.NL is not None:
+            y = self.NL(y)
+        
+        return y.reshape([N, -1])
+    # END BinocShiftLayer.forward()
+
+    @classmethod
+    def layer_dict(cls, init_sigma=5, num_filters=None, **kwargs):
+        assert num_filters is None, "BISHIFT: num_filters fixed by previous layer"
+        Ldict = super().layer_dict(**kwargs)
+        del Ldict['num_filters']
+        del Ldict['norm_type']
+        del Ldict['weights_initializer']
+        # Added arguments
+        #Ldict['num_shifts'] = num_shifts
+        Ldict['init_sigma'] = init_sigma
+        Ldict['layer_type'] = 'bishift'
+        return Ldict
+    # END [classmethod] BinocShiftLayer.layer_dict
 
 
 class BinocShiftLayerOld(ConvLayer):
