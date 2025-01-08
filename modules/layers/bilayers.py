@@ -17,8 +17,7 @@ class BinocShiftLayer(NDNLayer):
     also chooses shift for each filter
     """
 
-    def __init__(self, input_dims=None, num_shifts=11, num_inh=0, init_sigma=5,
-                 weights_initializer=None, **kwargs ):
+    def __init__(self, input_dims=None, init_sigma=3, padding=0, weights_initializer=None, norm_type=0, **kwargs ):
         """
         Same arguments as ConvLayer, but will make binocular filter with range of shifts. This assumes
         input from ConvLayer (not BiConv) with num_filters x 72 input dims (can adjust) 
@@ -32,13 +31,13 @@ class BinocShiftLayer(NDNLayer):
         
         assert input_dims[2] == 1, "BINOCSHIFTLAYER: only works for 1-d spatial inputs"
         assert weights_initializer is None, "BINOCSHIFTLAYER: should not use weights_initializer"
+        assert norm_type == 0, "BINOCSHIFTLAYER: no normalization in this layer"
 
         num_filters = input_dims[0] 
 
         super().__init__(
-            input_dims=input_dims, num_filters=num_filters, num_inh=num_inh,
-            weights_initializer='ones',
-            filter_dims=[1, 1, 1, 1], norm_type=0,
+            input_dims=input_dims, num_filters=num_filters,
+            weights_initializer='ones', filter_dims=[1, 1, 1, 1], norm_type=0,
             **kwargs)
 
         #self.reset_parameters(weights_initializer='uniform', param=0.5)  # get good distribution between 0 and 1
@@ -63,14 +62,12 @@ class BinocShiftLayer(NDNLayer):
         self.sample = True
         self.sample_mode = 'bilinear'
 
-        #self.mu_scale = self.input_dims[3]/(self.input_dims[3]+2) # scal mu values to account for circular padding
-        #self.mu_scale = self.input_dims[3]/(self.input_dims[3]+2) # scal mu values to account for circular padding
-        # Locations (in mu-space) of pixels in each eye -- this is for input size = 72, but want off edge
-        #self.Rresample = torch.tensor( (np.arange(self.NX)+0.5)/self.NX, dtype=torch.float32 )
-        #self.Lresample = self.Rresample.clone() - 1.0
+        if padding > 0:
+            print('padding not implemented yet')
         self.mult = 2.0/self.NX  # convert from pixel scale to mu scale
-        self.resample = torch.tensor(
-            (np.arange(self.NX)+0.5)*self.mult - 1.0, dtype=torch.float32 )[None, :].repeat([self.num_filters, 1])
+        self.register_buffer(
+            'resample', torch.tensor(
+            (np.arange(self.NX)+0.5)*self.mult - 1.0)[None, :].repeat([self.num_filters, 1] ) )
         # this results in num_filters x NX sample
     # END BinocShiftLayer.__init__()
 
@@ -98,7 +95,8 @@ class BinocShiftLayer(NDNLayer):
             #norm = self.Qmu.new(*Qgrid_shape).normal_()
             #out_norm = self.shifts.new( (batch_size, self.num_filters) ).normal_()
             #norm_samples = self.shifts.new( (batch_size, self.num_filters) ).normal_()
-            norm_samples.normal_() * self.sigmas[None, :]
+            norm_samples.normal_() 
+            norm_samples *= self.sigmas[None, :]
         #else:
         #    norm_samples = self.shifts.new( (batch_size, self.num_filters) ).zero_()  # for consistency and CUDA capability
         
@@ -167,13 +165,15 @@ class BinocShiftLayer(NDNLayer):
         
         if self.NL is not None:
             y = self.NL(y)
-        
+        if self._num_inh > 0:
+            y = y * self._ei_mask[None, None, :, None]
+
+        self.reg.compute_activity_regularization(y)
         return y.reshape([N, -1])
     # END BinocShiftLayer.forward()
 
     @classmethod
-    def layer_dict(cls, init_sigma=5, num_filters=None, **kwargs):
-        assert num_filters is None, "BISHIFT: num_filters fixed by previous layer"
+    def layer_dict(cls, init_sigma=3, padding=0, **kwargs):
         Ldict = super().layer_dict(**kwargs)
         del Ldict['num_filters']
         del Ldict['norm_type']
@@ -182,6 +182,7 @@ class BinocShiftLayer(NDNLayer):
         #Ldict['num_shifts'] = num_shifts
         Ldict['init_sigma'] = init_sigma
         Ldict['layer_type'] = 'bishift'
+        Ldict['padding'] = padding
         return Ldict
     # END [classmethod] BinocShiftLayer.layer_dict
 
@@ -345,9 +346,11 @@ class BinocLayer1D(ConvLayer):
     @classmethod
     def layer_dict(cls, **kwargs):
         Ldict = super().layer_dict(**kwargs)
-        del Ldict['padding']  # will have 'same' padding automatically
-        del Ldict['stride']  # will have 'same' padding automatically
-        del Ldict['dilation']  # will have 'same' padding automatically
+        del Ldict['padding']
+        del Ldict['stride']
+        del Ldict['dilation']
+        del Ldict['output_norm']
+        del Ldict['initialize_center']
         # Added arguments
         Ldict['layer_type'] = 'binoc'
         return Ldict
