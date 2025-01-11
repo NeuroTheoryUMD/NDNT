@@ -216,7 +216,7 @@ class ReadoutLayer(NDNLayer):
             # Add singleton dimension corresponding to number of filters
             ws = ws[..., None]
     
-        return ws.detach().numpy()
+        return ws.detach().cpu().numpy()
     # END ReadoutLayer.get_weights()
 
     def _set_scaffold_reg(self, reg_val=None, scaffold_level_parse=None, level_exponent=1.0):
