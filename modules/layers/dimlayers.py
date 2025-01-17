@@ -104,7 +104,7 @@ class Dim0Layer(NDNLayer):
     # END [static] Dim0Layer.dim_info
 
     def _layer_abbrev( self ):
-        return "dim0lay"
+        return "dim0layr"
 
     @classmethod
     def layer_dict(cls, **kwargs):
@@ -152,7 +152,7 @@ class ChannelLayer(NDNLayer):
     # END ChannelLayer.__init__
 
     def _layer_abbrev( self ):
-        return "channel"
+        return " channel"
 
     @classmethod
     def layer_dict(cls, **kwargs):

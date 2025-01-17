@@ -99,7 +99,7 @@ class MaskLayer(NDNLayer):
     # END MaskLayer.preprocess_weights()
 
     def _layer_abbrev( self ):
-        return "normalM"
+        return " normalM"
 
     #def forward( self, x):
     #    assert self.mask_is_set > 0, "ERROR: Must set mask before using MaskLayer"
@@ -207,7 +207,7 @@ class MaskSTconvLayer(STconvLayer):
     # END MaskSTconvLayer.forward()
 
     def _layer_abbrev( self ):
-        return "STconvM"
+        return super()._layer_abbrev().replace('v', 'M')
 
     @classmethod
     def layer_dict(cls, **kwargs):

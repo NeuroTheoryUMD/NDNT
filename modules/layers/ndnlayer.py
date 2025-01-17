@@ -442,13 +442,18 @@ class NDNLayer(nn.Module):
         """
         This outputs the layer information in abbrev (default) or expanded format
         """
-        info_string = "%s: %3d ("%(self._layer_abbrev(), self.num_filters)
+        #from NDNT.utils import filename_num2str
+        info_string = "%s: %3d (i%d) "%(self._layer_abbrev(), self.num_filters, self.num_inh )
+                                      #filename_num2str(self.num_inh) )
+        if self.num_inh < 10:
+            info_string += ' '
+
         if len(self.NLtype) <= 4:
-            info_string += self.NLtype + ') '
+            info_string += '[' + self.NLtype + '] '
             for ii in range(4-len(self.NLtype)):
                 info_string += ' '
         else:
-            info_string += self.NLtype[:4] + ')'
+            info_string += '[' + self.NLtype[:4] + ']'
 
         if self.bias.requires_grad:
             addons_string = "B"
@@ -478,9 +483,9 @@ class NDNLayer(nn.Module):
         meant to be overloaded but will work anyway.
         """
         if isinstance( self, NDNLayer):
-            return ' normal'
+            return '  normal'
         else:
-            return 'not def'
+            return 'not defn'
     # END NDNLayer.layer_abbrev()
 
     @staticmethod

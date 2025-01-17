@@ -306,9 +306,9 @@ class ConvLayer(NDNLayer):
 
     def _layer_abbrev( self ):
         if self.is1D:
-            return " conv1d"
+            return "  conv1d"
         else:
-            return " conv2d"
+            return "  conv2d"
     # END ConvLayer.layer_abbrev()
 
 
@@ -662,10 +662,8 @@ class TconvLayer(ConvLayer):
     # END TconvLayer.plot_filters()
 
     def _layer_abbrev( self ):
-        if self.is1D:
-            return "Tconv1d"
-        else:
-            return "Tconv2d"
+        from NDNT.utils import filename_num2str
+        return " Tconv" + filename_num2str(self.num_lags)
 
     @classmethod
     def layer_dict(cls, padding='spatial', conv_dims=None, **kwargs):
@@ -829,7 +827,8 @@ class STconvLayer(TconvLayer):
     # END STconvLayer.plot_filters()
 
     def _layer_abbrev( self ):
-        return " STconv"
+        from NDNT.utils import filename_num2str
+        return "STconv" + filename_num2str(self.num_lags)
 
     @classmethod
     def layer_dict(cls, **kwargs):

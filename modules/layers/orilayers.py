@@ -374,7 +374,7 @@ class OriConvLayer(ConvLayer):
     # END OriConvLayer.plot_filters
 
     def _layer_abbrev( self ):
-        return "oriconv"
+        return " oriconv"
 
     @classmethod
     def layer_dict(cls, filter_width=None, angles=None, **kwargs):
@@ -536,7 +536,7 @@ class ConvLayer3D(ConvLayer):
             time_reverse=time_reverse)
 
     def _layer_abbrev( self ):
-        return " conv3d"
+        return "  conv3d"
 
     @classmethod
     def layer_dict(cls, filter_width=None, ori_filter_width=1, **kwargs):

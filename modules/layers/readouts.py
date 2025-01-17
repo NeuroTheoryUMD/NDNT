@@ -406,7 +406,7 @@ class ReadoutLayer(NDNLayer):
     # END ReadoutLayer.enforce_grid()
 
     def _layer_abbrev( self ):
-        return "readout"
+        return " readout"
 
     @classmethod
     def layer_dict(cls, NLtype='softplus', mode='bilinear', **kwargs):
@@ -561,7 +561,7 @@ class ReadoutLayer3d(ReadoutLayer):
         self.set_parameters(val=False)
 
     def _layer_abbrev( self ):
-        return "rdout3d"
+        return "readout3"
 
     @classmethod
     def layer_dict(cls, **kwargs):
@@ -996,7 +996,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
     # END ReadoutLayerQsample.mu2degrees()
 
     def _layer_abbrev( self ):
-        return "rdoutQS"
+        return "readQsmp"
 
     @classmethod
     def layer_dict(cls, Qsigma=1, **kwargs):
