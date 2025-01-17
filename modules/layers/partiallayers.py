@@ -161,6 +161,9 @@ class NDNLayerPartial(NDNLayer):
     #    return super().forward(x)
     # END NDNLayerPartial.forward()
 
+    def _layer_abbrev( self ):
+        return "nrmalP"
+
     @classmethod
     def layer_dict(cls, fixed_dims=None, num_fixed_filters=0, **kwargs):
         """
@@ -346,6 +349,9 @@ class ConvLayerPartial(ConvLayer):
     #    return super().forward(x)
     # END ConvLayerPartial.forward()
 
+    def _layer_abbrev( self ):
+        return "convPAR"
+
     @classmethod
     def layer_dict(cls, fixed_dims=None, num_fixed_filters=0, fixed_num_inh=0,
                    filter_width=None, **kwargs):
@@ -526,6 +532,9 @@ class OriConvLayerPartial(OriConvLayer):
     # END ConvLayerPartial.preprocess_weights()
 
     # END OriConvLayerPartial.forward()
+
+    def _layer_abbrev( self ):
+        return "OcnvPAR"
 
     @classmethod
     def layer_dict(cls, fixed_dims=None, num_fixed_filters=0, fixed_num_inh=0, #filter_width=None, 

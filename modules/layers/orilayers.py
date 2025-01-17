@@ -371,7 +371,10 @@ class OriConvLayer(ConvLayer):
         """
         from utils import plot_internal_convlayer
         plot_internal_convlayer( self.get_weights() )
-    # END OrigConvLayer.plot_filters
+    # END OriConvLayer.plot_filters
+
+    def _layer_abbrev( self ):
+        return "oriconv"
 
     @classmethod
     def layer_dict(cls, filter_width=None, angles=None, **kwargs):
@@ -531,6 +534,9 @@ class ConvLayer3D(ConvLayer):
         super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
             time_reverse=time_reverse)
+
+    def _layer_abbrev( self ):
+        return " conv3d"
 
     @classmethod
     def layer_dict(cls, filter_width=None, ori_filter_width=1, **kwargs):

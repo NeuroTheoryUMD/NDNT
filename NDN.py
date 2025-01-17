@@ -106,6 +106,7 @@ class NDN(nn.Module):
         self.loss = self.loss_module
         self.val_loss = self.loss_module
         self.trainer = None  # to stash last trainer used in fitting
+        self.register_buffer( '_block_sample', torch.zeros(1, dtype=torch.int8) )
         self.block_sample = False  # if need time-contiguous blocks
 
         # Assemble FFnetworks from if passed in network-list -- else can embed model
@@ -135,6 +136,21 @@ class NDN(nn.Module):
         self.opt_params = optimizer_params
         self.speckled_flag = False
     # END NDN.__init__
+
+    @property
+    def block_sample(self):
+        if self._block_sample > 0:
+            return True
+        else:
+            return False
+
+    @block_sample.setter
+    def block_sample(self, value):
+        assert isinstance(value, bool), "NDN.block_sample: boolean value required"
+        if value:
+            self._block_sample.data[:] = 1
+        else:
+            self._block_sample.data[:] = 0
 
     def assemble_ffnetworks(self, ffnet_list, external_nets=None):
         """
@@ -1406,6 +1422,13 @@ class NDN(nn.Module):
             for n, N in enumerate(self.networks):
                 print(f'N{n}: {N.network_type}')
                 N.get_network_info(abbrev=abbrev)
+    # END NDN.get_network_info()
+
+    def info( self, expand=False):
+        print("NDN %s, output net #%d:"%(self.loss_type, self.ffnet_out[0]) )
+        for ii in range(len(self.networks)):
+            self.networks[ii].info(ffnet_n=ii, expand=expand)
+    # END NDN.info()
 
     def plot_filters(self, ffnet_target=0, **kwargs):
         """
@@ -1420,7 +1443,7 @@ class NDN(nn.Module):
         """
         self.networks[ffnet_target].plot_filters(**kwargs)
 
-    def save_model_zip(self, 
+    def save_model(self, 
                        path,
                        ffnet_list=None,
                        ffnet_out=None,
@@ -1492,7 +1515,7 @@ class NDN(nn.Module):
         os.rmdir(temp_dir)
 
     @classmethod
-    def load_model_zip(cls, path):
+    def load_model(cls, path):
         """
         Load the model from an a zip file (with extension .ndn) containing a json file with the model parameters
         and a .ckpt file with the state_dict.
@@ -1544,7 +1567,7 @@ class NDN(nn.Module):
 
         return model
 
-    def save_model(self, filename=None, pt=False ):
+    def save_model_pkl(self, filename=None, pt=False ):
         """
         Models will be saved using dill/pickle in as the filename, which can contain
         the directory information. Will be put in the CPU first
@@ -1676,7 +1699,7 @@ class NDN(nn.Module):
         # just for checking -   but not definitive/great to do in general, apparently
 
     @classmethod
-    def load_model(cls, filename=None, pt=False ):
+    def load_model_pkl(cls, filename=None, pt=False ):
         """
         Load a pickled model from disk.
 

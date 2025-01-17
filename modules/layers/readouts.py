@@ -355,7 +355,6 @@ class ReadoutLayer(NDNLayer):
         Returns:
             None
         """
-
         assert self.filter_dims[0] == self.output_dims[0], "Must have #filters = #output units."
         # Set parameters for default readout
         self.sigma.data.fill_(0)
@@ -406,6 +405,8 @@ class ReadoutLayer(NDNLayer):
         self.mu.data = (2*pixels+1)/L - 1
     # END ReadoutLayer.enforce_grid()
 
+    def _layer_abbrev( self ):
+        return "readout"
 
     @classmethod
     def layer_dict(cls, NLtype='softplus', mode='bilinear', **kwargs):
@@ -470,9 +471,10 @@ class ReadoutLayer3d(ReadoutLayer):
       
         from ...modules.regularization import Regularization
         reg_vals = self.reg.vals
-        self.reg = Regularization( filter_dims=self.filter_dims, vals=reg_vals, num_outputs=self.num_filters )
-        self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
-
+        self.reg = Regularization(
+            filter_dims=self.filter_dims, vals=reg_vals, num_outputs=self.num_filters )
+        self.register_buffer(
+            'mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
     # END ReadoutLayer3d.__init__
 
     def set_mask( self, mask=None ):
@@ -557,6 +559,9 @@ class ReadoutLayer3d(ReadoutLayer):
             self.weight.data[nn,nn] = 1
 
         self.set_parameters(val=False)
+
+    def _layer_abbrev( self ):
+        return "rdout3d"
 
     @classmethod
     def layer_dict(cls, **kwargs):
@@ -989,6 +994,9 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         thetas = thetas % max_angle 
         return thetas.squeeze()
     # END ReadoutLayerQsample.mu2degrees()
+
+    def _layer_abbrev( self ):
+        return "rdoutQS"
 
     @classmethod
     def layer_dict(cls, Qsigma=1, **kwargs):

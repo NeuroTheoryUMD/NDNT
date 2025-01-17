@@ -134,7 +134,6 @@ class ConvLayer(NDNLayer):
         assert self.dilation == 1, 'Cannot handle greater dilations than 1.'
 
         self.padding = padding   # self.padding will be a list of integers...    
-
         # These assignments will be moved to the setter with padding as property and _npads as internal
         # Define padding as "same" or "valid" and then _npads is the number of each edge
         #if self.stride > 1:
@@ -283,6 +282,36 @@ class ConvLayer(NDNLayer):
         #    npad = [value[i*2]+value[i*2+1] for i in range(len(value)//2)]
         # handle spatial padding here, time is integrated out in conv base layer
 
+    def info( self, expand=False, to_output=True ):
+        """
+        This outputs the layer information in abbrev (default) or expanded format
+        """
+        info_string, addons_string, reg_string = super().info( expand=expand, to_output=False )
+
+        # for all convolutional networks, put filter_width end of info string
+        info_string += "w%d"%self.filter_dims[1]
+        if self.filter_dims[1] < 10:
+            info_string += ' '
+            
+        if self.output_norm is not None:
+            addons_string += 'B'
+        if self.window:
+            addons_string += 'H'
+
+        if to_output:
+            print( info_string, addons_string, '\t', reg_string)
+        else:
+            return info_string, addons_string, reg_string
+    # END ConvLayer.info()
+
+    def _layer_abbrev( self ):
+        if self.is1D:
+            return " conv1d"
+        else:
+            return " conv2d"
+    # END ConvLayer.layer_abbrev()
+
+
     @classmethod
     def layer_dict(cls, padding='same', filter_dims=None, res_layer=False, window=None, **kwargs):
         """
@@ -338,6 +367,7 @@ class ConvLayer(NDNLayer):
             w = w.reshape(-1, self.num_filters)
         
         return w
+    # END ConvLayer.preprocess_weights()
 
     def forward(self, x):
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
@@ -629,6 +659,13 @@ class TconvLayer(ConvLayer):
         super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
             time_reverse=time_reverse)
+    # END TconvLayer.plot_filters()
+
+    def _layer_abbrev( self ):
+        if self.is1D:
+            return "Tconv1d"
+        else:
+            return "Tconv2d"
 
     @classmethod
     def layer_dict(cls, padding='spatial', conv_dims=None, **kwargs):
@@ -782,13 +819,17 @@ class STconvLayer(TconvLayer):
             self.reg.compute_activity_regularization(y)
 
         return y
-    # END STconvLayer.forward 
+    # END STconvLayer.forward()
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
         # Overload plot_filters to automatically time_reverse
         super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
             time_reverse=time_reverse)
+    # END STconvLayer.plot_filters()
+
+    def _layer_abbrev( self ):
+        return " STconv"
 
     @classmethod
     def layer_dict(cls, **kwargs):

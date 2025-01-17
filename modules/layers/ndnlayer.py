@@ -66,7 +66,7 @@ class NDNLayer(nn.Module):
                  num_inh:int=0,
                  bias:bool=False,
                  weights_initializer:str='xavier_uniform',
-                 output_norm=None,
+                 #output_norm=None,
                  initialize_center=False,
                  bias_initializer:str='zeros',
                  reg_vals:dict=None,
@@ -113,11 +113,8 @@ class NDNLayer(nn.Module):
 
         # Was this implemented correctly? Where should NLtypes (the dictionary) live?
         assert NLtype in NLtypes, "NLtype not defined."
-        #if NLtype in NLtypes:
+        self.NLtype = NLtype
         self.NL = NLtypes[NLtype]
-        #else:
-        #    print("Nonlinearity undefined.")
-        #    # return error
 
         self.shape = tuple([np.prod(self.filter_dims), self.num_filters])
         self.weight_scale = np.sqrt(self.shape[0]) / 100
@@ -129,11 +126,6 @@ class NDNLayer(nn.Module):
             self.bias = Parameter(torch.Tensor(self.num_filters))
         else:
             self.register_buffer( 'bias', torch.zeros(self.num_filters, dtype=torch.float32) )
-
-        if self.pos_constraint:
-            self.register_buffer("minval", torch.tensor(0.0))
-            # Does this apply to both weights and biases? Should be separate?
-            # How does this compare without explicit constraint? Maybe better, maybe worse...
 
         self.reg = Regularization( 
             filter_dims=self.filter_dims, vals=reg_vals, num_outputs=num_filters, pos_constraint=self.pos_constraint )
@@ -185,9 +177,6 @@ class NDNLayer(nn.Module):
         self._ei_mask[:] = 1  # reset
         if value > 0:
             self._ei_mask[range(self.num_filters-self._num_inh, self.num_filters)] = -1
-        #        self.register_buffer(
-        #            '_ei_mask', torch.cat( (torch.ones(self.num_filters-self._num_inh, dtype=torch.float32),
-        #                                     -torch.ones(self._num_inh, dtype=torch.float32))) )
 
     def reset_parameters(self, weights_initializer=None, bias_initializer=None, param=None) -> None:
         """
@@ -236,7 +225,7 @@ class NDNLayer(nn.Module):
         else:
             print('weights initializer not defined')
 
-        if self.pos_constraint>0:
+        if self.pos_constraint > 0:
             self.weight.data = torch.sqrt(abs(self.weight.data))
         # Pos-constraints will be implemented in preprocessing (including making negative there)
         # So this scales the initial values so the square is in the right place
@@ -254,6 +243,7 @@ class NDNLayer(nn.Module):
             init.uniform_(self.bias, -bound, bound)
         else:
             print('bias initializer not defined')
+    # END NDNLayer.reset_parameters()
 
     def initialize_gaussian_envelope(self):
         """
@@ -264,6 +254,7 @@ class NDNLayer(nn.Module):
         #w_centered = initialize_gaussian_envelope( self.get_weights(to_reshape=False), self.filter_dims)
         w_centered = util_gaussian_envelope( self.weight.clone().detach().numpy(), self.filter_dims)
         self.weight.data = torch.tensor(w_centered, dtype=torch.float32)
+    # END NDNLayer.initialize_gaussian_envelope()
 
     def preprocess_weights(self):
         """
@@ -275,7 +266,6 @@ class NDNLayer(nn.Module):
         # Apply positive constraints
         if self.pos_constraint > 0:
             w = torch.square(self.weight) # to promote continuous gradients around 0
-            #w = torch.maximum(self.weight, self.minval)
             #w = self.weight.clamp(min=0)
         elif self.pos_constraint < 0:
             w = -torch.square(self.weight)  # to promote continuous gradients around 0
@@ -304,8 +294,6 @@ class NDNLayer(nn.Module):
 
         # Simple linear processing and bias
         x = torch.matmul(x, w)
-        #if self.norm_type == 2:
-        #    x = x / self.weight_scale
 
         x = x + self.bias
 
@@ -326,7 +314,7 @@ class NDNLayer(nn.Module):
             self.reg.compute_activity_regularization(x)
 
         return x
-        # END NDNLayer.forward
+        # END NDNLayer.forward()
 
     def compute_reg_loss(self):
         """
@@ -449,6 +437,51 @@ class NDNLayer(nn.Module):
                 from NDNT.utils import plot_filters_ST3D
                 plot_filters_ST3D(ws, **kwargs)
     # END NDNLayer.plot_filters()
+
+    def info( self, expand=False, to_output=True ):
+        """
+        This outputs the layer information in abbrev (default) or expanded format
+        """
+        info_string = "%s: %3d ("%(self._layer_abbrev(), self.num_filters)
+        if len(self.NLtype) <= 4:
+            info_string += self.NLtype + ') '
+            for ii in range(4-len(self.NLtype)):
+                info_string += ' '
+        else:
+            info_string += self.NLtype[:4] + ')'
+
+        if self.bias.requires_grad:
+            addons_string = "B"
+        else:
+            addons_string = " "
+        if self.norm_type > 0:
+            addons_string += 'N'
+        if self.pos_constraint > 0:
+            addons_string += '+'
+        elif self.pos_constraint < 0:
+            addons_string += '-'
+
+        if len(self.reg.vals) > 0:
+            reg_string = str(self.reg.vals)
+        else:
+            reg_string = ''
+        
+        if to_output: # this allows for inheritance (adding to base)
+            print( info_string, addons_string, '\t', reg_string)
+        else:
+            return info_string, addons_string, reg_string
+    # END NDNLayer.info()
+
+    def _layer_abbrev( self ):
+        """
+        Internal function: Set layer abbreviation for NDNLayer. It is
+        meant to be overloaded but will work anyway.
+        """
+        if isinstance( self, NDNLayer):
+            return ' normal'
+        else:
+            return 'not def'
+    # END NDNLayer.layer_abbrev()
 
     @staticmethod
     def dim_info( input_dims=None, num_filters=None, **kwargs):

@@ -103,6 +103,9 @@ class Dim0Layer(NDNLayer):
         return dinfo
     # END [static] Dim0Layer.dim_info
 
+    def _layer_abbrev( self ):
+        return "dim0lay"
+
     @classmethod
     def layer_dict(cls, **kwargs):
         """
@@ -112,7 +115,6 @@ class Dim0Layer(NDNLayer):
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
         """
-
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'dim0'
         del Ldict['bias']
@@ -148,6 +150,9 @@ class ChannelLayer(NDNLayer):
         filter_dims = [num_input_filters] + input_dims[1:]
         super().__init__(input_dims, num_filters, filter_dims=filter_dims, **kwargs)
     # END ChannelLayer.__init__
+
+    def _layer_abbrev( self ):
+        return "channel"
 
     @classmethod
     def layer_dict(cls, **kwargs):

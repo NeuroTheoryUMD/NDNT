@@ -89,8 +89,6 @@ class FFnetwork(nn.Module):
             #'res': layers.ResLayer,
         }
 
-
-
         self.network_type = ffnet_type
         #print("FFnet: network type:", self.network_type)
         assert self.network_type in _valid_ffnet_types, "ffnet_type " + self.network_type + " is unknown."
@@ -401,6 +399,7 @@ class FFnetwork(nn.Module):
             layer_target = 0
         assert layer_target < len(self.layers), "layer target too large (max = %d)"%len(self.layers)
         self.layers[layer_target].set_reg_val( reg_type=reg_type, reg_val=reg_val )
+    # # END FFnetwork.set_reg_val
 
     def plot_filters(self, layer_target=0, **kwargs):
         """
@@ -414,6 +413,7 @@ class FFnetwork(nn.Module):
             None
         """
         self.layers[layer_target].plot_filters(**kwargs)
+    # END FFnetwork.plot_filters()
 
     def get_weights(self, layer_target=0, **kwargs):
         """
@@ -431,8 +431,9 @@ class FFnetwork(nn.Module):
         """
         assert layer_target < len(self.layers), "Invalid layer_target %d"%layer_target
         return self.layers[layer_target].get_weights(**kwargs)
-    
-    def get_network_info(self, abbrev=True):
+    # END FFnetwork.get_weights()
+
+    def get_network_info(self, abbrev=False):
         """
         Prints out a description of the network structure.
         """
@@ -442,9 +443,41 @@ class FFnetwork(nn.Module):
                 if 'conv' in L['layer_type']:
                     output += f", {L['window']}"
                 output += f")  |  {L['output_norm']}  |  {L['NLtype']}"
+                print(output)
         else: 
-            output = ['not implemented yet']
-        print(output)
+            print('not implemented yet')
+    # END FFnetwork.get_network_info()
+
+    def info( self, ffnet_n=None, expand=False ):
+        """
+        This outputs the network information in abbrev (default) or expanded format, including
+        information from layers
+        """
+        info_string = self.generate_info_string()
+        # Print ffnet-info
+        if ffnet_n is None:
+            print(info_string)
+        else:
+            print( " %2d %s"%(ffnet_n, info_string) )
+
+        # Layer info
+        for ii in range(len(self.layers)):
+            a, b, c = self.layers[ii].info(expand=expand, to_output=False)
+            filler = '\t'*np.maximum((4-(1+len(a)+len(b))//8), 1)
+            print( "   %2d %s %s%s%s"%(ii, a, b, filler, c))
+    # END FFnetwork.info()
+
+    def generate_info_string(self):
+        info_string = self.network_type + ': Input = '
+        if self.xstim_n is not None:
+            info_string += "'" + self.xstim_n + "' "
+        else:
+            info_string += 'ffnet '
+            for ii in range(len(self.ffnets_in)):
+                info_string += "%d "%self.ffnets_in[ii]
+        info_string += str(self.input_dims)
+        return info_string
+    # END FFnetwork.generate_info_string()
 
     @classmethod
     def ffnet_dict( cls, layer_list=None, xstim_n ='stim', ffnet_n=None, ffnet_type='normal', scaffold_levels=None, num_lags_out=1, **kwargs):
@@ -574,6 +607,15 @@ class ScaffoldNetwork(FFnetwork):
         # this concatentates across the filter dimension
         return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
     # END ScaffoldNetwork.forward()
+
+    def generate_info_string(self):
+        info_string = super().generate_info_string()
+        #info_string = self.network_type + ": Input = '%s', Output levels "%self.xstim_n
+        info_string += ", Scaffold levels ="
+        for ii in range(len(self.scaffold_levels)):
+            info_string += " %d"%self.scaffold_levels[ii]
+        return info_string
+    # END ScaffoldNetwork.generate_info_string()
 
     @classmethod
     def ffnet_dict( cls, scaffold_levels=None, num_lags_out=1, **kwargs):
@@ -819,7 +861,8 @@ class ReadoutNetwork(FFnetwork):
             None
         """
         self.layers[0].set_readout_locations(locs)
-
+    # END ReadoutNetwork.set_readout_locations()
+    
     @classmethod
     def ffnet_dict( cls, ffnet_n=0, **kwargs):
         """
