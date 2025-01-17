@@ -113,7 +113,7 @@ class NDNLayer(nn.Module):
 
         # Was this implemented correctly? Where should NLtypes (the dictionary) live?
         assert NLtype in NLtypes, "NLtype not defined."
-        self.NLtype = NLtype
+        #self.NLtype = NLtype
         self.NL = NLtypes[NLtype]
 
         self.shape = tuple([np.prod(self.filter_dims), self.num_filters])
@@ -448,12 +448,14 @@ class NDNLayer(nn.Module):
         if self.num_inh < 10:
             info_string += ' '
 
-        if len(self.NLtype) <= 4:
-            info_string += '[' + self.NLtype + '] '
-            for ii in range(4-len(self.NLtype)):
+        # Recover NLtype string from NL value
+        NLtype = next((key for key, val in NLtypes.items() if val == self.NL), 'unknown')
+        if len(NLtype) <= 4:
+            info_string += '[' + NLtype + '] '
+            for ii in range(4-len(NLtype)):
                 info_string += ' '
         else:
-            info_string += '[' + self.NLtype[:4] + ']'
+            info_string += '[' + NLtype[:4] + ']'
 
         if self.bias.requires_grad:
             addons_string = "B"
