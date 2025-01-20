@@ -463,7 +463,7 @@ class FFnetwork(nn.Module):
         # Layer info
         for ii in range(len(self.layers)):
             a, b, c = self.layers[ii].info(expand=expand, to_output=False)
-            filler = '\t'*np.maximum((4-(1+len(a)+len(b))//8), 1)
+            filler = '\t'*np.maximum((5-int(np.ceil(len(a)+len(b)-1)/8)), 1)
             print( "   %2d %s %s%s%s"%(ii, a, b, filler, c))
     # END FFnetwork.info()
 

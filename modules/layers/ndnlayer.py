@@ -449,18 +449,21 @@ class NDNLayer(nn.Module):
             info_string += ' '
 
         # Recover NLtype string from NL value
-        NLtype = next((key for key, val in NLtypes.items() if val == self.NL), 'unknown')
+        if self.NL is None:
+            NLtype = 'lin'
+        else:
+            NLtype = next((key for key, val in NLtypes.items() if type(val) == type(self.NL)), 'unknown')
         if len(NLtype) <= 4:
             info_string += '[' + NLtype + '] '
             for ii in range(4-len(NLtype)):
                 info_string += ' '
         else:
-            info_string += '[' + NLtype[:4] + ']'
+            info_string += '[' + NLtype[:4] + '] '
 
         if self.bias.requires_grad:
-            addons_string = "B"
+            addons_string = "bias"
         else:
-            addons_string = " "
+            addons_string = ""
         if self.norm_type > 0:
             addons_string += 'N'
         if self.pos_constraint > 0:
