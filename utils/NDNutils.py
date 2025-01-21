@@ -689,13 +689,82 @@ def initialize_gaussian_envelope( ws, w_shape):
 
 ## CONVERSION BETWEEN grid and pixel coordinates for READOUT LAYERS
 # Specifically grid_sample (align_corners=False) and other interpolation
+def pixel2mu( p, L=60, flip_axes=True ):
+    """
+    Converts from pixel coordinates to mu values, used by grid_sample. The default will flip
+    horizontal and vertical axes automatically, which is what grid_sample requires
+    Pixels are starting with number 0 up to L-1, converted to range of -1 to 1
+    
+    Args:
+        p: list of pixel locations, presumably num_locations x 2 (horizontal and vertical coords)
+        L: size of grid (number of pixels), assuming square (default 60)
+        flip_axes: whether to swap horizontal and vertical axes as grid_sample needs (default: True)
+    
+    Returns:
+        x: mu values
+    """
+    x = (2*p+1)/L - 1
+    if flip_axes:
+        if len(x.shape) < 2:
+            print("Warning: cannot flip axes, since only passed in one dimension")
+        else:
+            assert x.shape[1] == 2, "need 2 axes to flip them"
+            x = np.roll(x, 1, axis=1)
+    return x
+# END pixel2mu()
+
+
+def mu2pixel( x, L=60, force_int=True, enforce_bounds=True, flip_axes=True ):
+    """
+    Converts from mu values back into pixel coordinates, where mus are coordinates used by grid_sample.
+    Can be continuous (fractional pixels), but default is rounding to nearest int
+
+    Args: 
+        x: mu values, assuming num_locations x 2 (although can be 1-dimensional)
+        L: size of grid (number of pixels), assuming square (default 60)
+        force_int: force to be integer (versus continuous-valued)
+        enforce bounds: go to edges if answer ends up bigger than L-1 or smaller than 0
+        flip_axes: whether to swap horizontal and vertical axes as grid_sample needs (default: True)
+
+    Returns:
+        p: pixel values
+    """
+    if flip_axes:
+        if len(x.shape) < 2:
+            print("Warning: cannot flip axes, since only passed in one dimension")
+        else:
+            assert x.shape[1] == 2, "need 2 axes to flip them"
+            x = np.roll(x, 1, axis=1)
+
+    p = (L*(x+1)-1)/2
+    if enforce_bounds:
+        a = np.where(p > L-1)[0]
+        if len(a) > 0:   
+            p[a] = L-1
+        a = np.where(p < 0)[0]
+        if len(a) > 0:
+            p[a] = 0    
+    if force_int:
+        if isinstance(x, np.ndarray):
+            return np.round(p).astype(np.int64)
+        else:
+            return int(np.round(p))
+    else:
+        return p
+# END mu2pixel()
+
+
 def pixel2grid( p, L=60 ):
-    """Pixels are starting with number 0 up to L-1, converted to range of -1 to 1"""
+    """
+    Pixels are starting with number 0 up to L-1, converted to range of -1 to 1. This is the
+    old function, to be replaced by pixel2mu
+    """
     x = (2*p+1)/L - 1
     return x
 
 
 def grid2pixel( x, L=60, force_int=True, enforce_bounds=False ):
+    """Older function: replaced by mu2pixel"""
     p = (L*(x+1)-1)/2
     if enforce_bounds:
         a = np.where(p > L-1)[0]
