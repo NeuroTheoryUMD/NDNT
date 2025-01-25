@@ -684,6 +684,10 @@ class NDN(nn.Module):
 
         if block_sample is not None:
             self.block_sample = block_sample
+        if self.block_sample:
+            assert dataset.trial_sample, "dataset trial_sample does not match model_block_sample"
+        else:
+            assert dataset.trial_sample == False, "dataset trial_sample does not match model_block_sample"
 
         # Should be set ahead of time
         name = self.model_name
@@ -1172,10 +1176,11 @@ class NDN(nn.Module):
         
         self.eval()    
         num_cells = self.networks[-1].output_dims[0]
-
+        model_device = self.device
         if self.block_sample:
-            if device is not None:
-                self.to(device)
+            if device is None:
+                device = data['robs'].device
+            self = self.to(device)
 
             assert data_inds is None, "block_sample currently does not handle data_inds"
             if batch_size is None:
@@ -1194,7 +1199,7 @@ class NDN(nn.Module):
                     batch_block_inds = np.concatenate(batch_block_inds)
                     batch_block_inds = batch_block_inds[batch_block_inds < data.NT]
                     #data_batch = data[i:np.minimum(i+batch_size, total)]
-                    data_batch = data[trs]
+                    data_batch = data[block_inds[trs]]
                     if device is not None:
                         for key in data_batch.keys():
                             data_batch[key] = data_batch[key].to(device)
@@ -1221,7 +1226,6 @@ class NDN(nn.Module):
             if batch_size is None:
                 batch_size = 500   # default batch size for non-block_sample
             dev0 = data[0]['robs'].device
-            model_device = self.device
             self = self.to(dev0)
     
             if data_inds is None:
