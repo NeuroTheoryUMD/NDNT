@@ -151,6 +151,7 @@ class NDN(nn.Module):
             self._block_sample.data[:] = 1
         else:
             self._block_sample.data[:] = 0
+    # END NDN.block_sample property
 
     def assemble_ffnetworks(self, ffnet_list, external_nets=None):
         """
@@ -1446,6 +1447,29 @@ class NDN(nn.Module):
             None
         """
         self.networks[ffnet_target].plot_filters(**kwargs)
+    # END NDN.plot_filters()
+
+    def update_ffnet_list(self):
+        """
+        the ffnet_list builds the NDN, but ideally holds a record of the regularization (a dictionary)
+        since dictionaries are not saveable in a checkpoint. So, this function pulls the dictionaries
+        from each reg_module back into the ffnet_list
+
+        Args:
+            None
+
+        Returns:
+            None, but updates self.ffnet_list
+        """
+        from copy import deepcopy
+
+        for ii in range(len(self.networks)):
+            for jj in range(len(self.networks[ii].layers)):
+                # gets rid of reg_modules so not saved
+                self.networks[ii].layers[jj].reg.reg_modules = nn.ModuleList()  
+                self.ffnet_list[ii]['layer_list'][jj]['reg_vals'] = deepcopy(
+                    self.networks[ii].layers[jj].reg.vals)
+    # END NDN.update_ffnet_list()
 
     def save_model(self, 
                        path,
@@ -1485,6 +1509,7 @@ class NDN(nn.Module):
 
         # package params
         if ffnet_list is None:
+            self.update_ffnet_list()  # pulls current reg_values into self.ffnet_list
             ndn_params = {'ffnet_list': self.ffnet_list, 
                           'loss_type':self.loss_type,
                           'ffnet_out': self.ffnet_out,

@@ -64,12 +64,15 @@ class Regularization(nn.Module):
         self.reg_modules = nn.ModuleList() 
         self.normalize = normalize
 
-        self.unit_reg = False
+
         self.folded_lags = folded_lags
         self.num_outputs = num_outputs
         self.pos_constraint=pos_constraint
         self.boundary_conditions = None
         self.activity_regmodule = None
+
+        self.register_buffer( '_unit_reg', torch.zeros(1, dtype=torch.int8) )
+        self.unit_reg = False
 
         # read user input
         if vals is not None:
@@ -109,8 +112,15 @@ class Regularization(nn.Module):
             if reg_type in self.vals:
                 del self.vals[reg_type]
         else:  # add or modify reg_val
-            if np.any(reg_val < 0.0):
-                raise ValueError('`reg_val` must be greater than or equal to zero')
+            if isinstance(reg_val, np.ndarray) | isinstance(reg_val, list):  # then must be unit_reg
+                assert np.min(reg_val) >= 0, "UNIT_REG: all reg_values must be non-negative"
+                if not self.unit_reg:
+                    # then intent to have unit_conver set
+                    self.unit_reg = True
+                    print("%s: implementing unit_reg"%reg_type)
+            else:
+                if reg_val < 0.0:
+                    raise ValueError('`reg_val` must be greater than or equal to zero')
 
             if self.unit_reg:
                 assert self.num_outputs is not None, "UNITREG initialization problems"
@@ -121,16 +131,31 @@ class Regularization(nn.Module):
                     self.vals[reg_type] = np.ones(self.num_outputs, dtype=np.float32)*reg_val
             else:  # Normal reg val setting
                 self.vals[reg_type] = reg_val
-    # END Regularization.set_reg_val
+    # END Regularization.set_reg_val()
+
+    @property
+    def unit_reg(self):
+        if self._unit_reg > 0:
+            return True
+        else:
+            return False
+
+    @unit_reg.setter
+    def unit_reg(self, value):
+        assert isinstance(value, bool), "Regularization.unit_reg: boolean value required"
+        if value:
+            self._unit_reg.data[:] = 1
+        else:
+            self._unit_reg.data[:] = 0
 
     def unit_reg_convert( self, unit_reg=True, num_outputs=None ):
         """Can convert reg object to turn on or off unit_reg (default turns it on"""
 
         if unit_reg == self.unit_reg:
-            print("UNITREG: No conversion necessary")
+            print("UNIT_REG: No conversion necessary")
             return
-        if unit_reg and (num_outputs is None):
-            assert self.num_outputs is not None, "UNITREG: must set num_ouputs"
+        if unit_reg:
+            assert self.num_outputs is not None, "UNIT_REG: must set num_ouputs"
 
         self.unit_reg = unit_reg 
 
@@ -139,8 +164,7 @@ class Regularization(nn.Module):
                 new_val = np.mean(val) 
             else:
                 new_val = val
-            
-            self.set_reg_val(self, reg_type, reg_val=new_val)
+            self.set_reg_val(reg_type, reg_val=new_val)
     # END Regularization.unit_reg_convert
 
     def build_reg_modules(self, device=None):
