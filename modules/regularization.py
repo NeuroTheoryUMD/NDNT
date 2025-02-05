@@ -10,9 +10,10 @@ class Regularization(nn.Module):
     """
     Class for handling layer-wise regularization. 
     
-    This class stores all info for regularization, 
-    and sets up regularization modules for training, 
-    and returns reg_penalty from layer when passed in weights.
+    This class stores all info for regularization, and sets up regularization modules for training, 
+    and returns reg_penalty from layer when passed in weights. Note that boundary conditions for a 
+    given regularization is specified by a regularization 'bc', and passing that a dictionary. By 
+    default, boundary conditions are on for a given regularization if not explicitly turned off.
     
     Args:
         vals (dict): values for different types of regularization stored as
@@ -64,7 +65,6 @@ class Regularization(nn.Module):
         self.reg_modules = nn.ModuleList() 
         self.normalize = normalize
 
-
         self.folded_lags = folded_lags
         self.num_outputs = num_outputs
         self.pos_constraint=pos_constraint
@@ -82,16 +82,19 @@ class Regularization(nn.Module):
     # END Regularization.__init__
 
     def set_reg_val(self, reg_type, reg_val=None):
-        """Set regularization value in self.vals dict 
+        """
+        Set regularization value in self.vals dict. Secondarily, it will also determine whether unit-reg
+        applies or not, based on whether any of the reg vals are lists or arrays.
         
         Args:
             reg_type (str): see `_allowed_reg_types` for options
-            reg_val (float): value of regularization parameter
+            reg_val (float or array): value of regularization parameter, or list of values if unit_reg
             
         Returns:
             bool: True if `reg_type` has not been previously set
             
         Note: can also pass in a dictionary with boundary condition information addressed by reg_type
+
         Raises:
             ValueError: If `reg_type` is not a valid regularization type
             ValueError: If `reg_val` is less than 0.0            
