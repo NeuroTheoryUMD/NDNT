@@ -297,7 +297,7 @@ class OriConvLayer(ConvLayer):
             w_full[filter_range, ...] = TF.rotate(
                 img=w,
                 interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
-                angle=float(self.angles[ii]))
+                angle=-float(self.angles[ii]))
 
         # PAD
         if self._fullpadding:
@@ -725,7 +725,7 @@ class HermiteOriConvLayer(ConvLayer):
         for i in range(1, len(self.angles)):
             H_rot[i,:,:,:] = TF.rotate(img=self.H,
                                        interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
-                                       angle=float(self.angles[i]))
+                                       angle=-float(self.angles[i])) # note: -1
         
         img_rot = torch.zeros((self.input_dims[0],
                              self.num_filters,
@@ -826,7 +826,7 @@ class HermiteOriConvLayer(ConvLayer):
         for i in range(1, len(self.angles)):
             H_rot[i,:,:,:] = TF.rotate(img=self.H,
                                        interpolation=torchvision.transforms.InterpolationMode.BILINEAR,
-                                       angle=float(self.angles[i]))
+                                       angle=-float(self.angles[i])) # note: -1
         
         img_rot = torch.zeros((self.input_dims[0],
                              self.num_filters,
