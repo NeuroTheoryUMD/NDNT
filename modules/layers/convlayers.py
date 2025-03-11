@@ -395,9 +395,9 @@ class ConvLayer(NDNLayer):
                     stride=self.stride, dilation=self.dilation)
             else:
                 if self._padding == 'circular':
-                    s = F.pad(s, self._npads, pad_type, 0)  # think does not work 1-d (so commented above out)
+                    spad = F.pad(s, self._npads, pad_type, 0)  # think does not work 1-d (so commented above out)
                     y = F.conv1d(
-                        s,
+                        spad,
                         #w.view([-1, self.folded_dims, self.filter_dims[1]]), 
                         w.reshape([-1, self.folded_dims, self.filter_dims[1]]), 
                         bias=self.bias,
@@ -418,9 +418,9 @@ class ConvLayer(NDNLayer):
             #    s = self.output_norm(s)
 
             if self._fullpadding:
-                s = F.pad(s, self._npads, pad_type, 0)
+                spad = F.pad(s, self._npads, pad_type, 0)
                 y = F.conv2d(
-                    s, # we do our own padding
+                    spad, # we do our own padding
                     w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
                     bias=self.bias,
                     stride=self.stride,
@@ -428,9 +428,9 @@ class ConvLayer(NDNLayer):
             else:
                 # functional pads since padding is simple
                 if self.padding == 'circular':
-                    s = F.pad(s, self._npads, pad_type, 0)
+                    spad = F.pad(s, self._npads, pad_type, 0)
                     y = F.conv2d(
-                        s, 
+                        spad, 
                         w.reshape([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
                         #padding=(self._npads[2], self._npads[0]),
                         bias=self.bias,
