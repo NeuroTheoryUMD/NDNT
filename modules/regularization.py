@@ -693,12 +693,22 @@ class Tikhanov(RegModule):
 
 class TikhanovC(RegModule):
     """Regularization module for Tikhanov-collapse regularization -- where all but one
-    dimension is marginalized over first"""
+    dimension is marginalized over first."""
 
-    def __init__(self, reg_type=None, reg_val=None, input_dims=None, bc_val=0, **kwargs):
-        """Constructor for Tikhanov class"""
+    def __init__(
+            self, reg_type=None, reg_val=None, input_dims=None, 
+            bc_val=0, pos_constraint=True,
+            **kwargs):
+        """
+        Constructor for Tikhanov-Collapse class: where dimensions are summed over before Tikhanov
+        matrix is applied. In case where weights are not pos-constrained, be sure to pass in a 
+        boundary condition of '1' and it will square weights before summing. Otherwise, you will
+        get a lot of -1s in the output.
+        """
 
-        super().__init__(reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, bc_val=bc_val, **kwargs)
+        super().__init__(
+            reg_type=reg_type, reg_val=reg_val, input_dims=input_dims, 
+            pos_constraint=pos_constraint, bc_val=bc_val, **kwargs)
         
         _valid_reg_types = ['gmax_t', 'gmax_space', 'gmax_filter']
         assert reg_type in _valid_reg_types, "{} is not a valid Tikhanov-C regularization type".format(reg_type)
@@ -723,7 +733,8 @@ class TikhanovC(RegModule):
     def compute_reg_penalty(self, weights):
         """Calculate regularization penalty for Tikhanov reg types"""
 
-        #w2 = torch.square(weights)  # assuming positive constraints here -- no squaring needed
+        if not self.pos_constraint:
+            weights = torch.square(weights)
         w = torch.sum( torch.sum(
                 weights.reshape(self.input_dims + [-1]), # [C, W*H, T, NF]
                 axis=self.collapse_dims[0]), 

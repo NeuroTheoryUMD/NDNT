@@ -472,7 +472,8 @@ class ReadoutLayer3d(ReadoutLayer):
         from ...modules.regularization import Regularization
         reg_vals = self.reg.vals
         self.reg = Regularization(
-            filter_dims=self.filter_dims, vals=reg_vals, num_outputs=self.num_filters )
+            filter_dims=self.filter_dims, vals=reg_vals, 
+            num_outputs=self.num_filters, pos_constraint=self.pos_constraint )
         self.register_buffer(
             'mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
     # END ReadoutLayer3d.__init__
