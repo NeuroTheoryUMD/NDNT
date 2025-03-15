@@ -45,7 +45,7 @@ class FFnetwork(nn.Module):
         assert layer_list is not None, "FFnetwork: Must supply a layer_list."
         
         super().__init__()
-        
+
         self.LayerTypes = {
             'normal': layers.NDNLayer,
             'conv': layers.ConvLayer,
@@ -110,7 +110,7 @@ class FFnetwork(nn.Module):
             # then pull from first layer
             assert layer_list[0]['input_dims'] is not None, "If input_dims is not specified, it must be specified in layer-0"
             input_dims_list = [deepcopy(layer_list[0]['input_dims'])]
-        
+
         # Build input_dims from sources
         assert self.determine_input_dims(input_dims_list, ffnet_type=ffnet_type), 'Invalid network inputs.'
 
@@ -201,7 +201,7 @@ class FFnetwork(nn.Module):
                     elif input_dims_list[ii][0] > 1:
                         # these are combined and input to first layer has same size as one input
                         assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for ' + ffnet_type + ' ffnetwork'
-                    
+
             self.input_dims = [num_cat_filters] + input_dims_list[0][1:]
         
         self.input_dims_list = deepcopy(input_dims_list)
@@ -233,14 +233,16 @@ class FFnetwork(nn.Module):
                 x = inputs[0].view([-1]+self.input_dims_list[0])  # this will allow for broadcasting
                 nt = inputs[0].shape[0]
                 for mm in range(1, len(inputs)):
-                    if self.network_type == 'normal': # concatentate inputs
-                        x = torch.cat( (x, inputs[mm].view([-1]+self.input_dims_list[mm])), 1 )
-                    elif self.network_type == 'add': # add inputs
+                    #if self.network_type == 'normal': # concatentate inputs
+                    #    x = torch.cat( (x, inputs[mm].view([-1]+self.input_dims_list[mm])), 1 )
+                    if self.network_type == 'add': # add inputs
                         x = torch.add( x, inputs[mm].view([-1]+self.input_dims_list[mm]) )
                     elif self.network_type == 'mult': # multiply: (input1) x (1+input2)
                         x = torch.multiply(
                             x, torch.add(inputs[mm].view([-1]+self.input_dims_list[mm]), 1.0).clamp(min=0.0) )
                         # Make sure multiplication is not negative
+                    else: # especially 'normal'
+                        x = torch.cat( (x, inputs[mm].view([-1]+self.input_dims_list[mm])), 1 )
                 x = x.view([nt, -1])
         else:
             x = inputs
@@ -808,12 +810,16 @@ class ReadoutNetwork(FFnetwork):
             print('Readout layer cannot get an external input.') 
             self.input_dims = input_dims_list[0]
         else:             
+            valid_input_dims = super().determine_input_dims(
+                input_dims_list=input_dims_list, ffnet_type='normal')
             assert len(input_dims_list) == len(self.ffnets_in), 'Internal: misspecification of input_dims for FFnetwork.'
             # First dimension is the input network
-            self.input_dims = input_dims_list[0]
+            #self.input_dims = input_dims_list[0]
             # Second dimension would be 
-            self.shifter = len(self.ffnets_in) > 1
-
+            
+            # would need to check for shifter network but otherwise, assume combining
+            #self.shifter = len(self.ffnets_in) > 1 
+        self.shifter=False
         return valid_input_dims
     # END ReadoutNetwork.determine_input_dims
 
@@ -834,7 +840,8 @@ class ReadoutNetwork(FFnetwork):
         if self.shifter:
             y = self.layers[0](inputs[0], shift=inputs[1])
         else:
-            y = self.layers[0](inputs[0])
+            x = self.preprocess_input(inputs)
+            y = self.layers[0](x)
         return y
     # END ReadoutNetwork.forward
 
