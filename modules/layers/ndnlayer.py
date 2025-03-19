@@ -397,7 +397,8 @@ class NDNLayer(nn.Module):
 
     def plot_filters( self, time_reverse=None, **kwargs):
         """
-        Plot the filters in the layer.
+        Plot the filters in the layer. It first determines whether layer is spatiotemporal (STRF plot)
+        or "internal": the different being that spatiotemporal will have lags / dim-3 of filter
 
         Args:
             cmaps: str or colormap, colormap to use for plotting (default 'gray')
@@ -418,24 +419,34 @@ class NDNLayer(nn.Module):
 
         ws = self.get_weights(time_reverse=time_reverse)
 
-        if self.input_dims[2] == 1:
-            if self.input_dims[1] == 1:
-                from NDNT.utils import plot_filters_1D
-                plot_filters_1D(ws, **kwargs)
-            else:
-                from NDNT.utils import plot_filters_ST1D
-                plot_filters_ST1D(ws, **kwargs)
-        else:
-            if self.input_dims[0] == 1:
-                if self.filter_dims[3] == 1:
-                    from NDNT.utils import plot_filters_2D
-                    plot_filters_2D(ws, **kwargs)
+        if self.filter_dims[3] > 1:
+            # Spatiotemporal layers
+            if self.input_dims[2] == 1:
+                if self.input_dims[1] == 1:
+                    from NDNT.utils import plot_filters_1D
+                    plot_filters_1D(ws, **kwargs)
                 else:
-                    from NDNT.utils import plot_filters_ST2D
-                    plot_filters_ST2D(ws, **kwargs)
+                    from NDNT.utils import plot_filters_ST1D
+                    plot_filters_ST1D(ws, **kwargs)
             else:
-                from NDNT.utils import plot_filters_ST3D
-                plot_filters_ST3D(ws, **kwargs)
+                if self.input_dims[0] == 1:
+                    if self.filter_dims[3] == 1:
+                        from NDNT.utils import plot_filters_2D
+                        plot_filters_2D(ws, **kwargs)
+                    else:
+                        from NDNT.utils import plot_filters_ST2D
+                        plot_filters_ST2D(ws, **kwargs)
+                else:
+                    from NDNT.utils import plot_filters_ST3D
+                    plot_filters_ST3D(ws, **kwargs)
+        else:
+            if self.filter_dims[2] > 1:
+                assert self.filter_dims[1] > 1, "plot_filters (internal): need some spatial dimensions to have this make sense"
+                from NDNT.utils import plot_internal_convlayer
+                plot_internal_convlayer(ws, **kwargs)
+            else:
+                print('Figure out how to do this when you get to it...')
+                
     # END NDNLayer.plot_filters()
 
     def info( self, expand=False, to_output=True ):

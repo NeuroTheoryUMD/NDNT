@@ -1472,12 +1472,12 @@ class NDN(nn.Module):
     # END NDN.update_ffnet_list()
 
     def save_model(self, 
-                       path,
-                       ffnet_list=None,
-                       ffnet_out=None,
-                       loss_type='poisson',
-                       model_name=None,
-                       working_dir='./checkpoints'):
+                   path,
+                   ffnet_list=None,
+                   ffnet_out=None,
+                   loss_type='poisson',
+                   model_name=None,
+                   working_dir='./checkpoints'):
         """
         Save the model as a zip file (with extension .ndn) containing a json file with the model parameters
         and a .ckpt file with the state_dict.
@@ -1567,7 +1567,8 @@ class NDN(nn.Module):
         temp_name = os.path.join(temp_dir, file_name)
 
         # open the zip file
-        with zipfile.ZipFile(path, 'r') as myzip:
+        #with zipfile.ZipFile(path, 'r') as myzip:
+        with zipfile.ZipFile(os.path.join(file_dir, file_name)+'.ndn', 'r') as myzip:
             myzip.extractall(temp_dir)
         with open(temp_name+'.json', 'r') as f:
             params = json.load(f)

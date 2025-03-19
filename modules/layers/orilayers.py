@@ -356,7 +356,7 @@ class OriConvLayer(ConvLayer):
         return y.reshape(-1, self.num_outputs)
     # OriConvLayer.forward()
 
-    def plot_filters( self, **kwargs):
+#    def plot_filters( self, **kwargs):
         """
         Plot the filters in the oriconvlayer (overloaded).
 
@@ -369,8 +369,8 @@ class OriConvLayer(ConvLayer):
         Returns:
             None
         """
-        from utils import plot_internal_convlayer
-        plot_internal_convlayer( self.get_weights() )
+#        from NDNT.utils import plot_internal_convlayer
+#        plot_internal_convlayer( self.get_weights() )
     # END OriConvLayer.plot_filters
 
     def _layer_abbrev( self ):

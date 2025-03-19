@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def plot_filters_1D(ws, num_cols=8, row_height=2, fix_scale=True, **kwargs):
     """function to plot 1-D spatiotemporal filters (so, 2-d images) by passing in weights of multiple filters"""
     num_filters = ws.shape[-1]
@@ -69,6 +70,7 @@ def plot_filters_ST1D(ws, cmap='viridis', num_cols=None, row_height=2, fix_scale
         ax.set_xticklabels([])
     plt.show()
 ### END plot_filters_ST1D
+
 
 def plot_filters_ST2D(ws, sort=False, **kwargs):
     """Stolen directly from neureye -> core.plot_filters, and modified"""
@@ -172,9 +174,15 @@ def plot_filters_ST3D(ws, sort=False, **kwargs):
             plt.subplot(sx,sy,jj*(nchan+1)+2+nn)
             plt.imshow( ws[nn, :, :, bestlags[nn], cc], interpolation=None, vmin=-m, vmax=m )
             plt.axis("off")
+    # END plot_filters_ST3D
 
 
-def plot_internal_convlayer( wP ):
+def plot_internal_convlayer( wP, cmap=None ):
+    """
+    Display weights of filter layer with NC x NX x NY (and no 4th dimension)
+    """
+    from NDNT.utils import subplot_setup, imagesc
+
     nch, nsp, nsp2, nf = wP.shape
     assert nsp == nsp2, "This function only works with square space."
     if nch > 12:
@@ -188,11 +196,12 @@ def plot_internal_convlayer( wP ):
         ncols = nch*2
         nrows = int(np.ceil(nf/2))
         
-    ss(nrows, ncols, rh=12/ncols)
+    m = np.max(abs(wP))
+    subplot_setup(nrows, ncols, row_height=12/ncols)
     for ii in range(nf):
         for ch in range(nch):
             plt.subplot(nrows, ncols, nch*ii+ch+1)
-            imagesc(wP[ch,:,:,ii], axis_labels=False)
+            imagesc(wP[ch,:,:,ii], max=m, cmap=cmap, axis_labels=False)
             plt.title("Filter %d"%ii)
             plt.ylabel('Channel %d'%ch)
     plt.show()

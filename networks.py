@@ -467,6 +467,8 @@ class FFnetwork(nn.Module):
             a, b, c = self.layers[ii].info(expand=expand, to_output=False)
             filler = '\t'*np.maximum((5-int(np.ceil(len(a)+len(b)-1)/8)), 1)
             print( "   %2d %s %s%s%s"%(ii, a, b, filler, c))
+            if expand:
+                self.layers[ii].list_parameters()
     # END FFnetwork.info()
 
     def generate_info_string(self):
