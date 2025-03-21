@@ -89,6 +89,8 @@ class NDN(nn.Module):
             self.loss_type = loss_type
             if loss_type == 'poisson' or loss_type == 'poissonT':
                 self.loss_module = plosses.PoissonLoss_datafilter()  # defined below, but could be in own Losses.py
+            elif loss_type in ['lagged', 'poissonL']:
+                self.loss_module = plosses.PoissonLossLagged()
             elif loss_type in ['simple', 'poissonS']:
                 self.loss_module = plosses.SimplePoissonLoss()
             elif loss_type in ['gaussian', 'mse']:
@@ -687,8 +689,10 @@ class NDN(nn.Module):
             self.block_sample = block_sample
         if self.block_sample:
             assert dataset.trial_sample, "dataset trial_sample does not match model_block_sample"
+            self.loss_module.num_lags = dataset.num_lags
         else:
             assert dataset.trial_sample == False, "dataset trial_sample does not match model_block_sample"
+            self.loss_module.num_lags = 0
 
         # Should be set ahead of time
         name = self.model_name
@@ -740,12 +744,21 @@ class NDN(nn.Module):
                     else:
                         print( "No val_inds specified.")
 
+        batch_mult = 1
         if force_dict_training:
             batch_size = len(train_inds)
-
+        if self.block_sample:
+            if hasattr(dataset, 'block_inds'):
+                if len(dataset.block_inds) > 0:
+                    match_mult = len(dataset.block_inds[0])
+                else:
+                    print('Warning: dataset block-size unknown')
+            else:
+                print('Warning: dataset block-size unknown')
+                
         # Check to see if loss-flags require any initialization using dataset information 
         if self.loss_module.unit_weighting or (self.loss_module.batch_weighting == 2):
-            self.initialize_loss(dataset, batch_size=batch_size, data_inds=train_inds) 
+            self.initialize_loss(dataset, batch_size=batch_size*batch_mult, data_inds=train_inds) 
 
         # Prepare model regularization (will build reg_modules)
         self.prepare_regularization()
@@ -932,7 +945,7 @@ class NDN(nn.Module):
             T = len(data_inds)
             num_batches = np.ceil(T/batch_size)
             av_batch_size = T/num_batches
-
+            
             # Compute unit weights based on number of spikes in dataset (and/or firing rate) if requested
             unit_weights = 1.0/np.maximum( self.compute_average_responses(dataset, data_inds=data_inds), 1e-8 )
 
@@ -1156,6 +1169,7 @@ class NDN(nn.Module):
         self = self.to(d0)  # put back on original device
 
         return LLneuron.detach().cpu().numpy()
+    # END NDN.eval_models()
 
     def predictions(self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
         """
@@ -1174,13 +1188,14 @@ class NDN(nn.Module):
         Returns:
             torch.Tensor: The predictions array (detached, on cpu)
         """
-        
+
         self.eval()    
         num_cells = self.networks[-1].output_dims[0]
         model_device = self.device
-        if self.block_sample:
+        if (self.block_sample) and not isinstance(data, dict):
+            
             if device is None:
-                device = data['robs'].device
+                device = data[0]['robs'].device
             self = self.to(device)
 
             assert data_inds is None, "block_sample currently does not handle data_inds"
@@ -1586,7 +1601,7 @@ class NDN(nn.Module):
                     working_dir=working_dir)
         model.prepare_regularization() # this will build the reg_modules
         # load the state_dict
-        state_dict = torch.load(temp_name+'.ckpt')
+        state_dict = torch.load(temp_name+'.ckpt', weights_only=False)
         model.load_state_dict(state_dict, strict=False)
         model.eval()
 

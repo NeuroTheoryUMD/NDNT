@@ -377,14 +377,6 @@ class Trainer:
                 #    data[dsub] = data[dsub].flatten(end_dim=1) # kluge to get around collate_fn
         out = model.training_step(data)
         
-        self.n_iter += 1
-        self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
-        self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
-        try:
-            self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
-        except:
-            pass
-
         loss = out['loss']
         # with torch.set_grad_enabled(True):
         loss.backward()
@@ -392,6 +384,14 @@ class Trainer:
         
         # optimization step
         if ((batch_idx + 1) % self.accumulate_grad_batches == 0) or (batch_idx + 1 == self.nbatch):
+            self.n_iter += 1
+            self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
+            self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
+            try:
+                self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
+            except:
+                pass
+
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=self.set_to_none)
             # self.optimizer.zero_grad() # zero the gradients for the next batch

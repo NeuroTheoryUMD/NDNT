@@ -199,6 +199,7 @@ def create_optimizer_params(
         weight_decay=0.01,
         learning_rate=1e-3,
         betas=[0.9, 0.999],
+        auto_lr=False,
         # L-BFGS specific
         full_batch=True,
         tolerance_change=1e-8,
@@ -260,7 +261,7 @@ def create_optimizer_params(
             'learning_rate': learning_rate,
             'betas': betas, 
             'amsgrad': False,
-            'auto_lr': False,
+            'auto_lr': auto_lr,
             'num_workers': num_workers,
             'num_gpus': num_gpus,
             'progress_bar_refresh': progress_bar_refresh,
@@ -1008,7 +1009,7 @@ def get_fit_versions(data_dir, model_name):
 
     dirlist = [x for x in os.listdir(os.path.join(data_dir, model_name)) if os.path.isdir(os.path.join(data_dir, model_name, x))]
         
-    versionlist = [re.findall('(?!version)\d+', x) for x in dirlist]
+    versionlist = [re.findall(r'(?!version)\d+', x) for x in dirlist]
     versionlist = [int(x[0]) for x in versionlist if not not x]
 
     outdict = {'version_num': [],
