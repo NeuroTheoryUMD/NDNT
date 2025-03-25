@@ -2,6 +2,7 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
+from copy import deepcopy
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm # progress bar
 from ..utils import save_checkpoint, ensure_dir
@@ -22,8 +23,9 @@ class Trainer:
             scheduler_after='batch',
             scheduler_metric=None,
             accumulate_grad_batches=1,
-            verbose=True,
+            verbose=1,
             set_grad_to_none=False,
+            save_epochs=False,
             **kwargs
             ):
         '''
@@ -57,12 +59,14 @@ class Trainer:
         
         ensure_dir(dirpath)
 
+        self.save_epochs = save_epochs
+
         # auto version if version is None
         if version is None:
             # try to find version number
             import re
             dirlist = os.listdir(dirpath)            
-            versionlist = [re.findall('(?!version)\d+', x) for x in dirlist]
+            versionlist = [re.findall(r'(?!version)\d+', x) for x in dirlist]
             versionlist = [int(x[0]) for x in versionlist if not not x]
             if versionlist:
                 max_version = max(versionlist)
@@ -162,7 +166,7 @@ class Trainer:
         self.optimizer.zero_grad() # set gradients to zero
 
         return model
-
+    # END trainer.prepare_fit()
     
     def fit_loop(self, model, epochs, train_loader, val_loader):
         """
@@ -241,14 +245,16 @@ class Trainer:
                         pass
 
             # validate every epoch
-            if self.epoch % 1 == 0:
-                out = self.validate_one_epoch(model, val_loader)
-                if out['val_loss'] < self.val_loss_min:
-                    is_best=True
-                else:
-                    is_best=False
+            #if self.epoch % 1 == 0:
+            out = self.validate_one_epoch(model, val_loader)
+            if out['val_loss'] < self.val_loss_min:
+                is_best=True
                 self.val_loss_min = out['val_loss']
-                self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
+            else:
+                is_best=False
+            #self.val_loss_min = out['val_loss']
+            #self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
+            self.logger.add_scalar('Loss/Validation (Epoch)', out['val_loss'], self.epoch)
             
             if self.verbose==1:
                 print("Epoch %d: train loss %.6f val loss %.6f" %(self.epoch, train_loss, out['val_loss']))
@@ -381,9 +387,9 @@ class Trainer:
         # with torch.set_grad_enabled(True):
         loss.backward()
         # loss.backward(create_graph=True)
-        
+
         # optimization step
-        if ((batch_idx + 1) % self.accumulate_grad_batches == 0) or (batch_idx + 1 == self.nbatch):
+        if (((batch_idx + 1) % self.accumulate_grad_batches) == 0) or (batch_idx + 1 == self.nbatch):
             self.n_iter += 1
             self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
             self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
@@ -425,15 +431,20 @@ class Trainer:
 
         # check point the model
         cpkt = {
-            'net': state, # the model state puts all the parameters in a dict
+            'net': deepcopy(state), # the model state puts all the parameters in a dict
             'epoch': epoch,
             'optim': self.optimizer.state_dict()
         } # probably also want to track n_ter =>  'n_iter': n_iter,
 
         if is_best:
             torch.save(model, os.path.join(self.dirpath, 'model_best.pt'))
+        
+        if self.save_epochs:
+            #ensure_dir(self.dirpath + 'epochs/')
+            torch.save(model, os.path.join(self.dirpath, f'model_epoch{epoch}.pt'))
 
         save_checkpoint(cpkt, os.path.join(self.dirpath, 'model_checkpoint.ckpt'), is_best=is_best)
+    # END Trainer.checkpoint_model()
     
     def graceful_exit(self, model):
         """

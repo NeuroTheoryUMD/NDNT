@@ -352,6 +352,8 @@ class NDN(nn.Module):
         early_stopping_patience=5,
         early_stopping_delta=0.0,
         optimize_graph=False,
+        save_epochs=False,
+        verbose=0, 
         **kwargs):
         """
         Returns a trainer object.
@@ -368,6 +370,7 @@ class NDN(nn.Module):
             early_stopping_patience (int): The number of epochs to wait for improvement before stopping early. Default is 5.
             early_stopping_delta (float): The minimum change in the monitored metric to be considered as improvement. Default is 0.0.
             optimize_graph (bool): Whether to optimize the computation graph during training. Default is False.
+            verbose: whether trainer should output messages, passed from fit options (default 0)
             **kwargs: Additional keyword arguments to be passed to the trainer.
 
         Returns:
@@ -382,9 +385,9 @@ class NDN(nn.Module):
 
         if optimizer is None:  # then specified through optimizer inputs
             optimizer = self.get_optimizer(optimizer_type=optimizer_type, **kwargs)
-
+        
         if early_stopping:
-            earlystopper = EarlyStopping( patience=early_stopping_patience, delta= early_stopping_delta )
+            earlystopper = EarlyStopping( patience=early_stopping_patience, delta=early_stopping_delta, verbose=verbose )
             #if isinstance(opt_params['early_stopping'], EarlyStopping):
             #    earlystopping = opt_params['early_stopping']
             #elif isinstance(opt_params['early_stopping'], dict):
@@ -420,6 +423,7 @@ class NDN(nn.Module):
                                          device=device,
                                          scheduler=scheduler,
                                          version=version,
+                                         save_epochs=save_epochs,
                                          **kwargs
                                          )
 
@@ -641,6 +645,7 @@ class NDN(nn.Module):
         block_sample=None, # to pass in flag to use dataset's block-sampler (and choose appropriate dataloader)
         reuse_trainer=False,
         device=None,
+        save_epochs=False,
         **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
         ):
 
@@ -779,6 +784,7 @@ class NDN(nn.Module):
                 save_dir=save_dir,
                 name=name,
                 device=device,
+                save_epochs=save_epochs,
                 **kwargs)
 
         t0 = time.time()
@@ -818,6 +824,7 @@ class NDN(nn.Module):
         num_workers=0,
         force_dict_training=False,  # will force dict-based training instead of using data-loaders for LBFGS
         device=None,
+        save_epochs=False,
         **kwargs  # kwargs replaces explicit opt_params, which can list some or all of the following
         ):
         """
@@ -889,6 +896,7 @@ class NDN(nn.Module):
             save_dir=save_dir,
             name=name,
             device=device,
+            save_epochs=save_epochs,
             **kwargs)
 
         t0 = time.time()
@@ -1387,7 +1395,7 @@ class NDN(nn.Module):
             assert(ii < len(self.networks)), 'Invalid network %d.'%ii
             print("Network %d:"%ii)
             self.networks[ii].list_parameters(layer_target=layer_target)
-
+    
     def set_parameters(self, ffnet_target=None, layer_target=None, name=None, val=None ):
         """
         Set the parameters for the specified feedforward network and layer.
@@ -1769,7 +1777,7 @@ class NDN(nn.Module):
         return model
 
     @classmethod
-    def load_model_chk(cls, checkpoint_path=None, model_name=None, version=None):
+    def load_model_chk(cls, checkpoint_path=None, model_name=None, version=None, filename=None):
         """
         Load a model from disk.
 
@@ -1785,9 +1793,9 @@ class NDN(nn.Module):
         from NDNT.utils.NDNutils import load_model as load
 
         assert checkpoint_path is not None, "Need to provide a checkpoint_path"
-        assert model_name is not None, "Need to provide a model_name"
+        #assert model_name is not None, "Need to provide a model_name"
 
-        model = load(checkpoint_path, model_name, version)
+        model = load(checkpoint_path, model_name, version, filename=filename)
         
         return model
 

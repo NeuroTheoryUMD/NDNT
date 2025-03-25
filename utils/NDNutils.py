@@ -205,7 +205,7 @@ def create_optimizer_params(
         tolerance_change=1e-8,
         tolerance_grad=1e-10,
         history_size=10,
-        accumulated_grad_batches=1,
+        accumulate_grad_batches=1,
         device=None,
         line_search_fn=None):
 
@@ -234,7 +234,7 @@ def create_optimizer_params(
             'line_search_fn': line_search_fn,
             'tolerance_change': tolerance_change,
             'tolerance_grad': tolerance_grad,
-            'accumulated_grad_batches': accumulated_grad_batches,
+            'accumulate_grad_batches': accumulate_grad_batches,
             'device': device,
             'early_stopping': False}
 
@@ -265,7 +265,7 @@ def create_optimizer_params(
             'num_workers': num_workers,
             'num_gpus': num_gpus,
             'progress_bar_refresh': progress_bar_refresh,
-            'accumulated_grad_batches': accumulated_grad_batches,
+            'accumulate_grad_batches': accumulate_grad_batches,
             'log_activations': log_activations, 
             'device': device,
             'optimize_graph': optimize_graph} 
@@ -874,7 +874,8 @@ def load_checkpoint(ckpt_dir_or_file: str, map_location=None, load_best=False):
 
 
 def ensure_dir(dir_name: str):
-    """Creates folder if not exists.
+    """
+    Creates folder if it does not exist.
 
     credit: pulled from https://github.com/IgorSusmelj/pytorch-styleguide
     """
@@ -1169,30 +1170,49 @@ def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0
     # return summary
     return summary_str, (total_params, trainable_params)
 
-def load_model(checkpoint_path, model_name='', version=None, verbose=True):
-    out = get_fit_versions(checkpoint_path, model_name)
-    if version is None:
-        version = out['version_num'][np.nanargmin(np.asarray(out['val_loss']))]
-        if verbose:
-            print("No version requested. Using (best) version (v=%d)" %version)
+def load_model(checkpoint_path, model_name='', version=None, verbose=True, filename=None):
+    """
+    Loads model from checkpoint
 
-    assert version in out['version_num'], "Version %d not found in %s. Must be: %s" %(version, checkpoint_path, str(out['version_num']))
-    ver_ix = np.where(version==np.asarray(out['version_num']))[0][0]
-    # Load the model
-    try:
-        model = torch.load(out['model_file'][ver_ix])
-        dirpath = os.path.dirname(out['model_file'][ver_ix])
-        if os.path.exists(os.path.join(dirpath, 'best_model.ckpt')):
-            state_dict = torch.load(os.path.join(dirpath, 'best_model.ckpt'))
-            model.load_state_dict(state_dict['net'])
-    except AttributeError:
-        print("load_model: could not load model. AttributeError. This likely means that the file [%s] was not pickled correctly because you were changing the class too much while training" %out['model_file'][ver_ix])
-        print("Loading the state dict from the last checkpoint instead")
-        filename = out['model_file'][ver_ix]
-        modelname = os.path.basename(filename)
-        model = torch.load(filename.replace(modelname, 'model_checkpoint.ckpt'))
-        return model
+    Args:
+        checkpoint_path
+        model_name=''
+        version=None
+        verbose (default True)
+        filename: (default None)
 
+    Returns:
+        model: NDN model
+    """
+    if model_name is not None:
+        out = get_fit_versions(checkpoint_path, model_name)
+        if version is None:
+            version = out['version_num'][np.nanargmin(np.asarray(out['val_loss']))]
+            if verbose:
+                print("No version requested. Using (best) version (v=%d)" %version)
+
+        assert version in out['version_num'], "Version %d not found in %s. Must be: %s" %(version, checkpoint_path, str(out['version_num']))
+        ver_ix = np.where(version==np.asarray(out['version_num']))[0][0]
+        # Load the model
+        try:
+            model = torch.load(out['model_file'][ver_ix])
+            dirpath = os.path.dirname(out['model_file'][ver_ix])
+            #if os.path.exists(os.path.join(dirpath, 'best_model.ckpt')):
+            #    state_dict = torch.load(os.path.join(dirpath, 'best_model.ckpt'))
+            if os.path.exists(os.path.join(dirpath, 'model_best.pt')):
+                model = torch.load(os.path.join(dirpath, 'model_best.pt'))
+                #state_dict = torch.load(os.path.join(dirpath, 'model_best.pt'))
+                #model.load_state_dict(state_dict['net'])
+                #model.load_state_dict(state_dict)
+        except AttributeError:
+            print("load_model: could not load model. AttributeError. This likely means that the file [%s] was not pickled correctly because you were changing the class too much while training" %out['model_file'][ver_ix])
+            print("Loading the state dict from the last checkpoint instead")
+            filename = out['model_file'][ver_ix]
+            modelname = os.path.basename(filename)
+            model = torch.load(filename.replace(modelname, 'model_checkpoint.ckpt'))
+            return model
+    else:
+        model = torch.load(os.path.join(checkpoint_path, filename))
     return model
 
 
