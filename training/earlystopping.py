@@ -26,15 +26,15 @@ class EarlyStopping:
     def __call__(self, val_loss):
 
         score = -val_loss
-        if self.verbose == 2:
-            print("EarlyStopping score = {}".format(score))
+        #if self.verbose:
+        #    print("EarlyStopping score = {}".format(-score))
 
         if self.best_score is None:
             self.best_score = score
         elif score <= self.best_score + self.delta:
             self.counter += 1
-            if self.verbose > 0:
-                self.trace_func(f'\nEarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.verbose > 1:
+                self.trace_func(f'  EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
                 self.early_stop = True
         else:

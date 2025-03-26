@@ -353,7 +353,7 @@ class NDN(nn.Module):
         early_stopping_delta=0.0,
         optimize_graph=False,
         save_epochs=False,
-        verbose=0, 
+        verbose=1, 
         **kwargs):
         """
         Returns a trainer object.
@@ -370,7 +370,7 @@ class NDN(nn.Module):
             early_stopping_patience (int): The number of epochs to wait for improvement before stopping early. Default is 5.
             early_stopping_delta (float): The minimum change in the monitored metric to be considered as improvement. Default is 0.0.
             optimize_graph (bool): Whether to optimize the computation graph during training. Default is False.
-            verbose: whether trainer should output messages, passed from fit options (default 0)
+            verbose (bool): whether trainer should output messages, passed from fit options (default 0)
             **kwargs: Additional keyword arguments to be passed to the trainer.
 
         Returns:
@@ -424,6 +424,7 @@ class NDN(nn.Module):
                                          scheduler=scheduler,
                                          version=version,
                                          save_epochs=save_epochs,
+                                         verbose=verbose,
                                          **kwargs
                                          )
 
@@ -440,6 +441,7 @@ class NDN(nn.Module):
             full_batch=False,
             pin_memory=False,
             data_seed=None,
+            verbose=0,
             #device=None,
             **kwargs):
         
@@ -456,6 +458,7 @@ class NDN(nn.Module):
             full_batch (bool): Whether to use the full batch for training.
             pin_memory (bool): Whether to pin memory for faster data loading.
             data_seed (int): The seed to use for the data loader.
+            verbose (int): whether to output information during fit (above 1) <== not currently used
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -466,7 +469,7 @@ class NDN(nn.Module):
         from torch.utils.data import DataLoader, random_split, Subset
 
         # get the verbose flag if it is provided, default to False if not
-        verbose = kwargs.get('verbose', False)
+        #verbose = kwargs.get('verbose', False)
 
         covariates = list(dataset[0].keys())
         #print('Dataset covariates:', covariates)
@@ -634,6 +637,7 @@ class NDN(nn.Module):
         train_inds=None,
         val_inds=None,
         speckledXV=False,
+        verbose=2, 
         seed=None, # this currently seed for data AND optimization
         save_dir:str=None,
         version:int=None,
@@ -657,6 +661,7 @@ class NDN(nn.Module):
             train_inds (list): The indices of the training data.
             val_inds (list): The indices of the validation data.
             speckledXV (bool): Whether to use speckled cross-validation. Default is False.
+            verbose (int): level of text info while running (0=None, 1=epoch level, 2=batch and extra info): default 2
             seed (int): The seed to use for reproducibility.
             save_dir (str): The directory to save the model checkpoints.
             version (int): The version of the trainer.
@@ -682,9 +687,7 @@ class NDN(nn.Module):
             2. Prepare regularizers
             3. Run the main fit loop from the trainer, checkpoint, and save model
         """
-
         import time
-
         assert batch_size is not None, "NDN.fit() must be passed batch_size in optimization params."
 
         if save_dir is None:
@@ -728,9 +731,8 @@ class NDN(nn.Module):
                             print( "Warning: no train_inds specified in dataset" )
                     else:
                         train_inds = range(len(dataset))
-                        if 'verbose' in kwargs.keys():
-                            if kwargs['verbose'] > 0:
-                                print( "Warning: no train_inds specified. Using full dataset passed in.")
+                        if verbose > 0:
+                            print( "Warning: no train_inds specified. Using full dataset passed in.")
             if val_inds is None:
                 if self.block_sample:
                     if hasattr(dataset, 'val_blks'):
@@ -768,9 +770,8 @@ class NDN(nn.Module):
         # Prepare model regularization (will build reg_modules)
         self.prepare_regularization()
 
-        if 'verbose' in kwargs:
-            if kwargs['verbose'] > 0:
-                print( 'Model:', self.model_name)
+        if verbose:
+            print( 'Model:', self.model_name)
 
         # Make trainer 
         if reuse_trainer & (self.trainer is not None):
@@ -784,6 +785,7 @@ class NDN(nn.Module):
                 save_dir=save_dir,
                 name=name,
                 device=device,
+                verbose=verbose,
                 save_epochs=save_epochs,
                 **kwargs)
 
@@ -797,7 +799,7 @@ class NDN(nn.Module):
         else:
             # Create dataloaders / 
             train_dl, valid_dl = self.get_dataloaders(
-                dataset, batch_size=batch_size, 
+                dataset, batch_size=batch_size, verbose=verbose,
                 train_inds=train_inds, val_inds=val_inds, data_seed=seed, **kwargs)
     
             trainer.fit(self, train_dl, valid_dl, seed=seed)
@@ -805,11 +807,11 @@ class NDN(nn.Module):
 
         self.trainer = trainer
 
-        if 'verbose' in kwargs.keys():
-            if kwargs['verbose'] > 0:
-                print('  Fit complete:', t1-t0, 'sec elapsed')
-        else:  # default behavior
-            print('  Fit complete:', t1-t0, 'sec elapsed')
+        #if 'verbose' in kwargs.keys():
+        #    if kwargs['verbose'] > 0:
+        #        print('  Fit complete:', t1-t0, 'sec elapsed')
+        #else:  # default behavior
+        print('  Fit complete:', t1-t0, 'sec elapsed')
     # END NDN.fit
 
     def fit_dl(self,
@@ -1745,6 +1747,39 @@ class NDN(nn.Module):
         out = self(sample)
         handle.remove()
         return activations
+    # END NDN.get_activations()
+
+    def model_string( self ):
+        """
+        Automated way to name model, based on NDN network structure, num outputs, and number of layers.
+        Format is NDN101_S3_R1_N1_A1 would be an NDN with 101 outputs, 3-layer scaffold followed by readout, 
+        normal (drift) layer, and add (comb) layer
+
+        Returns:
+            str: The model name.
+        """
+        from NDNT.utils import filename_num2str
+
+        network_codes = {
+            'normal': 'N',   
+            'add': 'A',      
+            'mult': 'M',     
+            'scaffold': 'S', 
+            'scaffold3d': 'Q',
+            'readout': 'R'}
+        
+        Noutputs = np.prod(self.networks[-1].layers[-1].output_dims)
+        name = 'NDN' + filename_num2str(Noutputs, num_digits=3)
+        for ii in range(len(self.networks)):
+            name += '_'
+            net_type = self.ffnet_list[ii]['ffnet_type']
+            if net_type in network_codes:
+                name += network_codes[net_type]
+            else:
+                name += 'X'
+            name += str(len(self.networks[ii].layers))
+        return name
+    # END NDN.model_string()
 
     @property
     def device( self ):
@@ -1777,59 +1812,24 @@ class NDN(nn.Module):
         return model
 
     @classmethod
-    def load_model_chk(cls, checkpoint_path=None, model_name=None, version=None, filename=None):
+    def load_model_ckpt(cls, checkpoint_path=None, model_name=None, version=None, filename=None):
         """
-        Load a model from disk.
+        Load a model from disk. Note that if model not named, the full path must be put into checkpoint path.
+        If filename 
 
         Args:
-            checkpoint_path: The path to the directory containing model checkpoints.
-            model_name: The name of the model (from model.model_name).
-            version: The checkpoint version (default: best).
+            checkpoint_path: The path to the directory containing model checkpoints
+            model_name: The name of the model (from model.model_name)
+            version: The checkpoint version (default: best)
+            filename: Enter if want to override 'best model' and load specific file in specified path
 
         Returns:
-            model: The loaded model.
+            model: The loaded model
         """
-        
         from NDNT.utils.NDNutils import load_model as load
 
         assert checkpoint_path is not None, "Need to provide a checkpoint_path"
         #assert model_name is not None, "Need to provide a model_name"
-
         model = load(checkpoint_path, model_name, version, filename=filename)
-        
         return model
-
-    def model_string( self ):
-        """
-        Automated way to name model
-
-        Returns:
-            str: The model name.
-        """
-        
-        from NDNT.utils import filename_num2str
-
-        label_chart = {
-            'NDNLayer': 'N',
-            'ConvLayer': 'C', 
-            'TconvLayer': 'Ct',
-            'STconvLayer': 'Cs',
-            'ReadoutLayer':'R',
-            'FixationLayer': 'F', 
-            'Dim0Layer': 'D',
-            'ChannelLayer': 'A'}
-
-        Noutputs = np.prod(self.networks[-1].layers[-1].output_dims)
-        name = 'M' + filename_num2str(Noutputs, num_digits=3)
-        for ii in range(len(self.networks)):
-            name += '_'
-            for jj in range(len(self.networks[ii].layers)):
-                t = "%s"%type(self.networks[ii].layers[jj])
-                p, q = t.rfind('.'), t.rfind("'")
-                Ltype = t[(p+1):q]
-                if Ltype in label_chart:
-                    name += label_chart[Ltype]
-                else:
-                    name += 'X'
-        return name
-
+    # END NDN.load_model_chk()

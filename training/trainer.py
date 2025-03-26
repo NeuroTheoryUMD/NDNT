@@ -26,8 +26,7 @@ class Trainer:
             verbose=1,
             set_grad_to_none=False,
             save_epochs=False,
-            **kwargs
-            ):
+            **kwargs):
         '''
         Args:
             model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
@@ -337,7 +336,7 @@ class Trainer:
         model.train() # set model to training mode
 
         runningloss = 0
-        if self.verbose == 2:
+        if self.verbose > 1:
             pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
             pbar.set_description("Epoch %i" %epoch)
         else:
