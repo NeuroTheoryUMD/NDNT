@@ -10,7 +10,7 @@ class EarlyStopping:
         """            
         Args:
             patience (int): How long to wait after last time validation loss improved. (Default: 7)
-            verbose (int): If >0, prints a message for each validation loss improvement. (Default: 0)
+            verbose (int): If >2, prints a message for each validation loss improvement. (Default: 0)
             delta (float): Minimum change in the monitored quantity to qualify as an improvement. (Default: 0)
             trace_func (function): trace print function. (Default: print)
         """
@@ -33,8 +33,8 @@ class EarlyStopping:
             self.best_score = score
         elif score <= self.best_score + self.delta:
             self.counter += 1
-            if self.verbose > 1:
-                self.trace_func(f'  EarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.verbose > 2:
+                self.trace_func(f'=> EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
                 self.early_stop = True
         else:

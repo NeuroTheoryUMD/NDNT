@@ -10,42 +10,39 @@ from .lbfgsnew import LBFGSNew
 
 class Trainer:
     '''
-    This is the most basic trainer. There are fancier things we could add (hooks, callbacks, etc.), but I don't understand them well enough yet.
+    This is the most basic trainer. There are fancier things we could add (hooks, callbacks, etc.), but this is bare-bones variable tracking.
     '''
-    def __init__(self, optimizer=None, scheduler=None,
+    def __init__(
+            self, optimizer=None, 
             device=None,
-            optimize_graph=False,
             dirpath=os.path.join('.', 'checkpoints'),
             version=None,
             max_epochs=100,
             early_stopping=None,
-            log_activations=False,
-            scheduler_after='batch',
-            scheduler_metric=None,
             accumulate_grad_batches=1,
             verbose=1,
-            set_grad_to_none=False,
             save_epochs=False,
+            optimize_graph=False, log_activations=False,
+            scheduler=None, scheduler_after='batch', scheduler_metric=None,
+            #set_grad_to_none=False,
             **kwargs):
         '''
         Args:
-            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
-
-            optimizer (torch.optim): Pytorch optimizer.
-
-            device (torch.device): Device to train on
-                            Default: will use CUDA if available
-            scheduler (torch.scheduler): learning rate scheduler
-                            Default: None
-            dirpath (str): Path to save checkpoints
-                            Default: current directory
-            multi_gpu (bool): Whether to use multiple GPUs
-                            Default: False
-            max_epochs (int): Maximum number of epochs to train
-                            Default: 100
-            early_stopping (EarlyStopping): If not None, will use this as the early stopping callback.
-                            Default: None
-            optimize_graph (bool): Whether to optimize graph before training
+            optimizer (torch.optim): Pytorch optimizer to use
+            scheduler (torch.scheduler): learning rate scheduler (Default: None)
+            device (torch.device): Device to train on (Default: None, in which case it will use CUDA if available)
+            dirpath (str): Path to save checkpoints (Default: current directory)
+            version (int): Version of model to use (Default: None, in which case will create next version)
+            max_epochs (int): Maximum number of epochs to train (Default: 100)
+            early_stopping (EarlyStopping): If not None, will use this as the early stopping callback (Default: None)
+            accumulate_grad_batches (int): How many batches to accumulate before taking optimizer step (Default: 1)
+            verbose: degree of feedback to screen (int): 0=None, 1=epoch-level, 2=batch-level, 3=add early stopping info (Default 1)
+            save_epochs (bool): whether to save checkpointed model at the end of every epoch (Default: False)
+            optimize_graph (bool): whether to optimize graph before training
+            log_activations (bool): whether to log activations (Default: False)
+            scheduler: Currently not used, along with next two (Default: None)
+            scheduler_after: (Default: 'batch')
+            scheduler_metric: (Default: None)
         '''
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -53,9 +50,14 @@ class Trainer:
         self.log_activations = log_activations
         self.accumulate_grad_batches = accumulate_grad_batches
         self.verbose = verbose
-        self.set_to_none = set_grad_to_none
+        #self.set_to_none = set_grad_to_none
         self.fullbatch = False
-        
+        # For accumulating running losses across accumulated batches
+        self.accum_loss = 0.0
+        self.accum_train_loss = 0.0
+        self.accum_reg = 0.0
+        self.accum_count = 0.0
+
         ensure_dir(dirpath)
 
         self.save_epochs = save_epochs
@@ -88,13 +90,12 @@ class Trainer:
         self.n_iter = 0
         self.val_loss_min = np.Inf
 
-        
         # scheduler defaults
         self.step_scheduler_after = scheduler_after # this is the only option for now
         self.step_scheduler_metric = scheduler_metric
+    # END trainer.__init__()
 
-
-    def fit(self, model, train_loader, val_loader, seed=None):
+    def fit( self, model, train_loader, val_loader, seed=None ):
         """
         Fit the model to the data.
 
@@ -119,6 +120,7 @@ class Trainer:
             return
 
         self.graceful_exit(model)
+    # END trainer.fit()
 
     def prepare_fit(self, model, seed=None):
         """
@@ -180,7 +182,6 @@ class Trainer:
         Returns:
             None
         """
-        
         self.nbatch = len(train_loader)
 
         if self.fullbatch:
@@ -224,22 +225,19 @@ class Trainer:
                         self.logger.add_histogram(
                                     f"Activations/{name.replace('.', ' ')}/hist",
                                     activations[name].view(-1),
-                                    self.epoch,
-                                )
+                                    self.epoch)
 
                         self.logger.add_scalar(
                                     f"Activations/{name.replace('.', ' ')}/mean",
                                     activations[name].mean(),
-                                    self.epoch,
-                                )
+                                    self.epoch)
 
                         self.logger.add_scalar(
                                     f"Activations/{name.replace('.', ' ')}/std",
                                     activations[name]
                                     .std(dim=0)
                                     .mean(),
-                                    self.epoch,
-                                )
+                                    self.epoch)
                     except:
                         pass
 
@@ -318,7 +316,8 @@ class Trainer:
                     pbar.set_postfix({'val_loss': str(np.round(runningloss/(batch_idx+1), 6))})
 
         return {'val_loss': runningloss/nsteps}
-            
+    # END trainer.validate_one_epoch()
+
     def train_one_epoch(self, model, train_loader, epoch=0):
         """
         Train for one epoch.
@@ -358,7 +357,7 @@ class Trainer:
                 pbar.set_postfix({'train_loss': str(np.round(runningloss/(batch_idx + 1), 6))})
 
         return {'train_loss': runningloss/(batch_idx + 1)} # should this be an aggregate out?
-
+    # END trainer.train_one_epoch()
 
     def train_one_step(self, model, data, batch_idx=None):
         """
@@ -386,16 +385,29 @@ class Trainer:
         # with torch.set_grad_enabled(True):
         loss.backward()
         # loss.backward(create_graph=True)
+        self.accum_loss += out['loss'].item()
+        self.accum_train_loss += out['train_loss'].item()
+        self.accum_reg += out['reg_loss'].item()
+        self.accum_count += 1.0
 
         # optimization step
         if (((batch_idx + 1) % self.accumulate_grad_batches) == 0) or (batch_idx + 1 == self.nbatch):
             self.n_iter += 1
-            self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
-            self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
+            # NEED TO ACCUMULATE THESE VALUES THAT ARE LOGGED
+            #self.logger.add_scalar('Loss/Loss', out['loss'].item(), self.n_iter)
+            #self.logger.add_scalar('Loss/Train', out['train_loss'].item(), self.n_iter)
+            self.logger.add_scalar('Loss/Loss', self.accum_loss/self.accum_count, self.n_iter)
+            self.logger.add_scalar('Loss/Train', self.accum_train_loss/self.accum_count, self.n_iter)
+
             try:
-                self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
+                #self.logger.add_scalar('Loss/Reg', out['reg_loss'].item(), self.n_iter)
+                self.logger.add_scalar('Loss/Reg', self.accum_reg/self.accum_count, self.n_iter)
             except:
                 pass
+            self.accum_loss = 0.0
+            self.accum_train_loss = 0.0
+            self.accum_reg = 0.0
+            self.accum_count = 0.0
 
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=self.set_to_none)
