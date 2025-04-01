@@ -22,9 +22,8 @@ class Trainer:
             accumulate_grad_batches=1,
             verbose=1,
             save_epochs=False,
-            optimize_graph=False, log_activations=False,
+            optimize_graph=False, set_grad_to_none=False, log_activations=False,
             scheduler=None, scheduler_after='batch', scheduler_metric=None,
-            #set_grad_to_none=False,
             **kwargs):
         '''
         Args:
@@ -39,6 +38,7 @@ class Trainer:
             verbose: degree of feedback to screen (int): 0=None, 1=epoch-level, 2=batch-level, 3=add early stopping info (Default 1)
             save_epochs (bool): whether to save checkpointed model at the end of every epoch (Default: False)
             optimize_graph (bool): whether to optimize graph before training
+            set_grad_to_none (bool): option needed for optimizer (Default: False)
             log_activations (bool): whether to log activations (Default: False)
             scheduler: Currently not used, along with next two (Default: None)
             scheduler_after: (Default: 'batch')
@@ -50,7 +50,7 @@ class Trainer:
         self.log_activations = log_activations
         self.accumulate_grad_batches = accumulate_grad_batches
         self.verbose = verbose
-        #self.set_to_none = set_grad_to_none
+        self.set_to_none = set_grad_to_none
         self.fullbatch = False
         # For accumulating running losses across accumulated batches
         self.accum_loss = 0.0

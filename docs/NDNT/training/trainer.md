@@ -48,7 +48,7 @@ Classes
         Returns:
             dict: validation loss
 
-`Trainer(optimizer=None, device=None, dirpath='./checkpoints', version=None, max_epochs=100, early_stopping=None, accumulate_grad_batches=1, verbose=1, save_epochs=False, optimize_graph=False, log_activations=False, scheduler=None, scheduler_after='batch', scheduler_metric=None, **kwargs)`
+`Trainer(optimizer=None, device=None, dirpath='./checkpoints', version=None, max_epochs=100, early_stopping=None, accumulate_grad_batches=1, verbose=1, save_epochs=False, optimize_graph=False, set_grad_to_none=False, log_activations=False, scheduler=None, scheduler_after='batch', scheduler_metric=None, **kwargs)`
 :   This is the most basic trainer. There are fancier things we could add (hooks, callbacks, etc.), but this is bare-bones variable tracking.
     
     Args:
@@ -63,6 +63,7 @@ Classes
         verbose: degree of feedback to screen (int): 0=None, 1=epoch-level, 2=batch-level, 3=add early stopping info (Default 1)
         save_epochs (bool): whether to save checkpointed model at the end of every epoch (Default: False)
         optimize_graph (bool): whether to optimize graph before training
+        set_grad_to_none (bool): option needed for optimizer (Default: False)
         log_activations (bool): whether to log activations (Default: False)
         scheduler: Currently not used, along with next two (Default: None)
         scheduler_after: (Default: 'batch')
