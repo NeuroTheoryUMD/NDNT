@@ -195,10 +195,10 @@ def plot_internal_convlayer( wP, cmap=None ):
     else:
         ncols = nch*2
         nrows = int(np.ceil(nf/2))
-        
-    m = np.max(abs(wP))
+    
     subplot_setup(nrows, ncols, row_height=12/ncols)
     for ii in range(nf):
+        m = np.max(abs(wP[...,ii]))
         for ch in range(nch):
             plt.subplot(nrows, ncols, nch*ii+ch+1)
             imagesc(wP[ch,:,:,ii], max=m, cmap=cmap, axis_labels=False)
