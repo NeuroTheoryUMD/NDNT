@@ -300,14 +300,16 @@ class NDN(nn.Module):
 
     def validation_step(self, batch, batch_idx=None):
         """
-        Performs a validation step for the model.
+        Performs a validation step for the model: calculates the loss on the validation data: loss does not include
+        regularization, although includes this to have the same categories as train_loss
 
         Args:
             batch (dict): A dictionary containing the input batch data.
             batch_idx (int, optional): The index of the current batch. Defaults to None.
 
         Returns:
-            dict: A dictionary containing the computed losses for the validation step.
+            dict: A dictionary containing the computed losses for the validation step, 
+                with 'loss', 'val_loss' (same), and 'reg_loss' (actually reg_loss, but not used).
         """
         
         y = batch['robs']
@@ -321,7 +323,7 @@ class NDN(nn.Module):
         loss = self.val_loss(y_hat, y, dfs)
         
         reg_loss = self.compute_reg_loss()
-        
+
         return {'loss': loss, 'val_loss': loss, 'reg_loss': reg_loss}
     
     def compute_reg_loss(self):
@@ -334,11 +336,11 @@ class NDN(nn.Module):
             Returns:
                 The total regularization loss.
             """
-
             rloss = []
             for network in self.networks:
                 rloss.append(network.compute_reg_loss())
             return reduce(torch.add, rloss)
+    # END NDN.compute_reg_loss()
     
     def get_trainer(self,
         version=None,

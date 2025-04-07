@@ -988,7 +988,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         """
         num_angles = self.input_dims[-1]
         if mu is None:
-            mu = self.Qmu.detach().numpy() 
+            mu = self.Qmu.cpu().detach().numpy() 
 
         mu += - 1/num_angles # first bin at 0 degrees is actually a shifted mu value (not right at edge)
         thetas = mu*max_angle/2 + max_angle/2
