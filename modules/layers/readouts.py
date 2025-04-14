@@ -587,21 +587,20 @@ class ReadoutLayer3d(ReadoutLayer):
 
 class FixationLayer(NDNLayer):
     """
-    FixationLayer for fixation.
+    FixationLayer to work in tandem with readout-layer to shift the stimulus (well, the
+    position of the readout) for each fixation. These shifts are in units of mus, with the
+    whole field of view corresponding to -1 to +1. They have a 'sigma' (width) that is either 
+    the same across all fixations or one for each fixation determined by 'single_sigma' arg.
     """
     def __init__(self,
             num_fixations=None, 
             num_spatial_dims=2,
-            #input_dims=None,  # this has to be set to [1,1,1,1] by default
+            input_dims=None,  # this has to be set to [1,1,1,1] by default
             batch_sample=False,
             fix_n_index=False,
-            #init_mu_range=0.1,
-            init_sigma=0.3,
+            init_sigma=0.2,
             single_sigma=False,
             #gauss_type: str='uncorrelated', # 'isotropic', 'uncorrelated', or 'full'
-            #align_corners=False,
-            bias=False,
-            NLtype='lin',
             **kwargs):
         """
         Layer weights become the shift for each fixation, sigma is constant over each dimension.
@@ -620,14 +619,16 @@ class FixationLayer(NDNLayer):
         #assert np.prod(input_dims[1:]) == 1, 'something wrong with fix-layer input_dims'
         assert num_fixations is not None, "FIX LAYER: Must set number of fixations"
         assert num_spatial_dims in [1,2], "FIX LAYER: num_space must be set to spatial dimensionality (1 or 2)"
-        assert not bias, "FIX LAYER: cannot have bias term"
-        bias = False
+        if input_dims is not None:
+            assert np.prod(input_dims) == 1, "FIX LAYER: Cant specify input dims other than trivial."
+        #assert not bias, "FIX LAYER: cannot have bias term"
 
         super().__init__(
+            input_dims=[1,1,1,1],
             num_filters = num_spatial_dims,
             filter_dims = [1, num_fixations, 1, 1],
-            NLtype = NLtype,
-            bias=bias,
+            NLtype = 'lin',
+            bias=False,
             **kwargs)
 
         # Determine whether one- or two-dimensional readout
@@ -642,19 +643,20 @@ class FixationLayer(NDNLayer):
         # shared sigmas across all fixations
         if self.single_sigma:
             self.sigmas = Parameter(torch.Tensor(self.num_spatial_dims)) 
+            if num_spatial_dims > 1:
+                print('WARNING: might not generalize for num_spatial_dims == 2')
         else:
             # individual sigmas for each fixation 
             self.sigmas = Parameter(torch.Tensor(self.num_fixations,1))  
         
         self.sigmas.data.fill_(self.init_sigma)
         self.weight.data.fill_(0.0)
-        
-        self.sample = False
     # END FixationLayer.__init__
 
     def forward(self, x, shift=None):
         """
-        The input is the sampled fixation-stim
+        The input is the fixation number across all relevant time points. This will return
+        the corresponding weight, processed by a tanh (so max value is +/- 1)
         
         Args:
             x: input data
@@ -674,46 +676,42 @@ class FixationLayer(NDNLayer):
         
         # In case x gets passed in with trivial second dim (squeeze)
         if len(x.shape)> 1:
-            print('  WARNING: fixations should not have second dimension -- squeeze it')
-            x = x.squeeze()-1
+            #print('  WARNING: fixations should not have second dimension -- squeeze it')
+            x = x.squeeze()#-1
 
         # Actual fixations labeled 1-NFIX
         # Will make by default fixation label '0' lead to no shift
-        shift_array = F.pad(self.weight, (0,0,1,0))
-        y = torch.tanh(shift_array[x,:])   # fix_n
+        #y = torch.tanh(shift_array[x,:])   # fix_n
 
+        shift_array = F.pad(self.weight, (0,0,1,0))  # makes fixation 0 map to 0 shift
         if self.single_sigma:
             #s = self.sigmas**2
-            s = self.sigmas 
+            s = self.sigmas*torch.ones((N,1), dtype=torch.float32, device=self.sigmas.device)
         else:
             #s = self.sigmas[x]**2
             sigma_array = F.pad(self.sigmas, (0,0,1,0))
             s = sigma_array[x]
 
-        # this will be batch-size x num_spatial dims (corresponding to mean loc)        
-        if self.sample:  # can turn off sampling, even with training
-            if self.training:
-                # add sigma-like noise around mean locations
-                if self.batch_sample:
-                    sample_shape = (1,) + (self.num_spatial_dims,)
-                    gaus_sample = y.new(*sample_shape).normal_().repeat(N,1)
-                else:
-                    sample_shape = (N,) + (self.num_spatial_dims,)
-                    gaus_sample = y.new(*sample_shape).normal_()
-                
-                y = (gaus_sample * s + y).clamp(-1,1)
+        # Shift to mean shift positions
+        y = shift_array[x,:]   # fix_n
 
-        return y
-    # END FixationLayer.forward
-    
-    def initialize(self, *args, **kwargs):
-        """
-        This will initialize the layer parameters.
-        """
-        raise NotImplementedError("initialize is not implemented for ", self.__class__.__name__)
+        # this will be batch-size x num_spatial dims (corresponding to mean loc)        
+        if self.training:
+            # add sigma-like noise around mean locations
+            if self.batch_sample:
+                sample_shape = (1,) + (self.num_spatial_dims,)
+                gaus_sample = y.new(*sample_shape).normal_().repeat(N,1)
+            else:
+                # note that this will have scatter for each time point, not each fixation
+                sample_shape = (N,) + (self.num_spatial_dims,)
+                gaus_sample = y.new(*sample_shape).normal_()
+            y += gaus_sample * s
+
+        return torch.tanh(y)
+    # END FixationLayer.forward()
 
     @classmethod
-    def layer_dict(cls, num_fixations=None, num_spatial_dims=2, init_sigma=0.25, input_dims=None, **kwargs):
+    def layer_dict(cls, num_fixations=None, num_spatial_dims=2, init_sigma=0.2, input_dims=None, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -735,22 +733,21 @@ class FixationLayer(NDNLayer):
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'fixation'
         # delete standard layer info for purposes of constructor
-        del Ldict['input_dims']
         del Ldict['num_filters']
         del Ldict['bias']
+        del Ldict['NLtype']
         # Added arguments
-        Ldict['batch_sample'] = True
+        Ldict['batch_sample'] = False
         Ldict['fix_n_index'] = False
         Ldict['init_mu_range'] = 0.1
         Ldict['init_sigma'] = init_sigma
         Ldict['single_sigma'] = False
-        Ldict['gauss_type'] = 'uncorrelated'
-        Ldict['align_corners'] = False
         Ldict['num_fixations'] = num_fixations
         Ldict['num_spatial_dims'] = 2
         Ldict['input_dims'] = [1,1,1,1]
         return Ldict
     # END [classmethod] FixatonLayer.layer_dict
+
 
 class ReadoutLayerQsample(ReadoutLayer3d):
     """

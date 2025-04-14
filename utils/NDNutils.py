@@ -88,7 +88,7 @@ def fit_lbfgs_batch(
     data should be on the cpu, and it copies the model and individual batches to the GPU,
     accumulating full-dataset gradients for each epoch
 
-    Inputs:
+    Args:
         Model: Pytorch model
         dataset: Dataset that can be sampled
         batch_size: size of chunk to sample; superceded by num_chunks
@@ -97,12 +97,15 @@ def fit_lbfgs_batch(
         device: GPU device to copy everything to
         verbose: output to screen
 
+    Returns:
+        None, but model will reflect fit parameters
+
     '''
     #from tqdm import tqdm
     from .DanUtils import chunker
 
     if train_inds is None:
-        train_inds = np.arange(ds_size)
+        train_inds = np.arange(len(dataset))
     ds_size = len(train_inds)
 
     if num_chunks is not None:
@@ -200,7 +203,7 @@ def create_optimizer_params(
         weight_decay=0.01,
         learning_rate=1e-3,
         betas=[0.9, 0.999],
-        auto_lr=False,
+        auto_lr=True,
         # L-BFGS specific
         full_batch=True,
         tolerance_change=1e-8,

@@ -98,7 +98,7 @@ class FFnetwork(nn.Module):
         self.layer_types = []   # read from layer_list (if necessary at all)
         self.xstim_n = xstim_n
         self.ffnets_in = ffnet_n
-
+        self.shifter = False
         num_layers = len(self.layer_list)
 
         if num_layers == 0:
@@ -180,9 +180,12 @@ class FFnetwork(nn.Module):
             if self.xstim_n is not None:
                 num_input_networks += 1
             assert len(input_dims_list) == num_input_networks, 'Internal: misspecification of input_dims for FFnetwork.'
-
+            if self.shifter:
+                num_skip = 1
+            else: 
+                num_skip = 0
             # Go through the input dims of the other ffnetowrks to verify they are valid for the type of network
-            for ii in range(num_input_networks):
+            for ii in range(num_input_networks-num_skip):
                 if ii == 0:
                     num_cat_filters = input_dims_list[0][0]
                 else:
@@ -744,32 +747,6 @@ class ReadoutNetwork(FFnetwork):
     """
     A readout using a spatial transformer layer whose positions are sampled from one Gaussian per neuron. Mean
     and covariance of that Gaussian are learned.
-    
-    This essentially used the constructor for Point1DGaussian, with dicationary input.
-    Currently there is no extra code required at the network level. I think the constructor
-    can be left off entirely, but leaving in in case want to add something.
-
-    Args:
-        in_shape (list, tuple): shape of the input feature map [channels, width, height]
-        outdims (int): number of output units
-        bias (bool): adds a bias term
-        init_mu_range (float): initialises the the mean with Uniform([-init_range, init_range])
-                            [expected: positive value <=1]. Default: 0.1
-        init_sigma (float): The standard deviation of the Gaussian with `init_sigma` when `gauss_type` is
-            'isotropic' or 'uncorrelated'. When `gauss_type='full'` initialize the square root of the
-            covariance matrix with with Uniform([-init_sigma, init_sigma]). Default: 1
-        batch_sample (bool): if True, samples a position for each image in the batch separately
-                            [default: True as it decreases convergence time and performs just as well]
-        align_corners (bool): Keyword agrument to gridsample for bilinear interpolation.
-                It changed behavior in PyTorch 1.3. The default of align_corners = True is setting the
-                behavior to pre PyTorch 1.3 functionality for comparability.
-        gauss_type (str): Which Gaussian to use. Options are 'isotropic', 'uncorrelated', or 'full' (default).
-        shifter (dict): Parameters for a predictor of shfiting grid locations. Has to have a form like
-                        {
-                        'hidden_layers':1,
-                        'hidden_features':20,
-                        'final_tanh': False,
-                        }
     """
 
     def __repr__(self):
@@ -778,9 +755,14 @@ class ReadoutNetwork(FFnetwork):
         s += self.__class__.__name__
         return s
 
-    def __init__(self, **kwargs):
+    def __init__(self, shifter=False, **kwargs):
+        """
+        Same as contructor for regular network, with extra argument to say if there is a shifter coming in. 
+        If there is a shifter, it will interpret (in the forward) the last element routing towards the shifter
+        """
         super().__init__(**kwargs)
         self.network_type = 'readout'
+        self.shifter = shifter
         # Make sure first type is readout: important for interpretation of input dims and potential shifter
         #assert kwargs['layer_list'][0]['layer_type'] == 'readout', "READOUT NET: Incorrect leading layer type"
 
@@ -811,17 +793,13 @@ class ReadoutNetwork(FFnetwork):
             valid_input_dims = False
             print('Readout layer cannot get an external input.') 
             self.input_dims = input_dims_list[0]
-        else:             
+        else:
+            # Check to see if last dimension is shifter
+            if np.prod(input_dims_list[-1]) <= 2:
+                self.shifter=True
             valid_input_dims = super().determine_input_dims(
                 input_dims_list=input_dims_list, ffnet_type='normal')
             assert len(input_dims_list) == len(self.ffnets_in), 'Internal: misspecification of input_dims for FFnetwork.'
-            # First dimension is the input network
-            #self.input_dims = input_dims_list[0]
-            # Second dimension would be 
-            
-            # would need to check for shifter network but otherwise, assume combining
-            #self.shifter = len(self.ffnets_in) > 1 
-        self.shifter=False
         return valid_input_dims
     # END ReadoutNetwork.determine_input_dims
 
@@ -840,12 +818,13 @@ class ReadoutNetwork(FFnetwork):
             inputs = [inputs]
 
         if self.shifter:
-            y = self.layers[0](inputs[0], shift=inputs[1])
+            x = self.preprocess_input(inputs[:-1])
+            y = self.layers[0](x, shift=inputs[-1])
         else:
             x = self.preprocess_input(inputs)
             y = self.layers[0](x)
         return y
-    # END ReadoutNetwork.forward
+    # END ReadoutNetwork.forward()
 
     def get_readout_locations(self):
         """
@@ -873,7 +852,7 @@ class ReadoutNetwork(FFnetwork):
     # END ReadoutNetwork.set_readout_locations()
     
     @classmethod
-    def ffnet_dict( cls, ffnet_n=0, **kwargs):
+    def ffnet_dict( cls, ffnet_n=0, shifter=False, **kwargs):
         """
         Returns a dictionary of the readout network.
 
@@ -885,6 +864,7 @@ class ReadoutNetwork(FFnetwork):
         """
         ffnet_dict = super().ffnet_dict(xstim_n=None, ffnet_n=ffnet_n, **kwargs)
         ffnet_dict['ffnet_type'] = 'readout'
+        ffnet_dict['shifter'] = shifter
         return ffnet_dict
     # END ReadoutNetwork
 

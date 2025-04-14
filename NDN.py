@@ -434,32 +434,34 @@ class NDN(nn.Module):
 
     def get_dataloaders(self,
             dataset,
+            batch_size=10, 
             train_inds=None,
             val_inds=None,
-            batch_size=10, 
+            fold_validation=None,
             num_workers=0,
-            #is_fixation=False,
             is_multiexp=False,
-            full_batch=False,
+            #full_batch=False,
             pin_memory=False,
             data_seed=None,
             verbose=0,
             #device=None,
-            **kwargs):
-        
+            **kwargs): 
         """
-        Creates dataloaders for training and validation.
+        Creates dataloaders for training and validation: essentially breaking up dataset into
+        loaders for training and validation segment. While the default behavior if either train or
+        val inds was not passed in was to randomly 5-fold, default behavior is now to give whole
+        datasets for both, unless fold_validation is set to an integer (fold). 
 
         Args:
-            dataset (Dataset): The dataset to use for training and validation.
-            train_inds (list): The indices of the training data.
-            val_inds (list): The indices of the validation data.
-            batch_size (int): The batch size to use.
-            num_workers (int): The number of workers to use for data loading.
-            is_multiexp (bool): Whether the dataset is a multi-experiment dataset.
-            full_batch (bool): Whether to use the full batch for training.
-            pin_memory (bool): Whether to pin memory for faster data loading.
-            data_seed (int): The seed to use for the data loader.
+            dataset (Dataset): The dataset to use for training and validation
+            batch_size (int): The batch size to use
+            train_inds (list): The indices of the training data
+            val_inds (list): The indices of the validation data
+            fold_validation (None or int): if random n-fold validation
+            data_seed (int): The seed to use for the data loader if fold_validation is used
+            num_workers (int): The number of workers to use for data loading, default 0 lets system choose
+            is_multiexp (bool): Whether sampling from the dataset should be balanced across experiments
+            pin_memory (bool): Whether to pin memory for faster data loading
             verbose (int): whether to output information during fit (above 1) <== not currently used
             **kwargs: Additional keyword arguments.
 
@@ -467,7 +469,6 @@ class NDN(nn.Module):
             train_dl (DataLoader): The training data loader.
             valid_dl (DataLoader): The validation data loader.
         """
-
         from torch.utils.data import DataLoader, random_split, Subset
 
         # get the verbose flag if it is provided, default to False if not
@@ -477,35 +478,33 @@ class NDN(nn.Module):
         #print('Dataset covariates:', covariates)
 
         if train_inds is None or val_inds is None:
-            n_val = len(dataset)//5
-            n_train = len(dataset)-n_val
-
-            if data_seed is None:
-                train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
-            else:
-                train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator().manual_seed(data_seed))
+            if fold_validation is not None:
+                print( "  Performing %d-fold validation using random data sections"%fold_validation)
+                n_val = len(dataset)//fold_validation
+                n_train = len(dataset)-n_val
+           
+                if data_seed is None:
+                    train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator()) # .manual_seed(42)
+                else:
+                    train_ds, val_ds = random_split(dataset, lengths=[n_train, n_val], generator=torch.Generator().manual_seed(data_seed))
         
-            if train_inds is None:
-                train_inds = train_ds.indices
-            if val_inds is None:
-                val_inds = val_ds.indices
+                if train_inds is None:
+                    train_inds = train_ds.indices
+                if val_inds is None:
+                    val_inds = val_ds.indices
+
+                else:
+                    train_ds = dataset
+                    val_ds = dataset
             
-        # build dataloaders:
-        if self.block_sample:
-            # New method: just change collate function to collate_blocks provided by dataset
-            #train_ds = Subset(dataset, train_inds)
-            #val_ds = Subset(dataset, val_inds)
+        if is_multiexp:
+            train_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=train_inds, shuffle=True, verbose=verbose)
+            val_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=val_inds, shuffle=False, verbose=verbose)
 
-            #train_dl = DataLoader(
-            #    train_ds, batch_size=batch_size, shuffle=True, collate_fn=dataset.collate_blocks,
-            #    num_workers=num_workers, pin_memory=pin_memory)
-            #valid_dl = DataLoader(
-            #    val_ds, batch_size=batch_size, shuffle=True, collate_fn=dataset.collate_blocks,
-            #    num_workers=num_workers, pin_memory=pin_memory)
+            train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
+            valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
 
-            # we use a batch sampler to sample the data because it generates indices for the whole batch at one time
-            # instead of iterating over each sample. This is both faster (probably) for our cases, and it allows us
-            # to use the "Fixation" datasets and concatenate along a variable-length batch dimension
+        elif self.block_sample:
             train_sampler = torch.utils.data.sampler.BatchSampler(
                 torch.utils.data.sampler.SubsetRandomSampler(train_inds),
                 batch_size=batch_size,
@@ -518,24 +517,18 @@ class NDN(nn.Module):
 
             train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
             valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
-        elif is_multiexp:
-            train_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=train_inds, shuffle=True, verbose=verbose)
-            val_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=val_inds, shuffle=True, verbose=verbose)
-
-            train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
-            valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
         else:
+            # Standard ints
             train_ds = Subset(dataset, train_inds)
             val_ds = Subset(dataset, val_inds)
 
-            shuffle_data = True  # no reason not to shuffle -- samples everything over epoch
             if pin_memory:
                 print('Pinning memory')
             train_dl = DataLoader(
-                train_ds, batch_size=batch_size, shuffle=shuffle_data,
+                train_ds, batch_size=batch_size, shuffle=True,
                 num_workers=num_workers, pin_memory=pin_memory)
             valid_dl = DataLoader(
-                val_ds, batch_size=batch_size, shuffle=shuffle_data,
+                val_ds, batch_size=batch_size, shuffle=False,
                 num_workers=num_workers, pin_memory=pin_memory)
             
         return train_dl, valid_dl
@@ -554,7 +547,6 @@ class NDN(nn.Module):
             tolerance_grad=1e-4,
             line_search_fn=None,
             **kwargs):
-        
         """
         Returns an optimizer object.
 
@@ -698,10 +690,10 @@ class NDN(nn.Module):
         if block_sample is not None:
             self.block_sample = block_sample
         if self.block_sample:
-            assert dataset.trial_sample, "dataset trial_sample does not match model_block_sample"
+            assert dataset.block_sample, "dataset block_sample does not match model_block_sample"
             self.loss_module.num_lags = dataset.num_lags
         else:
-            assert dataset.trial_sample == False, "dataset trial_sample does not match model_block_sample"
+            assert dataset.block_sample == False, "dataset block_sample does not match model_block_sample"
             self.loss_module.num_lags = 0
 
         # Should be set ahead of time
@@ -712,8 +704,12 @@ class NDN(nn.Module):
         if speckledXV:
             assert train_inds is None, "SPECKLED: no train_inds"
             assert val_inds is None, "SPECKLED: no val_inds"
-            train_inds = range(len(dataset))
-            val_inds = range(len(dataset))
+            if hasattr(dataset, 'block_sample') and (dataset.block_sample):
+                train_inds = range(len(dataset.block_inds))
+                val_inds = range(len(dataset.block_inds))
+            else:
+                train_inds = range(len(dataset))
+                val_inds = range(len(dataset))
         else:
             if train_inds is None:
                 # check dataset itself
@@ -1133,11 +1129,14 @@ class NDN(nn.Module):
             # This will be the 'modern' eval_models using already-defined self.loss_module
             # In this case, assume data is dataset
             if data_inds is None:
-                data_inds = list(range(len(data)))
+                if self.block_sample:
+                    data_inds = list(range(len(data.block_inds)))
+                else:
+                    data_inds = list(range(len(data)))
 
             from torch.utils.data import DataLoader, Subset
 
-            data_dl, _ = self.get_dataloaders(
+            _, data_dl = self.get_dataloaders(
                 data, batch_size=batch_size, num_workers=num_workers, 
                 train_inds=data_inds, val_inds=data_inds)
             #data_ds = Subset(data, data_inds)
@@ -1318,7 +1317,7 @@ class NDN(nn.Module):
 
         if dataset is not None:
             if self.loss_module.unit_weighting or (self.loss_module.batch_weighting == 2):
-                if dataset.trial_sample:
+                if dataset.block_sample:
                     inds = dataset.train_blks
                 else:
                     inds = dataset.train_inds
