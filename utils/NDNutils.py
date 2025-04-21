@@ -74,38 +74,59 @@ def fit_lbfgs_batch(
         batch_size=1000,
         num_chunks=None,
         train_inds=None,
+        speckledXV=False,
         device=None,
-        verbose=True, 
-        #val_dataset=None,
-        #parameters=None, optimizer=None,
+        verbose=1, 
+        #val_dataset=None, optimizer=None,
+        parameters=None, 
         max_iter=1000, lr=1,
         history_size=100,
-        tolerance_change=1e-7,
-        tolerance_grad=1e-7,
-        line_search='strong_wolfe'):
+        tolerance_change=1e-8,
+        tolerance_grad=1e-8,
+        #line_search='strong_wolfe',
+        line_search=True):
     '''
     Runs LBFGS on a Pytorch model with batching a dataset into chunks. Both model and 
     data should be on the cpu, and it copies the model and individual batches to the GPU,
-    accumulating full-dataset gradients for each epoch
+    accumulating full-dataset gradients for each epoch.
+
+    Note that in this version, the loss accumulates the gradient, but itself only represents
+    the loss over a batch. Does this screw LBFGS up since it is looking for loss decrease? Probably!
 
     Args:
         Model: Pytorch model
         dataset: Dataset that can be sampled
         batch_size: size of chunk to sample; superceded by num_chunks
         num_chunks: divide dataset into number of chunks -> sets batch_size (def: None)
-        train_inds: since passing in dataset, need to give indices to train over
-        device: GPU device to copy everything to
-        verbose: output to screen
+        train_inds: indices to train over (default=None, meaning full dataset)
+        speckledXV: whether to use speckled training
+        device: GPU device to fit model on
+        verbose: output to screen: 0 is None, 1 (default) is end of each iteration, 2 is updated per batch
+        parameters: model parameters to fit, Default (None) all model parameters 
+        max_iter: max iterations (passes through full dataset), Default=1000
+        lr: learning rate (default=1)
+        history_size: LBFGS history size in approximating Jacobian (Default: 100)
+        tolerance_change: minimum change in loss criteria (Default: 1e-8)
+        tolerance_grad: minimum size of gradient criteria (Default: 1e-8)
+        line_search: whether to use strong-wolfe line search (True, Default) or not 
 
     Returns:
         None, but model will reflect fit parameters
 
     '''
-    #from tqdm import tqdm
+    from tqdm import tqdm
     from .DanUtils import chunker
 
+    if line_search:
+        line_search = 'strong_wolfe'
+    else:
+        line_search = None
+
     if train_inds is None:
-        train_inds = np.arange(len(dataset))
+        if model.block_sample: 
+            train_inds = np.arange(len(dataset.block_inds))
+        else:
+            train_inds = np.arange(len(dataset))
     ds_size = len(train_inds)
 
     if num_chunks is not None:
@@ -118,8 +139,9 @@ def fit_lbfgs_batch(
     if device is not None:
         d0 = model.device
         model = model.to(device)
-    #if parameters is None:
-    #    parameters = model.parameters()
+
+    if parameters is None:
+        parameters = model.parameters()
     #if optimizer is None:
     optimizer = torch.optim.LBFGS(
         model.parameters(), 
@@ -132,27 +154,44 @@ def fit_lbfgs_batch(
     patience = 200
 
     #best_model = model.state_dict()
-    # Need to make iterable for tqqm
     def closure():
         #global patience
         #if patience < 0:
         #    print("patience exhausted")
         #    return
         optimizer.zero_grad()
+        running_loss = 0
+        if verbose > 1:
+            pbar = tqdm(chunker(range(ds_size), batch_size), position=0, leave=True) # total=int(np.ceil(ds_size/batch_size)), bar_format=None
+            pbar.set_description("Iter %3d" %optimizer.state_dict()['state'][0]['n_iter'])
+        else:
+            pbar = chunker(range(ds_size), batch_size)
+
         #for b in tqdm( chunker(range(ds_size), batch_size), position=0, leave=True ):
-        loss = 0
-        for b in chunker(range(ds_size), batch_size):
+        #for b in chunker(range(ds_size), batch_size):
+        for batch_n, b in enumerate(pbar):
+            #tmp = input('waiting 1')
             data_chunk = dataset[train_inds[b]]
             # copy data to device
             if device is not None:
                 for dsub in data_chunk:
                     data_chunk[dsub] = data_chunk[dsub].to(device)
+            
+            if speckledXV:
+                data_chunk['dfs'] = data_chunk['dfs'] * data_chunk['Mtrn']
+            
+            loss = model.training_step(data_chunk)['loss']*len(b)/ds_size  # weights by number of time steps
+            
+            running_loss += loss.item()
+            if verbose > 1:
+                pbar.set_postfix({'train_loss': str(np.round(running_loss, 6))})
 
-            loss += model.training_step(data_chunk)['loss']*len(b)  # weights by number of time steps
-        loss = loss/ds_size
-        loss.backward()
-            #del b
-        losses.append(loss.item())
+            if loss.requires_grad:
+                loss.backward()
+
+        if verbose == 1:
+            print("Iteration: %4d | Loss: %12.10f"%(optimizer.state_dict()['state'][0]['n_iter'], running_loss))
+
         #with torch.no_grad():
         #    model.eval()
             #vlosses.append(-eval_model_fast(model, val_dl).mean())
@@ -167,11 +206,13 @@ def fit_lbfgs_batch(
             #    patience = 200
             #else:
             #    patience -= 1
-        if verbose:
+        #print(loss.item())
+        #if verbose:
             #print("loss:", losses[-1], "vloss:", vlosses[-1], "step:", len(losses))
-            print("%5d:%12.7f"%(len(losses), losses[-1]))
+            #print("%5d:%12.7f"%(len(losses), losses[-1]))
+        #    print("%4d  %12.7f"%(iter, running_loss))
         #pbar.update(1)
-        return loss
+        return running_loss
 
     #with tqdm(total=max_iter) as pbar:
     try:
@@ -179,10 +220,11 @@ def fit_lbfgs_batch(
     except KeyboardInterrupt:
         print("Keyboard interrupt")
     except TypeError:
-        print("stopped early")
+        print("Error: stopped early")
     if device is not None:
         model = model.to(d0)
 # END fit_lbfgs_batch
+
 
 #################### CREATE OTHER PARAMETER-DICTS ####################
 def create_optimizer_params(

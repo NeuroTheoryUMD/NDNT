@@ -653,6 +653,23 @@ class FixationLayer(NDNLayer):
         self.weight.data.fill_(0.0)
     # END FixationLayer.__init__
 
+    def shifts( self, L=60, force_int=True ):
+        """
+        Converts weights into shifts in units of pixels, knowing the stimulus size in pixels (L).
+        Note it uses mu2pixel function, but modifies so L/2 is zero-shift.
+        
+        Args:
+            L (int): number of pixels in the stimulus, assuming square stim (Default: 60)
+            force_int (bool): whether to return in integer (default) or fractional values
+
+        Returns:
+            shifts: predicted shifts in units of pixels (num_fixations x num_dims)      
+        """
+        from NDNT.utils import mu2pixel
+        shifts = mu2pixel( self.weight.detach().cpu().numpy(), L=L, force_int=force_int) - L//2
+        return shifts
+    # END FixationLayer.shifts()
+
     def forward(self, x, shift=None):
         """
         The input is the fixation number across all relevant time points. This will return
@@ -1018,3 +1035,71 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         Ldict['Qsample_mode'] = 'bilinear'
         return Ldict
     # END [classmethod] ReadoutLayer3d.layer_dict
+
+
+class GridSampleLayer(NDNLayer):
+    """
+    Takes convolutional input and passes out layer with one or more dimensions collapsed to the
+    sample-values passed in for that dimension. For now, this is made to sample the third conv
+    dimension, based on selected values
+    """ 
+
+    def __init__(self,
+            input_dims=None,
+            num_lags=1,
+            **kwargs,
+        ):
+        """
+        TimeLayer: Layer to track experiment time and a weighted output.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags/angles)
+            num_lags: number of lags to shift back by
+            **kwargs: additional arguments to pass to NDNLayer
+        """
+
+        super().__init__(
+            input_dims=input_dims,
+            num_filters=1,
+            filter_dims=[1,1,1,1],
+            NLtype='lin',
+            bias=False)
+
+        self.output_dims = self.input_dims
+        self.num_outputs = int(np.prod(self.output_dims))
+        self.num_lags = num_lags
+        self.weight.requires_grad = False
+    # END GridSampleLayer.__init__
+
+    def forward(self, x):
+        """
+        Shift in batch dimesnion by num_lags and pad by 0
+
+        Args:
+            x: torch.Tensor, input tensor
+
+        Returns:
+            y: torch.Tensor, output tensor
+        """
+        
+        shift_x = torch.roll(x,self.num_lags,0)
+        shift_x[:self.num_lags,...] = 0
+        
+        return shift_x
+    # END GridSampleLayer.forward()
+
+    @classmethod
+    def layer_dict(cls, input_dims=None, num_lags=1):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = {}
+        Ldict['layer_type'] = 'gridsample'
+        Ldict['input_dims'] = input_dims
+        Ldict['num_lags'] = num_lags
+        return Ldict

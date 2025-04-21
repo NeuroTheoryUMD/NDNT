@@ -768,9 +768,6 @@ class NDN(nn.Module):
         # Prepare model regularization (will build reg_modules)
         self.prepare_regularization()
 
-        if verbose:
-            print( 'Model:', self.model_name)
-
         # Make trainer 
         if reuse_trainer & (self.trainer is not None):
             trainer = self.trainer

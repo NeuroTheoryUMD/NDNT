@@ -109,6 +109,8 @@ class Trainer:
             None
         """
         model = self.prepare_fit(model, seed=seed)
+        if self.verbose > 0:
+            print( "Model: %s, version %d"%(model.model_name, self.version) )
 
         # if we wrap training in a try/except block, can have a graceful exit upon keyboard interrupt
         try:            
@@ -136,7 +138,7 @@ class Trainer:
         GPU_FLAG = torch.cuda.is_available()
         GPU_USED = self.device.type == 'cuda'
         if self.verbose > 0:
-            print("\nGPU Available: %r, GPU Used: %r" %(GPU_FLAG, GPU_USED))
+            print("GPU Available: %r, GPU Used: %r" %(GPU_FLAG, GPU_USED))
 
         if GPU_FLAG and GPU_USED:
             self.use_gpu = True
@@ -253,8 +255,8 @@ class Trainer:
             #self.logger.add_scalar('Loss/Validation (Epoch)', self.val_loss_min, self.epoch)
             self.logger.add_scalar('Loss/Validation (Epoch)', out['val_loss'], self.epoch)
             
-            if self.verbose==1:
-                print("Epoch %d: train loss %.6f val loss %.6f" %(self.epoch, train_loss, out['val_loss']))
+            if self.verbose == 1:
+                print("Epoch %2d: train loss %9.6f, val loss %9.6f" %(self.epoch, train_loss, out['val_loss']))
                 
             # scheduler if scheduler steps at epoch level
             if self.scheduler:
