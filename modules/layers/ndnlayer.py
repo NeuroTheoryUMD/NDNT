@@ -441,9 +441,14 @@ class NDNLayer(nn.Module):
                     plot_filters_ST3D(ws, **kwargs)
         else:
             if self.filter_dims[2] > 1:
-                assert self.filter_dims[1] > 1, "plot_filters (internal): need some spatial dimensions to have this make sense"
-                from NDNT.utils import plot_internal_convlayer
-                plot_internal_convlayer(ws, **kwargs)
+                if self.filter_dims[0] > 1:
+                    assert self.filter_dims[1] > 1, "plot_filters (internal): need some spatial dimensions to have this make sense"
+                    from NDNT.utils import plot_internal_convlayer
+                    plot_internal_convlayer(ws, **kwargs)
+                else:
+                    # this is just straight-up 2-d images
+                    from NDNT.utils import plot_filters_2D
+                    plot_filters_2D(ws, **kwargs)
             else:
                 print('Figure out how to do this when you get to it...')
                 
