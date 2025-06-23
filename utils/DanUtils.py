@@ -184,6 +184,32 @@ def load_python_data( filename, show_keys=False ):
     if (type(data) is dict) and show_keys:
         print(data.keys())
     return data
+# END load_python_data()
+
+
+def clean_jupyter_notebook(notebook_filename, new_filename):
+    """ 
+    Take jupyter notebook file (ipynb) and scrubs the output, in case it takes up too much memory or other
+    error running.
+
+    Args:
+        notebook_filename: filename of jupyter notebook to be cleaned
+        new_filename: filename for new notebook
+
+    Returns:
+        Nothing, but writes new file to disk
+    """
+    from nbformat import read, write
+    with open(notebook_filename, 'r', encoding='utf-8') as f:
+        nb = read(f, as_version=4)
+    for cell in nb.cells:
+        if hasattr(cell, 'outputs'):
+            cell.outputs = []
+        if hasattr(cell, 'execution_count'):
+            cell.execution_count = None
+    with open(new_filename, 'w', encoding='utf-8') as f:
+        write(nb, f)
+# END clean_jupyter_notebook
 
 
 def chunker(seq, size):
@@ -198,6 +224,7 @@ def chunker(seq, size):
         a list of chunks
     """
     return [seq[pos:pos + size] for pos in range(0, len(seq), size)]
+# END chunker()
 
 
 def fold_sample( num_items, folds=5, random_gen=False, which_fold=None):
@@ -217,6 +244,7 @@ def fold_sample( num_items, folds=5, random_gen=False, which_fold=None):
         val_items = np.arange(offset, num_items, folds, dtype='int64')
         rem_items = np.delete(np.arange(num_items, dtype='int64'), val_items)
     return val_items, rem_items
+# END fold_sample()
 
 
 # Generic time-embedding

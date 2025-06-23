@@ -806,7 +806,8 @@ class NDN(nn.Module):
         #    if kwargs['verbose'] > 0:
         #        print('  Fit complete:', t1-t0, 'sec elapsed')
         #else:  # default behavior
-        print('  Fit complete:', t1-t0, 'sec elapsed')
+        if verbose > 0:
+            print("  Fit complete: %0.2f sec elapsed"%(t1-t0))
     # END NDN.fit
 
     def fit_dl(self,
@@ -958,6 +959,38 @@ class NDN(nn.Module):
             batch_weighting=batch_weighting, unit_weighting=unit_weighting, 
             unit_weights=unit_weights, av_batch_size=av_batch_size )
     # END NDNT.initialize_loss
+
+    def calc_spikingNL( 
+            self, dataset, data_inds=None, gmin=None, gmax=None, gbins=30,
+            batch_size=None, num_lags=0, device=None):
+                        
+        """
+        Computes measured and model spiking nonlineatities across data for all NDN outputs
+
+        Args:
+            dataset
+            data_inds
+            gmin
+            gmax
+            gbins
+
+        Output:
+            spkNL: dict with fNLs (model NLs), spkNLs (measured), gbins, gdist 
+        """
+        from copy import deepcopy
+        if data_inds is None:
+            if self.block_sample:
+                data_inds = np.arange(len(dataset.block_inds))
+            else:
+                data_inds = np.arange(len(dataset))
+
+        # Strategy: make copy of model, and turn spiking nonlinearity to linear
+        linear_output_model = deepcopy(self)
+        linear_output_model.networks[-1].layers[-1].NL = None
+        gs = linear_output_model.prediction(
+            dataset, data_inds=data_inds, batch_size=batch_size, device=device, num_lags=num_lags)
+        NC = gs.shape[1]
+    # END NDN.calc_spikingNL()
 
     def compute_average_responses( self, dataset, data_inds=None ):
         """
@@ -1179,15 +1212,14 @@ class NDN(nn.Module):
         return LLneuron.detach().cpu().numpy()
     # END NDN.eval_models()
 
-    def predictions(self, data, data_inds=None, block_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
+    def predictions(self, data, data_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
         """
         Generate predictions for the model for a dataset. Note that will need to send to device if needed, and enter 
         batch_size information. 
 
         Args:
             data: The dataset.
-            data_inds: The indices to use from the dataset.
-            block_inds: The blocks to use from the dataset (if block_sample).
+            data_inds: The indices to use from the dataset (if block_sample, will be interpreted as block_inds).
             batch_size: The batch size to use for processing. Reduce if running out of memory.
             num_lags: The number of lags to use for prediction.
             ffnet_target: The index of the feedforward network to use for prediction. Defaults to None.
@@ -1197,7 +1229,10 @@ class NDN(nn.Module):
             torch.Tensor: The predictions array (detached, on cpu)
         """
 
-        self.eval()    
+        self.eval()
+        if self.block_sample:
+            block_inds = data_inds
+
         num_cells = self.networks[-1].output_dims[0]
         model_device = self.device
         if (self.block_sample) and not isinstance(data, dict):
@@ -1206,7 +1241,7 @@ class NDN(nn.Module):
                 device = data[0]['robs'].device
             self = self.to(device)
 
-            assert data_inds is None, "block_sample currently does not handle data_inds"
+            #assert data_inds is None, "block_sample currently does not handle data_inds"
             if batch_size is None:
                 batch_size = 10   # default batch size for block_sample
             if block_inds is None:
@@ -1237,7 +1272,7 @@ class NDN(nn.Module):
     
         if isinstance(data, dict):
             # Then assume that this is just to evaluate a sample: keep original here
-            assert data_inds is None, "Cannot use data_inds if passing in a dataset sample."
+            assert data_inds is None, "Cannot use data_inds if passing in a dataset dict."
             dev0 = data['robs'].device
             m0 = self.to(dev0)
             with torch.no_grad():
