@@ -65,6 +65,32 @@ def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, 
 # END imagesc
 
 
+def scatterplot( arr2, pnt='b.', alpha=1.0, diag=False ):
+    """
+    Generates scatter-plot of 2-d data (arr2) using the following options:
+
+    Args:
+        arr2 (array): 2-d array to plot (Nx2)
+        pnt (str): symbol to use (default 'b.')
+        alpha (float): transparency level (default: 1)
+        diag (boolean): whether to draw x-y diagonal line (default False)
+
+    Returns:
+        None, simply display to screen
+    """
+    plt.plot(arr2[:,0], arr2[:,1], pnt, alpha=alpha )
+    xs = plt.xlim()
+    ys = plt.ylim()
+    if diag:
+        mn = np.minimum(xs[0], ys[0])
+        mx = np.minimum(xs[1], ys[1])
+        plt.plot([mn,mn], [mx,mx],'k')
+        plt.xlim(xs)
+        plt.ylim(ys)
+    #plt.show()
+# END scatterplot()
+
+
 def find_peaks( x, clearance=10, max_peaks=10, thresh=13.0 ):
     """Find maximum of peaks and then get rid of other points around it for plus/minus some amount"""
     y = deepcopy(x)
@@ -83,6 +109,46 @@ def find_peaks( x, clearance=10, max_peaks=10, thresh=13.0 ):
 
     return pks, amps
 # END find_peaks
+
+
+def regression2d( x2s, Yobs ):
+    """
+    2-d regression on data with N examples, where Yobs is predicted by x2s, 
+    where x2s is Nx2 and Yobs is Nx1. Yobs can have multiple columns, with each column predicted
+    independently from x2s. Prediction(s) are y_i:
+    
+    y = a + b_1 x_1 + b_2 x_2 (where a, b1, b2 and y are i-specific)
+    
+    Args:
+        x2s: 2-d data inputs (Nx2)
+        Yobs: target output(s): (NxM) will regress each column separately
+        
+    Returns:
+        regr_mat: matrix (2xM) for the regression slopes such that x2s@reg_mat + offset
+        regr_off: offsets (Mx0), see above
+    """
+    N, dims = x2s.shape
+    assert dims == 2, "x2s argument must be two-dimensional (Nx2)"
+    assert Yobs.shape[0] == N, "Yobs must have same number of data points as x2s"
+    
+    if len(Yobs.shape) == 1:
+        Yobs = Yobs[:,None]
+    num_vars = Yobs.shape[1]
+
+    regr_mat = np.zeros([2,num_vars], dtype=np.float32)
+    regr_off = np.zeros(num_vars)
+    x1 = x2s[:, 0]
+    x2 = x2s[:, 1]
+    denom = np.sum(x1**2) * np.sum(x2**2) - np.sum(x1*x2)
+    assert denom != 0, "Does not converge: denominator is zero"
+    for ii in range(num_vars):
+        yi = Yobs[:,ii]
+        regr_mat[0,ii] = ( np.sum(x2**2) * np.sum(x1*yi) - np.sum(x1*x2) * np.sum(x2*yi) ) / denom # b1
+        regr_mat[1,ii] = ( np.sum(x1**2) * np.sum(x2*yi) - np.sum(x1*x2) * np.sum(x1*yi) ) / denom # b2
+        regr_off[ii] = np.mean(yi) - np.mean(regr_mat[0,ii]*x1 + regr_mat[1,ii]*x2) # a
+    
+    return regr_mat.squeeze(), regr_off
+# END regression2d()
 
 
 def chunker(seq, size):
