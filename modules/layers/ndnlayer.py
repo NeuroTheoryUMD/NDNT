@@ -362,6 +362,20 @@ class NDNLayer(nn.Module):
             # Add singleton dimension corresponding to number of filters
             ws = ws[..., None]
         return ws
+    # END NDNLayer.get_weights()
+
+    def get_biases( self ):
+        """
+        Return biases of layer in numpy array
+        
+        Args:
+            None
+
+        Returns:
+            bs: np.ndarray, biases of the layer, on the CPU
+        """
+        return self.bias.detach().numpy().squeeze()
+    # END NDN.get_biases()
 
     def list_parameters(self):
         for nm, pp in self.named_parameters(recurse=False):

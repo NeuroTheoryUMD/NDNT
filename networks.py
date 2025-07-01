@@ -438,6 +438,24 @@ class FFnetwork(nn.Module):
         return self.layers[layer_target].get_weights(**kwargs)
     # END FFnetwork.get_weights()
 
+    def get_biases(self, layer_target=0, **kwargs):
+        """
+        Passed down to layer call, with optional arguments conveyed.
+        
+        Args:
+            layer_target (int): The layer to get the weights for.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            The biases for the specified layer.
+
+        Raises:
+            AssertionError: If the layer target is invalid.
+        """
+        assert layer_target < len(self.layers), "Invalid layer_target %d"%layer_target
+        return self.layers[layer_target].get_biases(**kwargs)
+    # END FFnetwork.get_biases()
+
     def get_network_info(self, abbrev=False):
         """
         Prints out a description of the network structure.

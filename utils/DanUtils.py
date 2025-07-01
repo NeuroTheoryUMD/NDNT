@@ -190,6 +190,7 @@ def display_matrix( x, prec=3, spacing=4, number_rows=False, number_cols=False )
         for mm in range(b):
             print( s%x[nn, mm], end='')
         print('')
+# END display_matrix()
 
 
 def figure_export( fig_handle, filename, bitmap=False, dpi=300):

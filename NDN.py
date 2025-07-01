@@ -1375,6 +1375,28 @@ class NDN(nn.Module):
 
         assert ffnet_target < len(self.networks), "Invalid ffnet_target %d"%ffnet_target
         return self.networks[ffnet_target].get_weights(**kwargs)
+    # END NDN.get_weights()
+
+    def get_biases(self, ffnet_target=0, **kwargs):
+        """
+        Get the biases for the specified feedforward network.
+
+        Passed down to layer call, with optional arguments conveyed.
+
+        Args:
+            ffnet_target: The target feedforward network.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            list: The weights for the specified feedforward network.
+
+        Notes:
+            This method is passed down to the layer call with optional arguments conveyed.
+        """
+
+        assert ffnet_target < len(self.networks), "Invalid ffnet_target %d"%ffnet_target
+        return self.networks[ffnet_target].get_biases(**kwargs)
+    # END NDN.get_biases
 
     def get_readout_locations(self):
         """
