@@ -271,7 +271,7 @@ class PoissonLossLagged(nn.Module):
 
         unit_time_ws = torch.ones( pred.shape[1], device=pred.device)
         if self.batch_weighting == 0:  # batch_size
-            unit_time_ws /= (pred.shape[0]-self.num_lags).clamp(1)
+            unit_time_ws /= max(pred.shape[0]-self.num_lags, 1)
         elif self.batch_weighting == 1: # data_filters
             assert data_filters is not None, "LOSS: batch_weighting requires data filters"
             unit_time_ws = torch.reciprocal( torch.sum(data_filters, axis=0).clamp(min=1) )
