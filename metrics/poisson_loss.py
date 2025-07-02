@@ -125,7 +125,7 @@ class PoissonLoss_datafilter(nn.Module):
         # Note can leave as 1s if unnormalized
 
         if self.unit_weighting:
-            unit_time_ws *= self.unit_weights[None, :]
+            unit_time_ws *= self.unit_weights
 
         if data_filters is None:
             # Currently this does not apply unit_norms
@@ -134,7 +134,7 @@ class PoissonLoss_datafilter(nn.Module):
             loss_full = self.lossNR(pred, target)
             # divide by number of valid time points
             
-            loss = torch.sum(torch.mul(unit_time_ws, torch.mul(loss_full, data_filters))) / len(self.unit_weights)
+            loss = torch.sum(torch.mul(unit_time_ws[None,:], torch.mul(loss_full, data_filters))) / len(unit_weights)
         return loss
     # END PoissonLoss_datafilter.forward()
 
@@ -269,18 +269,18 @@ class PoissonLossLagged(nn.Module):
             loss (torch.tensor): loss value
         """
 
-        unit_weights = torch.ones( pred.shape[1], device=pred.device)
+        unit_time_ws = torch.ones( pred.shape[1], device=pred.device)
         if self.batch_weighting == 0:  # batch_size
-            unit_weights /= max(pred.shape[0]-self.num_lags, 1)
+            unit_time_ws /= (pred.shape[0]-self.num_lags).clamp(1)
         elif self.batch_weighting == 1: # data_filters
             assert data_filters is not None, "LOSS: batch_weighting requires data filters"
-            unit_weights = torch.reciprocal( torch.sum(data_filters, axis=0).clamp(min=1) )
+            unit_time_ws = torch.reciprocal( torch.sum(data_filters, axis=0).clamp(min=1) )
         elif self.batch_weighting == 2: # average_batch_size
-            unit_weights /= (self.av_batch_size-self.num_lags)
+            unit_time_ws /= (self.av_batch_size-self.num_lags)
         # Note can leave as 1s if unnormalized
 
         if self.unit_weighting:
-            unit_weights *= self.unit_weights[None, :]
+            unit_time_ws *= self.unit_weights
 
         if data_filters is None:
             # Currently this does not apply unit_norms
@@ -291,10 +291,10 @@ class PoissonLossLagged(nn.Module):
             if self.num_lags > 0:
                 #data_filters[:self.num_lags,:] = 0.0
                 loss = torch.sum(torch.mul(
-                    unit_weights,
-                    torch.mul(loss_full[self.num_lags:,:], data_filters[self.num_lags:,:]))) / len(self.unit_weights)
+                    unit_time_ws[None,:],
+                    torch.mul(loss_full[self.num_lags:,:], data_filters[self.num_lags:,:]))) / len(unit_time_ws)
             else:
-                loss = torch.sum(torch.mul(unit_weights, torch.mul(loss_full, data_filters))) / len(self.unit_weights)
+                loss = torch.sum(torch.mul(unit_time_ws[None,:], torch.mul(loss_full, data_filters))) / len(unit_time_ws)
         return loss
     # END PoissonLossLagged.forward()
 
