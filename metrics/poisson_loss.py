@@ -134,7 +134,7 @@ class PoissonLoss_datafilter(nn.Module):
             loss_full = self.lossNR(pred, target)
             # divide by number of valid time points
             
-            loss = torch.sum(torch.mul(unit_time_ws[None,:], torch.mul(loss_full, data_filters))) / len(unit_weights)
+            loss = torch.sum(torch.mul(unit_time_ws[None,:], torch.mul(loss_full, data_filters))) / len(unit_time_ws)
         return loss
     # END PoissonLoss_datafilter.forward()
 
@@ -165,7 +165,7 @@ class PoissonLoss_datafilter(nn.Module):
             else:
                 unitloss = torch.sum( torch.mul(loss_full, data_filters), axis=0 )
         return unitloss
-        # END PoissonLoss_datafilter.unit_loss
+        # END PoissonLoss_datafilter.unit_loss()
 
 
 class PoissonLossLagged(nn.Module):
@@ -253,7 +253,7 @@ class PoissonLossLagged(nn.Module):
         
         if av_batch_size is not None:
             self.av_batch_size = torch.tensor(av_batch_size, dtype=torch.float32)
-    # END PoissonLoss_datafilter.set_loss_weighting
+    # END PoissonLoss_datafilter.set_loss_weighting()
 
     def forward(self, pred, target, data_filters=None ):        
         """

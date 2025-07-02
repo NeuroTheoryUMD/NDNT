@@ -422,6 +422,39 @@ def boxcar_smooth( s, win_size=5 ):
 # END boxcar_smoothing()
 
 
+def median_smoothing( f, L=5):
+    """
+    Median smoothing of a 1D signal (or multi-d signal where median smoothing in first dimension), 
+    using padding on the ends
+
+    Args:
+        f: input signal
+        L: window radius (from each time point)
+
+    Returns:
+        mout: smoothed signal
+    """
+    to_squeeze = False
+    if len(f.shape) == 1:
+        f = f[:,None]
+        to_squeeze = True
+    other_dims = list(f.shape[1:])
+    start_vals = np.median(f[:L,:], axis=0)
+    end_vals = np.median(f[-L:,:], axis=0)
+    fmed = np.concatenate((
+        np.ones([L]+other_dims)*start_vals[None,:], 
+        deepcopy(f),
+        np.ones([L]+other_dims)*end_vals[None,:]), axis=0)
+    mout = deepcopy(f)
+    for tt in range(L, len(fmed)-L):
+        mout[tt-L] = np.median(fmed[np.arange(tt-L,tt+L)],axis=0)
+    if to_squeeze:
+        return mout.squeeze()
+    else:
+        return mout
+# END median_smoothing()
+
+
 def iterate_lbfgs(mod, dat, lbfgs_pars, train_inds=None, val_inds=None, 
                   tol=0.0001, max_iter = 20, verbose=True ):
     
