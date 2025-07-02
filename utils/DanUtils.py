@@ -405,7 +405,21 @@ def max_multiD(k):
         return [d0best, d1best, d2best, d3best]
     else:
         print('havent figured out how to do this number of dimensions yet.')
-# END design_matrix_drift
+# END max_multiD()
+
+
+def boxcar_smooth( s, win_size=5 ):
+    """
+    Boxcar smoothing
+    """
+    from scipy.signal import convolve
+    dims = [win_size]
+    if len(s.shape) > 1:
+        dims += s.shape[1:]
+    kernel = np.ones(dims) / win_size
+    s_smooth = convolve(s, kernel, mode='same')
+    return s_smooth
+# END boxcar_smoothing()
 
 
 def iterate_lbfgs(mod, dat, lbfgs_pars, train_inds=None, val_inds=None, 

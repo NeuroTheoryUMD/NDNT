@@ -54,7 +54,6 @@ class PoissonLoss_datafilter(nn.Module):
         Returns:
             None
         """
-
         if epsilon is None:
             self.loss = nn.PoissonNLLLoss(log_input=False, reduction='mean')
             self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
@@ -66,10 +65,11 @@ class PoissonLoss_datafilter(nn.Module):
     def set_loss_weighting( self, batch_weighting=None, unit_weighting=None, unit_weights=None, av_batch_size=None ):
         """
         This changes default loss function weights to adjust for the dataset by setting two flags:
-            unit_weighting: whether to weight neurons by different amounts in loss function (e.g., av spike rate)
+            unit_weighting: whether to weight neurons by different amounts in loss function (e.g., av spike rate), which
+                access self.unit_weights, which should be passed in if turning this on
             batch_weighting: how much to weight each batch, dividing by following quantity
-                0 (default) 'batch_size': weight by length of batch
-                1 'data_filters': weight each neuron individually by the amount of data
+                0 (default) 'batch_size': weight by length of batch, regardless of dfs
+                1 'data_filters': weight each neuron individually by the amount of data in the particular batch
                 2 'av_batch_size': weight by average batch size. Needs av_batch_size set/initialized from dataset info
                 -1 'unnormalized': no weighing at all. this will implicitly increase with batch size
 
@@ -80,9 +80,8 @@ class PoissonLoss_datafilter(nn.Module):
             av_batch_size (int): average batch size
 
         Returns:
-            None
+            None, but sets self-variables as described
         """
-
         import numpy as np  # added as zero-weighting kluge (for np.maximum)
 
         if batch_weighting is not None:
@@ -112,19 +111,21 @@ class PoissonLoss_datafilter(nn.Module):
         Returns:
             loss (torch.tensor): loss value
         """
+    
+        # Define matrix of normalization by batch_weighting and unit weighting
+        unit_time_ws = torch.ones( pred.shape[1], device=pred.device)
 
-        unit_weights = torch.ones( pred.shape[1], device=pred.device)
-        if self.batch_weighting == 0:  # batch_size
-            unit_weights /= pred.shape[0]
+        if self.batch_weighting == 0:  # batch_size, ignoring data_filters
+            unit_time_ws /= pred.shape[0]
         elif self.batch_weighting == 1: # data_filters
             assert data_filters is not None, "LOSS: batch_weighting requires data filters"
-            unit_weights = torch.reciprocal( torch.sum(data_filters, axis=0).clamp(min=1) )
+            unit_time_ws = torch.reciprocal( torch.sum(data_filters, axis=0).clamp(min=1) )
         elif self.batch_weighting == 2: # average_batch_size
-            unit_weights /= self.av_batch_size
+            unit_time_ws /= self.av_batch_size
         # Note can leave as 1s if unnormalized
 
         if self.unit_weighting:
-            unit_weights *= self.unit_weights
+            unit_time_ws *= self.unit_weights[None, :]
 
         if data_filters is None:
             # Currently this does not apply unit_norms
@@ -133,13 +134,13 @@ class PoissonLoss_datafilter(nn.Module):
             loss_full = self.lossNR(pred, target)
             # divide by number of valid time points
             
-            loss = torch.sum(torch.mul(unit_weights, torch.mul(loss_full, data_filters))) / len(unit_weights)
+            loss = torch.sum(torch.mul(unit_time_ws, torch.mul(loss_full, data_filters))) / len(self.unit_weights)
         return loss
-    # END PoissonLoss_datafilter.forward
+    # END PoissonLoss_datafilter.forward()
 
     def unit_loss(self, pred, target, data_filters=None, temporal_normalize=True ):        
         """
-        This should be equivalent of forward, without sum over units
+        This should be equivalent of forward, without sum over units, and no unit-specific weighting.
         Currently only true if batch_weighting = 'data_filter'.
         
         Args:
@@ -153,18 +154,14 @@ class PoissonLoss_datafilter(nn.Module):
         """
 
         if data_filters is None:
-            unitloss = torch.sum(
-                self.lossNR(pred, target),
-                axis=0)
+            unitloss = torch.mean( self.lossNR(pred, target), axis=0)
         else:
             loss_full = self.lossNR(pred, target)
 
-            unit_weighting = 1.0/torch.maximum(
-                torch.sum(data_filters, axis=0),
-                torch.tensor(1.0, device=data_filters.device) )
+            unit_time_ws = 1.0/torch.sum(data_filters, axis=0).clamp(1.0)
 
             if temporal_normalize:
-                unitloss = torch.mul(unit_weighting, torch.sum( torch.mul(loss_full, data_filters), axis=0) )
+                unitloss = torch.mul(unit_time_ws, torch.sum( torch.mul(loss_full, data_filters), axis=0) )
             else:
                 unitloss = torch.sum( torch.mul(loss_full, data_filters), axis=0 )
         return unitloss
@@ -283,7 +280,7 @@ class PoissonLossLagged(nn.Module):
         # Note can leave as 1s if unnormalized
 
         if self.unit_weighting:
-            unit_weights *= self.unit_weights
+            unit_weights *= self.unit_weights[None, :]
 
         if data_filters is None:
             # Currently this does not apply unit_norms
@@ -295,9 +292,9 @@ class PoissonLossLagged(nn.Module):
                 #data_filters[:self.num_lags,:] = 0.0
                 loss = torch.sum(torch.mul(
                     unit_weights,
-                    torch.mul(loss_full[self.num_lags:,:], data_filters[self.num_lags:,:]))) / len(unit_weights)
+                    torch.mul(loss_full[self.num_lags:,:], data_filters[self.num_lags:,:]))) / len(self.unit_weights)
             else:
-                loss = torch.sum(torch.mul(unit_weights, torch.mul(loss_full, data_filters))) / len(unit_weights)
+                loss = torch.sum(torch.mul(unit_weights, torch.mul(loss_full, data_filters))) / len(self.unit_weights)
         return loss
     # END PoissonLossLagged.forward()
 

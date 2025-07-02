@@ -917,7 +917,11 @@ class NDN(nn.Module):
     
     def initialize_loss( self, dataset=None, batch_size=None, data_inds=None, batch_weighting=None, unit_weighting=None ):
         """
-        Interacts with loss_module to set loss flags and/or pass in dataset information.
+        Interacts with loss_module to set loss flags and/or pass in dataset information. In particular, it
+        can update batch_weighting (how the loss calculated during fitting is weighted by time), and especially
+        the unit_weighting, which -- if true -- this uses a unit-based normalization set to either what is passed
+        in, OR (if nothing is passed in but unit_weighting=True), it will normalize by the RELATIVE
+        average firing rate.
         
         Args:
             dataset (optional): The dataset to be used for computing average batch size and unit weights.
@@ -930,7 +934,7 @@ class NDN(nn.Module):
             None
 
         Notes:
-            Without a dataset, this method will only set the flags 'batch_weighting' and 'unit_weighting'.
+            Without a dataset, this method will only set the boolean flags 'batch_weighting' and 'unit_weighting'.
             With a dataset, this method will set 'av_batch_size' and 'unit_weights' based on the average rate.
         """
 
@@ -954,11 +958,13 @@ class NDN(nn.Module):
             
             # Compute unit weights based on number of spikes in dataset (and/or firing rate) if requested
             unit_weights = 1.0/np.maximum( self.compute_average_responses(dataset, data_inds=data_inds), 1e-8 )
-
+            # Make this the RELATIVE average firing rate rather than absolute average firing rate
+            unit_weights /= np.mean(unit_weights)
+            
         self.loss_module.set_loss_weighting( 
             batch_weighting=batch_weighting, unit_weighting=unit_weighting, 
             unit_weights=unit_weights, av_batch_size=av_batch_size )
-    # END NDNT.initialize_loss
+    # END NDNT.initialize_loss()
 
     def calc_spikingNL( 
             self, dataset, data_inds=None, gmin=None, gmax=None, gbins=30,
@@ -1003,7 +1009,6 @@ class NDN(nn.Module):
         Returns:
             ndarray: The average responses.
         """
-
         if data_inds is None:
             data_inds = range(len(dataset))
         
@@ -1024,7 +1029,7 @@ class NDN(nn.Module):
                 Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0).cpu()
 
         return torch.divide( Rsum, Tsum.clamp(1) ).cpu().detach().numpy()
-    # END NDNT.compute_average_responses
+    # END NDNT.compute_average_responses()
 
     def initialize_biases( self, dataset, data_inds=None, ffnet_target=-1, layer_target=-1 ):
         """
@@ -1393,10 +1398,9 @@ class NDN(nn.Module):
         Notes:
             This method is passed down to the layer call with optional arguments conveyed.
         """
-
         assert ffnet_target < len(self.networks), "Invalid ffnet_target %d"%ffnet_target
         return self.networks[ffnet_target].get_biases(**kwargs)
-    # END NDN.get_biases
+    # END NDN.get_biases()
 
     def get_readout_locations(self):
         """
@@ -1416,6 +1420,7 @@ class NDN(nn.Module):
                 net_n = ii
         assert net_n >= 0, 'No readout network found.'
         return self.networks[net_n].get_readout_locations()
+    # END get_readout_locations()
 
     def passive_readout(self):
         """
