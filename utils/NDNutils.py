@@ -1261,7 +1261,7 @@ def load_model(checkpoint_path, model_name=None, version=None, verbose=True, fil
                 return model
         else: # if filename specified 
             checkpoint_path = os.path.join(checkpoint_path, model_name, 'version%d'%ver_ix ) 
-    filename = out['model_file'][ver_ix]     
+    #filename = out['model_file'][ver_ix]     
     model = torch.load(os.path.join(checkpoint_path, filename))
     return model
 # END load_model()
