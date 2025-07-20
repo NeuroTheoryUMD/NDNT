@@ -1243,7 +1243,7 @@ def load_model(checkpoint_path, model_name=None, version=None, verbose=True, fil
         if filename is None:
             # Load the model
             try:
-                model = torch.load(out['model_file'][ver_ix])
+                model = torch.load(out['model_file'][ver_ix], map_location=torch.device('cpu'))
                 dirpath = os.path.dirname(out['model_file'][ver_ix])
                 #if os.path.exists(os.path.join(dirpath, 'best_model.ckpt')):
                 #    state_dict = torch.load(os.path.join(dirpath, 'best_model.ckpt'))
