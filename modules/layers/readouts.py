@@ -20,7 +20,7 @@ class ReadoutLayer(NDNLayer):
             init_sigma=0.2,
             gauss_type: str='isotropic', # 'isotropic', 'uncorrelated', or 'full'
             align_corners=False,
-            mode='bilinear',  # 'nearest' is also possible
+            mode='nearest',  # 'bilinear' is also possible
             **kwargs):
         """
         ReadoutLayer: Spatial readout layer for NDNs.
@@ -771,7 +771,8 @@ class ReadoutLayerQsample(ReadoutLayer3d):
     ReadoutLayerQsample for 3d readout with sampling over angle dimension Q.
     This is a subclass of ReadoutLayer3d.
     """
-    def __init__(self, input_dims=None, filter_dims=None, batch_Qsample=True, init_Qsigma=0.5, Qsample_mode='bilinear', **kwargs):
+    def __init__(self, input_dims=None, filter_dims=None, batch_Qsample=True, init_Qsigma=0.5, 
+                 Qsample_mode='nearest', **kwargs):
         """
         ReadoutLayerQsample: 3d readout layer for NDNs.
 
@@ -1032,7 +1033,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         Ldict['layer_type'] = 'readoutQ'
         Ldict['batch_Qample'] = True
         Ldict['init_Qsigma'] = 0.5
-        Ldict['Qsample_mode'] = 'bilinear'
+        Ldict['Qsample_mode'] = 'nearest'
         return Ldict
     # END [classmethod] ReadoutLayer3d.layer_dict
 

@@ -283,7 +283,6 @@ class NDN(nn.Module):
         """
 
         y = batch['robs']
-
         if self.speckled_flag:
             dfs = batch['dfs'] * batch['Mtrn']
         else:
@@ -292,11 +291,10 @@ class NDN(nn.Module):
         y_hat = self(batch)
 
         loss = self.loss(y_hat, y, dfs)
-
         regularizers = self.compute_reg_loss()
 
         return {'loss': loss + regularizers, 'train_loss': loss, 'reg_loss': regularizers}
-    # END Encoder.training_step
+    # END Encoder.training_step()
 
     def validation_step(self, batch, batch_idx=None):
         """
@@ -427,8 +425,7 @@ class NDN(nn.Module):
                                          version=version,
                                          save_epochs=save_epochs,
                                          verbose=verbose,
-                                         **kwargs
-                                         )
+                                         **kwargs)
 
         return trainer
 
@@ -440,7 +437,6 @@ class NDN(nn.Module):
             fold_validation=None,
             num_workers=0,
             is_multiexp=False,
-            #full_batch=False,
             pin_memory=False,
             data_seed=None,
             verbose=0,
@@ -474,8 +470,20 @@ class NDN(nn.Module):
         # get the verbose flag if it is provided, default to False if not
         #verbose = kwargs.get('verbose', False)
 
-        covariates = list(dataset[0].keys())
+        #covariates = list(dataset[0].keys())
         #print('Dataset covariates:', covariates)
+
+        def block_collate(batch):
+            """This is necessary to handle how the dataloader handles passing multiple inputs into batch_sample, which
+            our sampler does in the case block_sample being True. It should also apply to multi_exp"""
+            out = {}
+            for key in batch[0]:
+                if isinstance(batch[0][key], torch.Tensor):
+                    out[key] = torch.cat([item[key] for item in batch], dim=0)
+                else:
+                    out[key] = [item[key] for item in batch]
+            return out
+
 
         if train_inds is None or val_inds is None:
             if fold_validation is not None:
@@ -501,8 +509,9 @@ class NDN(nn.Module):
             train_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=train_inds, shuffle=True, verbose=verbose)
             val_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=val_inds, shuffle=False, verbose=verbose)
 
-            train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
-            valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
+            # QUESTION ABOUT USING REGULAR-SAMPLER -- might need custom colate used below
+            train_dl = DataLoader(dataset, batch_sampler=train_sampler, num_workers=num_workers)
+            valid_dl = DataLoader(dataset, batch_sampler=val_sampler, num_workers=num_workers)
 
         elif self.block_sample:
             train_sampler = torch.utils.data.sampler.BatchSampler(
@@ -511,12 +520,14 @@ class NDN(nn.Module):
                 drop_last=False)
             
             val_sampler = torch.utils.data.sampler.BatchSampler(
-                torch.utils.data.sampler.SubsetRandomSampler(val_inds),
+                torch.utils.data.sampler.SequentialSampler(val_inds),
                 batch_size=batch_size,
                 drop_last=False)
 
-            train_dl = DataLoader(dataset, sampler=train_sampler, batch_size=None, num_workers=num_workers)
-            valid_dl = DataLoader(dataset, sampler=val_sampler, batch_size=None, num_workers=num_workers)
+            train_dl = DataLoader(dataset, batch_sampler=train_sampler, num_workers=num_workers, 
+                                  collate_fn=block_collate)
+            valid_dl = DataLoader(dataset, batch_sampler=val_sampler, num_workers=num_workers, 
+                                  collate_fn=block_collate)
         else:
             # Standard ints
             train_ds = Subset(dataset, train_inds)
@@ -648,7 +659,10 @@ class NDN(nn.Module):
         ):
 
         """
-        Trains the model using the specified dataset.
+        Trains the model (self) using the specified dataset.
+        Note the mechanics of train/validation indices are such that -- if they are not passed in --
+        the fit will look to the dataset itself, first to determine if block_sample is set, and then
+        either use dataset.train_inds or dataset.train_blks accordingly.
 
         Args:
             dataset (Dataset): The dataset to use for training and validation.
@@ -755,7 +769,7 @@ class NDN(nn.Module):
         if self.block_sample:
             if hasattr(dataset, 'block_inds'):
                 if len(dataset.block_inds) > 0:
-                    match_mult = len(dataset.block_inds[0])
+                    batch_mult = len(dataset.block_inds[0])
                 else:
                     print('Warning: dataset block-size unknown')
             else:
@@ -1182,7 +1196,10 @@ class NDN(nn.Module):
             d0 = next(self.parameters()).device  # device the model is currently on
             self = self.to(device)
 
-            for data_sample in tqdm(data_dl, desc='Eval models'):
+            #for data_sample in tqdm(data_dl, desc='Eval models'):
+            for data_sample in tqdm(
+                data_dl, desc='Eval models', 
+                bar_format='{desc}: {percentage:3.0f}%|{bar:25}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]{postfix}'):
                 # data_sample = data[tt]
                 for dsub in data_sample.keys():
                     if data_sample[dsub].device != device:

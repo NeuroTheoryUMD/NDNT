@@ -294,7 +294,9 @@ class Trainer:
         runningloss = 0
         nsteps = len(val_loader)
         if self.verbose > 1:
-            pbar = tqdm(val_loader, total=nsteps, bar_format=None)
+            pbar = tqdm(val_loader, total=nsteps, bar_format='{desc}: {percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]{postfix}')
+
+            # pbar = tqdm(val_loader, total=nsteps, bar_format=None)
             pbar.set_description("Validating ver=%d" %self.version)
         else:
             pbar = val_loader
@@ -338,8 +340,9 @@ class Trainer:
 
         runningloss = 0
         if self.verbose > 1:
-            pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
-            pbar.set_description("Epoch %i" %epoch)
+            pbar = tqdm(train_loader, total=self.nbatch, bar_format='{desc}{percentage:3.0f}%|{bar:20}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]{postfix}') 
+            #pbar = tqdm(train_loader, total=self.nbatch, bar_format=None) # progress bar for looping over data
+            pbar.set_description("Epoch %2i" %epoch)
         else:
             pbar = train_loader
 
@@ -351,14 +354,14 @@ class Trainer:
             if self.use_gpu:
                 torch.cuda.empty_cache()
 
-            if np.isnan(out['train_loss']):
+            if np.isnan(out['loss']):
                 break
-            runningloss += out['train_loss']
+            runningloss += out['loss']
             if self.verbose > 1:
                 # update progress bar
                 pbar.set_postfix({'train_loss': str(np.round(runningloss/(batch_idx + 1), 6))})
 
-        return {'train_loss': runningloss/(batch_idx + 1)} # should this be an aggregate out?
+        return {'train_loss': runningloss/len(train_loader)} # should this be an aggregate out?
     # END trainer.train_one_epoch()
 
     def train_one_step(self, model, data, batch_idx=None):
@@ -423,7 +426,7 @@ class Trainer:
                         step_metric = out[self.step_scheduler_metric]
                         self.scheduler.step(step_metric)
         
-        return {'train_loss': loss.detach().item()}
+        return {'loss': loss.detach().item()}
     
     def checkpoint_model(self, model, epoch=None, is_best=False):
         """
@@ -646,7 +649,8 @@ class LBFGSTrainer(Trainer):
             self.optimizer.zero_grad(set_to_none=self.set_to_none)
             loss = torch.zeros(1, device=self.device)
             if self.verbose > 1:
-                pbar = tqdm(train_loader, total=len(train_loader), bar_format=None)
+                pbar = tqdm(train_loader, total=len(train_loader), bar_format='{desc}: {percentage:3.0f}%|{bar:25}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]{postfix}')
+                #pbar = tqdm(train_loader, total=len(train_loader), bar_format=None)
                 pbar.set_description("Training ver=%d" %self.version)
             else:
                 pbar = train_loader
