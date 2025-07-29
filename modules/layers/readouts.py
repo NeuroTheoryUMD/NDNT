@@ -409,7 +409,7 @@ class ReadoutLayer(NDNLayer):
         return " readout"
 
     @classmethod
-    def layer_dict(cls, NLtype='softplus', mode='bilinear', **kwargs):
+    def layer_dict(cls, NLtype='softplus', mode='nearest', **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
