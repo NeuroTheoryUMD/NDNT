@@ -1433,7 +1433,8 @@ class NDN(nn.Module):
         # Find readout network
         net_n = -1
         for ii in range(len(self.networks)):
-            if self.networks[ii].network_type == 'readout':
+            #if self.networks[ii].network_type == 'readout':
+            if self.networks[ii].network_type.__contains__('reado'):
                 net_n = ii
         assert net_n >= 0, 'No readout network found.'
         return self.networks[net_n].get_readout_locations()
@@ -1453,6 +1454,63 @@ class NDN(nn.Module):
         from NDNT.modules.layers.readouts import ReadoutLayer
         assert isinstance(self.networks[-1].layers[-1], ReadoutLayer), "NDNT: Last layer is not a ReadoutLayer"
         self.networks[-1].layers[-1].passive_readout()
+    # END NDNT.passive_readout()
+
+    def fit_mus( self, val=None, sigma=None, sample_mode=None, verbose=True ):
+        """
+        Find the readout network and layer, and convert to fitting mus dependent on val.
+        Args:
+            val (boolean): whether or not to fit mus
+            sigma (float): will change sigmas to beginning value specified (Default: None means leave alone)
+            sample_mode (str): will deviate from default behavior if set
+            verbose (bool): whether to print information about the fitting process
+        
+        Returns:
+            None, although will modify readout layer
+
+        Notes:
+            This method currently returns a list of readout locations and sigmas set in the readout network.
+        """
+        # Find readout network
+        net_n = -1
+        for ii in range(len(self.networks)):
+            if self.networks[ii].network_type.__contains__('reado'):
+                net_n = ii
+        assert net_n >= 0, 'No readout network found.'
+        if verbose:
+            print("  Readout layer identified: network %d, layer 0"%(net_n))
+        
+        self.networks[net_n].layers[0].fit_mus(val=val, sigma=sigma, 
+                                               sample_mode=sample_mode, verbose=verbose)
+    # END NDN.fit_mus()
+
+    def fit_Qmus( self, val=None, Qsigma=None, sample_mode=None, verbose=True ):
+        """
+        Find the readout network and layer, and convert to fitting mus dependent on val.
+        Args:
+            val (boolean): whether or not to fit mus
+            sigma (float): will change sigmas to beginning value specified (Default: None means leave alone)
+            sample_mode (str): will deviate from default behavior if set
+            verbose (bool): whether to print information about the fitting process
+        
+        Returns:
+            None, although will modify readout layer
+
+        Notes:
+            This method currently returns a list of readout locations and sigmas set in the readout network.
+        """
+        # Find readout network
+        net_n = -1
+        for ii in range(len(self.networks)):
+            if self.networks[ii].network_type.__contains__('reado'):
+                net_n = ii
+        assert net_n >= 0, 'No readout network found.'
+        if verbose:
+            print("  Readout layer identified: network %d, layer 0"%(net_n))
+
+        self.networks[net_n].layers[0].fit_Qmus(val=val, Qsigma=Qsigma, 
+                                                sample_mode=sample_mode, verbose=verbose)
+    # END NDN.fit_Qmus()
 
     def list_parameters(self, ffnet_target=None, layer_target=None):
         """

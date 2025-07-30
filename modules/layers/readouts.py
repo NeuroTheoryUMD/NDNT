@@ -366,7 +366,7 @@ class ReadoutLayer(NDNLayer):
         self.set_parameters(val=False)
         self.sample = False
 
-    def fit_mus( self, val=None, sigma=None, verbose=True ):
+    def fit_mus( self, val=None, sigma=None, sample_mode=None, verbose=True ):
         """
         Quick function that turns on or off fitting mus/sigmas and toggles sample
         
@@ -378,6 +378,19 @@ class ReadoutLayer(NDNLayer):
         self.sample = val
         self.set_parameters(val=val, name='mu')
         self.set_parameters(val=val, name='sigma')
+        if val:
+            if verbose and (self.sample_mode != 'bilinear'):
+                print('  Note: changing sample_mode to bilinear')
+            if sample_mode is not None:
+                assert sample_mode == 'bilinear', "ReadoutLayer: sample_mode must be bilinear for fitting mus"
+            self.sample_mode = 'bilinear'
+        else:
+            if sample_mode is not None:
+                assert sample_mode in ['nearest', 'bilinear'], "ReadoutLayer: sample_mode must be nearest or bilinear"
+                self.sample_mode = sample_mode
+            elif verbose and (self.sample_mode != 'nearest'):
+                print("  Note: sampling mode will remain 'bilinear'")
+        
         if sigma is not None:
             self.sigma.data.fill_(sigma)
         if verbose:
@@ -857,19 +870,36 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         out_norm[:,:,:,0] = mu_scale*(((norm * self.Qsigma[None, None, None, :] + self.Qmu[None, None, None, :] + 1)%2)-1) # wraps around
 
         return out_norm
+    # END ReadoutLayerQsample.sample_Qgrid()
 
-    def fit_Qmus( self, val=None, Qsigma=None, verbose=True ):
+    def fit_Qmus( self, val=None, Qsigma=None, sample_mode=None, verbose=True ):
         """
         Quick function that turns on or off fitting Qmus/Qsigmas and toggles sample
         
         Args:
             val (bool): True or False -- must specify
             Qsigma (float): choose starting Qsigma value (default no choice)
+            sample_mode (str): 'bilinear' or 'nearest', default is None, which work with existing sample_mode
+            verbose (bool): whether to print out information about the fitting process
         """
         assert val is not None, "fit_mus(): must set val to be True or False"
         self.Qsample = val
         self.set_parameters(val=val, name='Qmu')
         self.set_parameters(val=val, name='Qsigma')
+
+        if val:
+            if verbose and (self.sample_mode != 'bilinear'):
+                print('  Note: changing sample_mode to bilinear')
+            if sample_mode is not None:
+                assert sample_mode == 'bilinear', "ReadoutLayer: Qsample_mode must be bilinear for fitting Qmus"
+            self.Qsample_mode = 'bilinear'
+        else:
+            if sample_mode is not None:
+                assert sample_mode in ['nearest', 'bilinear'], "ReadoutLayerQsample: Qsample_mode must be nearest or bilinear"
+                self.Qsample_mode = sample_mode
+            elif verbose and (self.Qsample_mode != 'nearest'):
+                print("  Note: sampling mode will remain 'bilinear'")
+
         if Qsigma is not None:
             self.Qsigma.data.fill_(Qsigma)
         if verbose:
@@ -877,6 +907,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
                 print("  ReadoutLayer: fitting Qmus")
             else:
                 print("  ReadoutLayer: not fitting Qmus")
+    # END ReadoutLayerQsample.fit_Qmus()
 
     def forward(self, x, shift=None):
         """
@@ -895,10 +926,6 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         c *= T
         # get those last filter dims up before spatial
         x = x.permute(0,1,4,2,3).reshape([N, c, w, h])
-
-        #c_in, w_in, h_in = self.input_dims[:3]
-        #if (c_in, w_in, h_in) != (c, w, h):
-        #    raise ValueError("the specified feature map dimension is not the readout's expected input dimension")
 
         feat = self.features # this is the filter weights for each unit
         feat = feat.reshape(1, -1, self.num_filters)  # 3d change -- this is num_chan x num_angles now
@@ -935,17 +962,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         
         # reduce grid sample for angle
         z = F.grid_sample(y_pad, Qgrid, mode=self.Qsample_mode, align_corners=self.align_corners, padding_mode='border')
-        
-        # reduce grid sample for angle
-        #z = torch.zeros((N,self.input_dims[0],self.num_filters,1), dtype=torch.float32, device=self.weight.device)
-        #for i in range(self.num_filters):
-        #    y_i = y[:,:,i,:].reshape(N,self.input_dims[0],self.input_dims[3],1)
-        #    Qgrid_i = Qgrid[:,i,:,:].reshape(N,1,1,2)
-        #    z_i = F.grid_sample(y_i, Qgrid_i, mode=self.Qsample_mode, align_corners=self.align_corners, padding_mode='border')
-        #    z[:,:,i,:] = z_i.reshape(N,self.input_dims[0],1)
-        
         z = (z.squeeze(-1) * feat).sum(1).view(N, outdims)
-        #z = (z.squeeze(-1)).sum(1).view(N, outdims) # for testing only
 
         if self.bias is not None:
             z = z + bias
@@ -954,7 +971,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
             z = self.NL(z)
         
         return z
-    # END ReadoutLayer3d.forward
+    # END ReadoutLayer3d.forward()
 
     def degrees2mu( self, theta_deg, to_output=False, continuous=True, max_angle=180 ):
         """
@@ -973,14 +990,16 @@ class ReadoutLayerQsample(ReadoutLayer3d):
 
         # convert inputs to np.array
         if not isinstance(theta_deg, np.ndarray):
-            theta_deg = np.array(theta_deg, dtype=np.float32)
+            thetas = np.array(deepcopy(theta_deg), dtype=np.float32)
+        else: 
+            thetas = deepcopy(theta_deg)
         if not continuous:
             dQ = max_angle/num_angles
-            theta_deg = dQ * np.round(theta_deg/dQ)
-        theta_deg = (theta_deg%max_angle)  # map between 0 and max_angle
+            thetas = dQ * np.round(thetas/dQ)
+        thetas = (thetas%max_angle)  # map between 0 and max_angle
 
         mu_offset = 1/num_angles # first bin at 0 degrees is actually a shifted mu value (not right at edge)
-        Qmus = (theta_deg-max_angle/2) / (max_angle/2) + mu_offset
+        Qmus = (thetas-max_angle/2) / (max_angle/2) + mu_offset
         Qmus[Qmus <= -1] += 2
         Qmus[Qmus > 1] += -2
         if to_output:
@@ -989,7 +1008,7 @@ class ReadoutLayerQsample(ReadoutLayer3d):
         self.Qmu.data[:,0] = torch.tensor( Qmus.squeeze(), device=self.weight.device, dtype=torch.float32 )
     # END ReadoutLayerQsample.degrees2mu()
 
-    def mu2degrees( self, mu=None, max_angle=180 ):
+    def mu2degrees( self, mu_in=None, max_angle=180 ):
         """
         Converts Qmu-values into degrees. Automatically reads from Qmu variable, and outputs a numpy array
         It detects whether half-circle of full circle using stored angle values
@@ -1002,9 +1021,11 @@ class ReadoutLayerQsample(ReadoutLayer3d):
             thetas: angles in degrees (between 0 to max_angle)
         """
         num_angles = self.input_dims[-1]
-        if mu is None:
-            mu = self.Qmu.cpu().detach().numpy() 
-
+        if mu_in is None:
+            mu = deepcopy(self.Qmu.cpu().detach().numpy())
+        else:
+            mu = deepcopy(mu_in)
+            
         mu += - 1/num_angles # first bin at 0 degrees is actually a shifted mu value (not right at edge)
         thetas = mu*max_angle/2 + max_angle/2
         thetas = thetas % max_angle 
