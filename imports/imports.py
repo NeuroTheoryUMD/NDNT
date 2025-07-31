@@ -1,0 +1,122 @@
+#Various
+import sys
+import os
+import torch
+import numpy as np
+import scipy.io as sio
+from scipy import ndimage
+from copy import deepcopy
+import h5py 
+from datetime import date
+from datetime import datetime
+from time import time
+import matplotlib.pyplot as plt
+import dill
+
+# NDNT
+import NDNT.utils as utils 
+from NDNT.utils import fit_lbfgs
+from NDNT.utils.DanUtils import ss
+from NDNT.utils.DanUtils import imagesc
+import NDNT.NDN as NDN
+from NDNT.modules.layers import *
+from NDNT.networks import *
+
+#NTDatasets
+import NTdatasets.conway.multi_datasets as multidata
+from NTdatasets.generic import GenericDataset
+
+#ColorDataUtils
+import ColorDataUtils.ConwayUtils as CU
+from ColorDataUtils.DDPIutils import DDPIutils
+import ColorDataUtils.EyeTrackingUtils as ETutils
+from ColorDataUtils.preprocessing_utils import *
+import ColorDataUtils.CalibrationUtils as cal
+from ColorDataUtils import readout_fit
+from ColorDataUtils.sync_clocks import convertSamplesToTimestamps, alignTimestampToTimestamp
+from ColorDataUtils.CloudMultiExpts import MultiExperiment
+from ColorDataUtils import RFutils
+
+
+#Some stuff to do here to make this work:
+# 1) put this file in the same directory as NDNT, NTDatasets, etc
+
+# 2) edit this file below to include your data paths and dirnames
+
+# 3) Run in command line: 
+#     < ~/.bashrc >         (or similar, depending on your shell)    
+#      at the bottom of that file, add the line:
+#       < export PYTHONPATH="/home/jmch/Code/NDNT:$PYTHONPATH" >
+#       Where the '/home/jmch/Code' is the path to the folder containing imports.py
+#       Save and exit the file.
+#       You will need to restart jupyter notebooks, and VSCode needs additional steps
+
+# 4) In any notebook. run [ from imports import * ]
+#                     and [ datadir, dirname, device0, device = init_vars() ]
+
+# 5) To check that it worked, run [ import os ] 
+#                             and [ sys.path ] in any notebook 
+#    You should see the path to your chosen directory in the list of paths.
+
+
+def init_vars(GPU = 0, datadir_input = None, dirname_input = None):
+    """Initializes several important variables for data and modeling, and imports
+    many important libraries.
+
+    Args:
+        GPU (int, optional): Which GPU to use (0 or 1). Defaults to 1.
+        datadir (String, optional): defaults to a definition below, but can be set by argument instead
+        dirname (String, optional): defaults to a definition below, but can be set by argument instead
+
+    Returns:
+        datadir: the directory where data will be pulled from. Governed by computer and user
+        dirname: the working directoy. Governed by computer and user
+        editor: used in file_info documents to remember who did editing
+        myhost: computer
+        device0: cpu device
+        device: GPU device. defaults to CPU if no GPU is available.
+    """
+    user = os.getlogin()
+    myhost = os.uname()[1] # get name of machine
+    print(f"Running on Computer: {myhost} with user {user}")
+    datadir = ""
+    dirname = ""
+    #Dr. Butts
+    if user.lower() == 'dbutts':
+        if myhost=='m1':
+            datadir = '/home/dbutts/V1/B2data/'
+            dirname = '/home/dbutts/V1/Binocular/Bworkspace/' # Working directory 
+        if myhost=='ca3':
+            datadir = '/home/DATA/ColorV1/'
+            dirname = '/home/dbutts/ColorV1/CLRworkspace/'
+        else:  # older computers: MT
+            datadir = '/home/dbutts/V1/Binocular/Data/'
+            dirname = '/home/dbutts/V1/Binocular/Bworkspace/' # Working directory
+    #Isabel Fernandez
+    if user.lower() == '':
+        if myhost=='':
+            datadir = ''
+            dirname = ''
+    print(user, myhost)
+    #Jasper Coles Hood
+    if user.lower() == 'jmch':
+        if myhost=='ca1':
+            
+            datadir = '/Data/ColorV1/'
+            dirname = '/home/jmch/'
+    
+    if datadir_input != None:
+        print("here")
+        datadir = datadir_input
+    if dirname_input != None:
+        dirname = dirname_input
+    
+    sys.path.insert(0, dirname) 
+    device0 = torch.device("cpu")
+    if GPU == 0:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # then ada = cuda:0
+    else:
+        device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    print('Assigned:', device)  
+    print(datadir)
+    return datadir, dirname, device0, device
