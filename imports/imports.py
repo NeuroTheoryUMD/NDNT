@@ -100,6 +100,7 @@ def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = Non
         if myhost=='m1':                                        #m1
             datadir = '/home/dbutts/V1/B2data/'
             dirname = '/home/dbutts/V1/Binocular/Bworkspace/'
+            
         if myhost=='ca3':                                       #ca3                                  
             datadir = '/home/DATA/ColorV1/'
             dirname = '/home/dbutts/ColorV1/CLRworkspace/'
