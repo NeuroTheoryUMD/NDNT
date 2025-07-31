@@ -37,23 +37,41 @@ from ColorDataUtils.sync_clocks import convertSamplesToTimestamps, alignTimestam
 from ColorDataUtils.CloudMultiExpts import MultiExperiment
 from ColorDataUtils import RFutils
 
+"""
+Some stuff to do here to make this work:
+1) edit this file below to include your data paths and dirnames
 
-#Some stuff to do here to make this work:
-# 1) edit this file below to include your data paths and dirnames
-
-# 2) Run in command line: 
-#      < echo 'export PYTHONPATH="/home/jmch/Code/NDNT/imports:$PYTHONPATH"' >> ~/.bashrc >
-#           Where the '/home/jmch/Code' is the path to the folder containing NDNT
-#           This will write the path to your .bashrc file, so that it is always included
-#           You will need to restart jupyter notebooks, and VSCode needs additional steps
-
-# 3) In any notebook. run [ from imports import * ]
-#                     and [ datadir, dirname, device0, device = init_vars() ]
-
-# 4) To check that it worked, run [ import os ] 
-#                             and [ sys.path ] in any notebook 
-#    You should see the path to your chosen directory in the list of paths.
-
+2) Run in command line: 
+<     echo 'export PYTHONPATH="/home/jmch/Code/NDNT/imports:$PYTHONPATH"' >> ~/.bashrc     >
+    Where the '/home/jmch/Code' is the path to the folder containing NDNT
+    This will write the path to your .bashrc file, so that it is always included
+    You will need to restart jupyter notebooks, and VSCode needs additional steps.
+    
+3) To check that it worked: in any notebook, run [ import os ] 
+                                               and [ sys.path ]
+     You should see the path to your NDNT/imports in the list of paths.
+     
+4) For any notebook, run [ from imports import * ]
+                      and [ datadir, dirname, device0, device = init_vars() ]
+    All imports and initializations should be done.
+ 
+5) VSCode has some really weird problems with updating its python environment variables.
+    If it doesn't work automatically, here are some steps:
+    a) create a file in your workspace root (where .vscode/ is) named .env
+    b) in that file, write the line: <
+        PYTHONPATH=/path/from/home/to/NDNT/imports              
+    >
+    c) open your vscode settings.json file and add the line: <          
+    "python.envFile": "$/home/jmch/.env", 
+    >     (or similar path to your .env file)
+    d) in command line, run:    (while inside of conda environment) <
+        echo "export PYTHONPATH=/path/to/NDNT/imports" > $CONDA_PREFIX/etc/conda/activate.d/env_vars.sh
+        mkdir -p $CONDA_PREFIX/etc/conda/deactivate.d
+        echo "unset PYTHONPATH" > $CONDA_PREFIX/etc/conda/deactivate.d/env_vars.sh
+        >
+        (setting /path/to/NDNT/imports to the path where you have NDNT imports)
+    e) restart everything, then try step 4
+"""
 
 def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = None):
     """Initializes several important variables for data and modeling, and imports
