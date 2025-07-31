@@ -42,8 +42,8 @@ from ColorDataUtils import RFutils
 # 1) edit this file below to include your data paths and dirnames
 
 # 2) Run in command line: 
-#      < echo 'export PYTHONPATH="/home/jmch/NTDatasets:$PYTHONPATH"' >> ~/.bashrc >
-#           Where the '/home/jmch/Code' is the path to the folder containing imports.py
+#      < echo 'export PYTHONPATH="/home/jmch/Code/NDNT/imports:$PYTHONPATH"' >> ~/.bashrc >
+#           Where the '/home/jmch/Code' is the path to the folder containing NDNT
 #           This will write the path to your .bashrc file, so that it is always included
 #           You will need to restart jupyter notebooks, and VSCode needs additional steps
 
