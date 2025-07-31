@@ -1,44 +1,5 @@
-#Various
-import sys
-import os
-import torch
-import numpy as np
-import scipy.io as sio
-from scipy import ndimage
-from copy import deepcopy
-import h5py 
-from datetime import date
-from datetime import datetime
-from time import time
-import matplotlib.pyplot as plt
-import dill
-
-# NDNT
-import NDNT.utils as utils 
-from NDNT.utils import fit_lbfgs
-from NDNT.utils.DanUtils import ss
-from NDNT.utils.DanUtils import imagesc
-import NDNT.NDN as NDN
-from NDNT.modules.layers import *
-from NDNT.networks import *
-
-#NTDatasets
-import NTdatasets.conway.multi_datasets as multidata
-from NTdatasets.generic import GenericDataset
-
-#ColorDataUtils
-import ColorDataUtils.ConwayUtils as CU
-from ColorDataUtils.DDPIutils import DDPIutils
-import ColorDataUtils.EyeTrackingUtils as ETutils
-from ColorDataUtils.preprocessing_utils import *
-import ColorDataUtils.CalibrationUtils as cal
-from ColorDataUtils import readout_fit
-from ColorDataUtils.sync_clocks import convertSamplesToTimestamps, alignTimestampToTimestamp
-from ColorDataUtils.CloudMultiExpts import MultiExperiment
-from ColorDataUtils import RFutils
-
 """
-Some stuff to do here to make this work:
+To make this work:
 1) edit this file below to include your data paths and dirnames
 
 2) Run in command line: 
@@ -73,71 +34,149 @@ Some stuff to do here to make this work:
     e) restart everything, then try step 4
 """
 
+##### BEGIN AUTOMATIC IMPORTS ######
+import sys
+import os
+import torch
+import numpy as np
+import scipy.io as sio
+from copy import deepcopy
+import h5py 
+from time import time
+import matplotlib.pyplot as plt
+
+user = os.getlogin()
+myhost = os.uname()[1] # get name of machine
+
+# Default code directory for users in general 
+codedir = '/home/' + user + '/Code/'
+#device0 = torch.device("cpu")  # the same for any computer
+
+# User-specific cases (if needed)
+if user.lower() in ['dbutts', 'dab']:
+    if myhost == 'hoser':
+        codedir = '/Users/dbutts/Code/'
+# Add any other user/hostname specific exceptions to coding directories
+
+sys.path.insert(0, codedir) 
+
+### GENERAL LAB IMPORTS (not project-specific)
+# NDNT -- utitilies
+import NDNT.utils as utils 
+from NDNT.utils import fit_lbfgs
+from NDNT.utils.DanUtils import ss
+from NDNT.utils.DanUtils import imagesc
+# NDNT -- base
+import NDNT.NDN as NDN
+from NDNT.modules.layers import *
+from NDNT.networks import *
+
+# NTdatasets
+from NTdatasets.generic import GenericDataset
+
+del user, myhost, codedir
+###### END AUTOMATIC IMPORTS #####
+
+
 def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = None):
-    """Initializes several important variables for data and modeling, and imports
-    many important libraries.
+    """
+    Initializes several important variables for data and modeling, and imports important libraries.
 
     Args:
         GPU (int, optional): Which GPU to use (0 or 1). Defaults to 1.
-        datadir (String, optional): defaults to a definition below, but can be set by argument instead
-        dirname (String, optional): defaults to a definition below, but can be set by argument instead
+        datadir_input (String, optional): defaults to a definition below, but can be set by argument instead
+        dirname_input (String, optional): defaults to a definition below, but can be set by argument instead
 
     Returns:
         datadir: the directory where data will be pulled from. Governed by computer and user
         dirname: the working directoy. Governed by computer and user
-        editor: used in file_info documents to remember who did editing
-        myhost: computer
-        device0: cpu device
         device: GPU device. defaults to CPU if no GPU is available.
     """
     user = os.getlogin()
     myhost = os.uname()[1] # get name of machine
-    print(f"Running on Computer: {myhost} with user {user}")
-    datadir = ""
-    dirname = ""
-    #Dr. Butts
-    if user.lower() == 'dbutts':
-        if myhost=='m1':                                        #m1
-            datadir = '/home/dbutts/V1/B2data/'
-            dirname = '/home/dbutts/V1/Binocular/Bworkspace/'
-            
-        if myhost=='ca3':                                       #ca3                                  
-            datadir = '/home/DATA/ColorV1/'
-            dirname = '/home/dbutts/ColorV1/CLRworkspace/'
-        else:                                                   # older computers: MT
-            datadir = '/home/dbutts/V1/Binocular/Data/'
-            dirname = '/home/dbutts/V1/Binocular/Bworkspace/'  
-        if project is not None:                                 #add project directory if desired
-            datadir = ""
-            dirname = ""
-    #Isabel Fernandez
-    if user.lower() == '':
-        if myhost=='':
-            datadir = ''
-            dirname = ''
-        if project is not None:
-            datadir = ""
-            dirname = ""
-    print(user, myhost)
-    #Jasper Coles Hood
-    if user.lower() == 'jmch':
-        if myhost=='ca1':                                       #ca1              
-            datadir = '/Data/ColorV1/'
-            dirname = '/home/jmch/'
-        if project is not None:
-            datadir = ""
-            dirname = ""
-    if datadir_input is not None:
-        datadir = datadir_input
-    if dirname_input is not None:
-        dirname = dirname_input
+    print(f"Running on {myhost} with user {user}")
 
-    sys.path.insert(0, dirname) 
+    ########## DEFAULTS ##########
+    dirname = '/home/' + user + '/'    
+    base_datadir = ''
+    if project is None:
+        project = 'ColorV1'
+        print( "Project: ", project ) # display only if left blank so default is clear
+
+    ########## Computer-specific data directories and GPU settings ##########
+    if myhost in ['ca1', 'm1']:
+        base_datadir = '/Data/'
+    elif myhost == 'ca3':
+        base_datadir = '/home/DATA/'
+        print('  cuda0:', torch.cuda.get_device_properties(0).name)
+        print('  cuda1:', torch.cuda.get_device_properties(1).name)
+        GPU = abs((torch.cuda.get_device_properties(0).minor == 9) - (GPU==0))
+    
     device0 = torch.device("cpu")
     if GPU == 0:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # then ada = cuda:0
     else:
         device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-    print('Assigned:', device)  
-    print(datadir)
-    return datadir, dirname, device0, device
+    print('Device assigned:', device)  
+
+    ########## SHARED PROJECT EXTRAS (Datadir and Imports) ##########
+    ##### ColorV1 project ######
+    if project.lower() == 'colorv1':
+        from ColorDataUtils.postprocess import postprocess
+        import ColorDataUtils.ConwayUtils as CU
+        from ColorDataUtils.DDPIutils import DDPIutils
+        import ColorDataUtils.EyeTrackingUtils as ETutils
+        from ColorDataUtils import readout_fit
+        import Code.ColorDataUtils.postprocessing_utils as pproc
+        import ColorDataUtils.CalibrationUtils as cal
+        from ColorDataUtils.CloudMultiExpts import MultiExperiment
+        from ColorDataUtils import RFutils
+
+        datadir = base_datadir + 'ColorV1/'
+
+    ##### SimCloud project ######
+    elif project.lower() == 'simcloud':
+        from NTdatasets.conway.synthcloud_datasets import SimCloudData
+        from ColorDataUtils import readout_fit
+
+        datadir = base_datadir + 'Antolik/'
+    
+    ##### OTHER PROJECTS ######
+
+    ########## USER-SPECIFIC INFORMATION ##########
+    ##### DAN BUTTS  #####
+    if user.lower() in ['dbutts', 'dab']:
+        # Overwrite general defaults for my laptop
+        if myhost=='hoser': 
+            base_datadir = '/Users/dbutts/Data/'
+            dirname = '/Users/dbutts/Projects/'
+        if project.lower() == 'colorv1':
+            datadir = base_datadir + 'ColorV1/'
+            dirname = dirname + 'ColorV1/'
+        elif project.lower() == 'simcloud':
+            datadir = base_datadir + 'Antolik/'
+            dirname = dirname + 'Antolik/'
+
+    ##### ISABEL FERNANDEZ #####
+    elif user.lower() == 'ifernand':
+        if project.lower() == 'cloudsim':
+            if myhost == 'sc':
+                datadir = '/home/ifernand/Cloud_SynthData_Proj/data/'
+                #dirname = ''
+
+    ##### JASPER COLES HOOD #####
+    elif user.lower() == 'jmch':
+        if myhost=='ca1':
+            #datadir = '/Data/ColorV1/'
+            dirname = '/home/jmch/'
+        if project != 'ColorV1':
+            datadir = ""
+            dirname = ""
+
+    if datadir_input is not None:
+        datadir = datadir_input
+    if dirname_input is not None:
+        dirname = dirname_input
+
+    print( "Datadir: %s\nDirname: %s"%(datadir, dirname) )
+    return datadir, dirname, device, device0
