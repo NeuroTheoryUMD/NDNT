@@ -55,7 +55,7 @@ from ColorDataUtils import RFutils
 #    You should see the path to your chosen directory in the list of paths.
 
 
-def init_vars(GPU = 0, datadir_input = None, dirname_input = None):
+def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = None):
     """Initializes several important variables for data and modeling, and imports
     many important libraries.
 
@@ -79,34 +79,40 @@ def init_vars(GPU = 0, datadir_input = None, dirname_input = None):
     dirname = ""
     #Dr. Butts
     if user.lower() == 'dbutts':
-        if myhost=='m1':
+        if myhost=='m1':                                        #m1
             datadir = '/home/dbutts/V1/B2data/'
-            dirname = '/home/dbutts/V1/Binocular/Bworkspace/' # Working directory 
-        if myhost=='ca3':
+            dirname = '/home/dbutts/V1/Binocular/Bworkspace/'
+        if myhost=='ca3':                                       #ca3                                  
             datadir = '/home/DATA/ColorV1/'
             dirname = '/home/dbutts/ColorV1/CLRworkspace/'
-        else:  # older computers: MT
+        else:                                                   # older computers: MT
             datadir = '/home/dbutts/V1/Binocular/Data/'
-            dirname = '/home/dbutts/V1/Binocular/Bworkspace/' # Working directory
+            dirname = '/home/dbutts/V1/Binocular/Bworkspace/'  
+        if project is not None:                                 #add project directory if desired
+            datadir = ""
+            dirname = ""
     #Isabel Fernandez
     if user.lower() == '':
         if myhost=='':
             datadir = ''
             dirname = ''
+        if project is not None:
+            datadir = ""
+            dirname = ""
     print(user, myhost)
     #Jasper Coles Hood
     if user.lower() == 'jmch':
-        if myhost=='ca1':
-            
+        if myhost=='ca1':                                       #ca1              
             datadir = '/Data/ColorV1/'
             dirname = '/home/jmch/'
-    
-    if datadir_input != None:
-        print("here")
+        if project is not None:
+            datadir = ""
+            dirname = ""
+    if datadir_input is not None:
         datadir = datadir_input
-    if dirname_input != None:
+    if dirname_input is not None:
         dirname = dirname_input
-    
+
     sys.path.insert(0, dirname) 
     device0 = torch.device("cpu")
     if GPU == 0:
