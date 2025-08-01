@@ -124,23 +124,23 @@ def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = Non
     if project.lower() == 'colorv1':
         #from ColorDataUtils.postprocess import postprocess
         globals()['math'] = __import__('math')
-        global CU, DDPIutils, ETutils, readout_fit, pproc, cal, MultiExperiment, RFutils
+        global CU, DDPIutils, ETutils, readout_fit, pproc, cal, multExpt, RFutils, multidata
         import ColorDataUtils.ConwayUtils as CU
-        from ColorDataUtils.DDPIutils import DDPIutils
+        import ColorDataUtils.DDPIutils as DDPIutils
         import ColorDataUtils.EyeTrackingUtils as ETutils
-        from ColorDataUtils import readout_fit
+        import ColorDataUtils.readout_fit as readout_fit
         import ColorDataUtils.postprocessing_utils as pproc
         import ColorDataUtils.CalibrationUtils as cal
-        from ColorDataUtils.CloudMultiExpts import MultiExperiment
-        from ColorDataUtils import RFutils
-
+        import ColorDataUtils.CloudMultiExpts as multExpt
+        import ColorDataUtils.RFutils as RFutils
+        import NTdatasets.conway.multi_datasets as multidata
         datadir = base_datadir + 'ColorV1/'
 
     ##### SimCloud project ######
     elif project.lower() == 'simcloud':
         global SimCloudData, readout_fit
-        from NTdatasets.conway.synthcloud_datasets import SimCloudData
-        from ColorDataUtils import readout_fit
+        import NTdatasets.conway.synthcloud_datasets as syncloud
+        import ColorDataUtils.readout_fit as readout_fit
 
         datadir = base_datadir + 'Antolik/'
     
