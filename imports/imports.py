@@ -13,7 +13,7 @@ To make this work:
      You should see the path to your NDNT/imports in the list of paths.
      
 4) For any notebook, run [ from imports import * ]
-                      and [ datadir, dirname, device0, device = init_vars() ]
+                      and [ datadir, dirname, device0, device = init_vars(globals()) ]
     All imports and initializations should be done.
  
 5) VSCode has some really weird problems with updating its python environment variables.
@@ -130,18 +130,13 @@ def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_inpu
         import ColorDataUtils.readout_fit as readout_fit
         import ColorDataUtils.postprocessing_utils as pproc
         import ColorDataUtils.CalibrationUtils as cal
-        import ColorDataUtils.CloudMultiExpts as multExpt
+        import ColorDataUtils.CloudMultiExpts as cme
         import ColorDataUtils.RFutils as RFutils
         import NTdatasets.conway.multi_datasets as multidata
-        globs['CU'] = CU
-        globs['DDPIutils'] = DDPIutils
-        globs['ETutils'] = ETutils
-        globs['readout_fit'] = readout_fit
-        globs['pproc'] = pproc
-        globs['cal'] = cal
-        globs['multExpt'] = multExpt
-        globs['RFutils'] = RFutils
-        globs['multidata'] = multidata
+        new_entries = {'CU': CU, 'DDPIutils': DDPIutils, 'ETutils': ETutils, 
+                       'readout_fit': readout_fit, 'pproc': pproc, 'cal': cal, 
+                       'cme': cme, 'RFutils': RFutils, 'multidata': multidata}
+        globs.update(new_entries)
         datadir = base_datadir + 'ColorV1/'
 
     ##### SimCloud project ######
@@ -149,8 +144,8 @@ def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_inpu
         #global SimCloudData, readout_fit
         import NTdatasets.conway.synthcloud_datasets as syncloud
         import ColorDataUtils.readout_fit as readout_fit
-        globs['SimCloudData'] = syncloud
-        globs['readout_fit'] = readout_fit
+        new_entries = {'SimCloudData': syncloud, 'readout_fit': readout_fit}
+        globs.update(new_entries)
 
         datadir = base_datadir + 'Antolik/'
     
