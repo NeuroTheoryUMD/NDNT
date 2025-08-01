@@ -78,7 +78,7 @@ del user, myhost, codedir
 ###### END AUTOMATIC IMPORTS #####
 
 
-def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = None):
+def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_input = None):
     """
     Initializes several important variables for data and modeling, and imports important libraries.
 
@@ -123,8 +123,7 @@ def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = Non
     ##### ColorV1 project ######
     if project.lower() == 'colorv1':
         #from ColorDataUtils.postprocess import postprocess
-        globals()['math'] = __import__('math')
-        global CU, DDPIutils, ETutils, readout_fit, pproc, cal, multExpt, RFutils, multidata
+        #global CU, DDPIutils, ETutils, readout_fit, pproc, cal, multExpt, RFutils, multidata
         import ColorDataUtils.ConwayUtils as CU
         import ColorDataUtils.DDPIutils as DDPIutils
         import ColorDataUtils.EyeTrackingUtils as ETutils
@@ -134,13 +133,24 @@ def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = Non
         import ColorDataUtils.CloudMultiExpts as multExpt
         import ColorDataUtils.RFutils as RFutils
         import NTdatasets.conway.multi_datasets as multidata
+        globs['CU'] = CU
+        globs['DDPIutils'] = DDPIutils
+        globs['ETutils'] = ETutils
+        globs['readout_fit'] = readout_fit
+        globs['pproc'] = pproc
+        globs['cal'] = cal
+        globs['multExpt'] = multExpt
+        globs['RFutils'] = RFutils
+        globs['multidata'] = multidata
         datadir = base_datadir + 'ColorV1/'
 
     ##### SimCloud project ######
     elif project.lower() == 'simcloud':
-        global SimCloudData, readout_fit
+        #global SimCloudData, readout_fit
         import NTdatasets.conway.synthcloud_datasets as syncloud
         import ColorDataUtils.readout_fit as readout_fit
+        globs['SimCloudData'] = syncloud
+        globs['readout_fit'] = readout_fit
 
         datadir = base_datadir + 'Antolik/'
     
