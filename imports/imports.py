@@ -122,12 +122,14 @@ def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = Non
     ########## SHARED PROJECT EXTRAS (Datadir and Imports) ##########
     ##### ColorV1 project ######
     if project.lower() == 'colorv1':
-        from ColorDataUtils.postprocess import postprocess
+        #from ColorDataUtils.postprocess import postprocess
+        globals()['math'] = __import__('math')
+        global CU, DDPIutils, ETutils, readout_fit, pproc, cal, MultiExperiment, RFutils
         import ColorDataUtils.ConwayUtils as CU
         from ColorDataUtils.DDPIutils import DDPIutils
         import ColorDataUtils.EyeTrackingUtils as ETutils
         from ColorDataUtils import readout_fit
-        import Code.ColorDataUtils.postprocessing_utils as pproc
+        import ColorDataUtils.postprocessing_utils as pproc
         import ColorDataUtils.CalibrationUtils as cal
         from ColorDataUtils.CloudMultiExpts import MultiExperiment
         from ColorDataUtils import RFutils
@@ -136,6 +138,7 @@ def init_vars(GPU = 0, project = None, datadir_input = None, dirname_input = Non
 
     ##### SimCloud project ######
     elif project.lower() == 'simcloud':
+        global SimCloudData, readout_fit
         from NTdatasets.conway.synthcloud_datasets import SimCloudData
         from ColorDataUtils import readout_fit
 
