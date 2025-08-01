@@ -4,7 +4,7 @@ To make this work:
 
 2) Run in command line: 
 <     echo 'export PYTHONPATH="/home/jmch/Code/NDNT/imports:$PYTHONPATH"' >> ~/.bashrc     >
-    Where the '/home/jmch/Code' is the path to the folder containing NDNT
+    Where the '/home/jmch/Code' is the path to the folder containing NDNT/imports
     This will write the path to your .bashrc file, so that it is always included
     You will need to restart jupyter notebooks, and VSCode needs additional steps.
     
@@ -66,6 +66,7 @@ import NDNT.utils as utils
 from NDNT.utils import fit_lbfgs
 from NDNT.utils.DanUtils import ss
 from NDNT.utils.DanUtils import imagesc
+from NDNT.utils.DanUtils import subplot_setup
 # NDNT -- base
 import NDNT.NDN as NDN
 from NDNT.modules.layers import *
@@ -100,7 +101,10 @@ def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_inpu
     dirname = '/home/' + user + '/'    
     base_datadir = ''
     if project is None:
-        project = 'ColorV1'
+        if user.lower() == 'ifernand':
+            project = 'simcloud'
+        else:
+            project = 'ColorV1'
         print( "Project: ", project ) # display only if left blank so default is clear
 
     ########## Computer-specific data directories and GPU settings ##########
@@ -142,9 +146,12 @@ def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_inpu
     ##### SimCloud project ######
     elif project.lower() == 'simcloud':
         #global SimCloudData, readout_fit
-        import NTdatasets.conway.synthcloud_datasets as syncloud
+        import NTdatasets.conway.synthcloud_datasets as scd
+        import ColorDataUtils.simproj_utils as spu
         import ColorDataUtils.readout_fit as readout_fit
-        new_entries = {'SimCloudData': syncloud, 'readout_fit': readout_fit}
+        import ColorDataUtils.Barcode as BC
+        new_entries = {'scd': scd, 'spu': spu, 'readout_fit': readout_fit, 
+                       'BC': BC}
         globs.update(new_entries)
 
         datadir = base_datadir + 'Antolik/'
