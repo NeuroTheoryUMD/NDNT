@@ -79,7 +79,7 @@ del user, myhost, codedir
 ###### END AUTOMATIC IMPORTS #####
 
 
-def init_vars(project=None, GPU=0):
+def init_vars(project=None, GPU=0, verbose=True):
     """
     Initializes several important variables for data and modeling, and imports important libraries.
 
@@ -103,14 +103,16 @@ def init_vars(project=None, GPU=0):
         print("  colorv1:\tColor Vision project, Conway dataset")
         print("  simcloud:\tSimulated Cloud project, Antolik dataset")
         print("  Other projects can be added here as needed.")
-        return None, None, None, None
+        return
     
+    import datetime
     import inspect
     globs = inspect.currentframe().f_back.f_globals # this is in place of passing in globals() into function
 
     user = os.getlogin()
     myhost = os.uname()[1] # get name of machine
-    print(f"Running on {myhost} with user {user}")
+
+    print(f"{datetime.datetime.now().strftime('%Y %B %-d')}: {user} running on {myhost}")
 
     ########## DEFAULTS ##########
     dirname = '/home/' + user + '/'    
@@ -172,8 +174,9 @@ def init_vars(project=None, GPU=0):
         globs.update(new_entries)
 
         datadir = base_datadir + 'Antolik/'
-    
     ##### OTHER PROJECTS ######
+    else:
+        new_entries = {}
 
     ########## USER-SPECIFIC INFORMATION ##########
     ##### DAN BUTTS  #####
@@ -210,5 +213,9 @@ def init_vars(project=None, GPU=0):
     #if dirname_input is not None:
     #    dirname = dirname_input
 
-    print( "Datadir: %s\t\tDirname: %s"%(datadir, dirname) )
+    if verbose:
+        print( "Loaded additional packages:\n  ", end='')
+        for kk,vv in new_entries.items():
+            print(kk, end=' ')
+        print( "\nDatadir: %s\nDirname: %s"%(datadir, dirname) )
     return datadir, dirname, device, device0

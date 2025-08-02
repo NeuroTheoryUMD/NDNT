@@ -1,9 +1,7 @@
-print(f'Invoking __init__.py for {__name__}')
-
+#print(f'Invoking __init__.py for {__name__}')
 
 from . import ffnet_dicts as dicts
 from . import plotting as plot
-
 
 from .create_reg_matrices import *
 
