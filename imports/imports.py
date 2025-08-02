@@ -79,20 +79,35 @@ del user, myhost, codedir
 ###### END AUTOMATIC IMPORTS #####
 
 
-def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_input = None):
+def init_vars(project=None, GPU=0):
     """
     Initializes several important variables for data and modeling, and imports important libraries.
 
     Args:
+        project (string, optional): name of project to configure imports and directories, defaults (none) to pre-established. 
+            Use 'help' or 'list' to list available projects.
         GPU (int, optional): Which GPU to use (0 or 1). Defaults to 1.
-        datadir_input (String, optional): defaults to a definition below, but can be set by argument instead
-        dirname_input (String, optional): defaults to a definition below, but can be set by argument instead
 
     Returns:
         datadir: the directory where data will be pulled from. Governed by computer and user
         dirname: the working directoy. Governed by computer and user
         device: GPU device. defaults to CPU if no GPU is available.
+        device0: CPU device, always available.
+
+    # REMOVED (since easier to overwrite these after running init_vars, and simplifies this function)
+        datadir_input (String, optional): defaults to a definition below, but can be set by argument instead
+        dirname_input (String, optional): defaults to a definition below, but can be set by argument instead    
     """
+    if project in ['help', 'list']:
+        print("Available projects:")
+        print("  colorv1:\tColor Vision project, Conway dataset")
+        print("  simcloud:\tSimulated Cloud project, Antolik dataset")
+        print("  Other projects can be added here as needed.")
+        return None, None, None, None
+    
+    import inspect
+    globs = inspect.currentframe().f_back.f_globals # this is in place of passing in globals() into function
+
     user = os.getlogin()
     myhost = os.uname()[1] # get name of machine
     print(f"Running on {myhost} with user {user}")
@@ -102,14 +117,16 @@ def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_inpu
     base_datadir = ''
     if project is None:
         if user.lower() == 'ifernand':
-            project = 'simcloud'
+            project = 'SimCloud'
         else:
             project = 'ColorV1'
         print( "Project: ", project ) # display only if left blank so default is clear
-
+    
     ########## Computer-specific data directories and GPU settings ##########
     if myhost in ['ca1', 'm1']:
         base_datadir = '/Data/'
+    elif myhost == 'sc':
+        base_datadir = '/data/'
     elif myhost == 'ca3':
         base_datadir = '/home/DATA/'
         print('  cuda0:', torch.cuda.get_device_properties(0).name)
@@ -137,9 +154,9 @@ def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_inpu
         import ColorDataUtils.CloudMultiExpts as cme
         import ColorDataUtils.RFutils as RFutils
         import NTdatasets.conway.multi_datasets as multidata
-        new_entries = {'CU': CU, 'DDPIutils': DDPIutils, 'ETutils': ETutils, 
-                       'readout_fit': readout_fit, 'pproc': pproc, 'cal': cal, 
-                       'cme': cme, 'RFutils': RFutils, 'multidata': multidata}
+        new_entries = {
+            'CU': CU, 'DDPIutils': DDPIutils, 'ETutils': ETutils, 'readout_fit': readout_fit, 
+            'pproc': pproc, 'cal': cal, 'cme': cme, 'RFutils': RFutils, 'multidata': multidata}
         globs.update(new_entries)
         datadir = base_datadir + 'ColorV1/'
 
@@ -150,8 +167,8 @@ def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_inpu
         import ColorDataUtils.simproj_utils as spu
         import ColorDataUtils.readout_fit as readout_fit
         import ColorDataUtils.Barcode as BC
-        new_entries = {'scd': scd, 'spu': spu, 'readout_fit': readout_fit, 
-                       'BC': BC}
+        new_entries = {
+            'scd': scd, 'spu': spu, 'readout_fit': readout_fit, 'BC': BC}
         globs.update(new_entries)
 
         datadir = base_datadir + 'Antolik/'
@@ -188,10 +205,10 @@ def init_vars(globs, GPU = 0, project = None, datadir_input = None, dirname_inpu
             datadir = ""
             dirname = ""
 
-    if datadir_input is not None:
-        datadir = datadir_input
-    if dirname_input is not None:
-        dirname = dirname_input
+    #if datadir_input is not None:
+    #    datadir = datadir_input
+    #if dirname_input is not None:
+    #    dirname = dirname_input
 
-    print( "Datadir: %s\nDirname: %s"%(datadir, dirname) )
+    print( "Datadir: %s\t\tDirname: %s"%(datadir, dirname) )
     return datadir, dirname, device, device0
