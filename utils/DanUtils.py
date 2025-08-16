@@ -84,7 +84,7 @@ def scatterplot( arr2, pnt='b.', alpha=1.0, diag=False ):
     if diag:
         mn = np.minimum(xs[0], ys[0])
         mx = np.minimum(xs[1], ys[1])
-        plt.plot([mn,mn], [mx,mx],'k')
+        plt.plot([mn,mx], [mn,mx],'k')
         plt.xlim(xs)
         plt.ylim(ys)
     #plt.show()
