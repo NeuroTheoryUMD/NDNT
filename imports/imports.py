@@ -187,7 +187,7 @@ def init_vars(project=None, GPU=0, verbose=True):
             dirname = '/Users/dbutts/Projects/'
         if project.lower() == 'colorv1':
             datadir = base_datadir + 'ColorV1/'
-            dirname = dirname + 'ColorV1/'
+            dirname = dirname + 'ColorV1/CLRworkspace/'
         elif project.lower() == 'simcloud':
             datadir = base_datadir + 'Antolik/'
             dirname = dirname + 'Antolik/'

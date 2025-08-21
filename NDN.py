@@ -466,12 +466,33 @@ class NDN(nn.Module):
             valid_dl (DataLoader): The validation data loader.
         """
         from torch.utils.data import DataLoader, random_split, Subset
+        is_multiexp = False
 
         # get the verbose flag if it is provided, default to False if not
         #verbose = kwargs.get('verbose', False)
 
         #covariates = list(dataset[0].keys())
         #print('Dataset covariates:', covariates)
+        from torch.utils.data import Sampler
+        import random
+
+        class ValueSampler(Sampler):
+            """Code from AI to sample from indexes sequentially rather than indexes themselves"""
+            def __init__(self, values):
+                self.values = values
+            def __iter__(self):
+                return iter(self.values)
+            def __len__(self):
+                return len(self.values)
+
+        class ValueRandomSampler(Sampler):
+            def __init__(self, values):
+                self.values = list(values)
+            def __iter__(self):
+                return iter(random.sample(self.values, len(self.values)))
+            def __len__(self):
+                return len(self.values)
+
 
         def block_collate(batch):
             """This is necessary to handle how the dataloader handles passing multiple inputs into batch_sample, which
@@ -482,8 +503,8 @@ class NDN(nn.Module):
                     out[key] = torch.cat([item[key] for item in batch], dim=0)
                 else:
                     out[key] = [item[key] for item in batch]
+            #print('double inside', out['idx'])
             return out
-
 
         if train_inds is None or val_inds is None:
             if fold_validation is not None:
@@ -501,11 +522,14 @@ class NDN(nn.Module):
                 if val_inds is None:
                     val_inds = val_ds.indices
 
-                else:
-                    train_ds = dataset
-                    val_ds = dataset
+            else:
+                train_ds = dataset
+                val_ds = dataset
+                train_inds = train_ds.indices
+                val_inds = val_ds.indices
             
         if is_multiexp:
+            
             train_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=train_inds, shuffle=True, verbose=verbose)
             val_sampler = ExperimentSampler(dataset, batch_size=batch_size, indices=val_inds, shuffle=False, verbose=verbose)
 
@@ -515,15 +539,17 @@ class NDN(nn.Module):
 
         elif self.block_sample:
             train_sampler = torch.utils.data.sampler.BatchSampler(
-                torch.utils.data.sampler.SubsetRandomSampler(train_inds),
+                #torch.utils.data.sampler.SubsetRandomSampler(train_inds),
+                ValueRandomSampler(train_inds),
                 batch_size=batch_size,
                 drop_last=False)
-            
+ 
             val_sampler = torch.utils.data.sampler.BatchSampler(
-                torch.utils.data.sampler.SequentialSampler(val_inds),
+                #torch.utils.data.sampler.SequentialSampler(val_inds),
+                ValueSampler(val_inds),
                 batch_size=batch_size,
                 drop_last=False)
-
+ 
             train_dl = DataLoader(dataset, batch_sampler=train_sampler, num_workers=num_workers, 
                                   collate_fn=block_collate)
             valid_dl = DataLoader(dataset, batch_sampler=val_sampler, num_workers=num_workers, 
@@ -1183,7 +1209,7 @@ class NDN(nn.Module):
                 else:
                     data_inds = list(range(len(data)))
 
-            from torch.utils.data import DataLoader, Subset
+            #from torch.utils.data import DataLoader, Subset
 
             _, data_dl = self.get_dataloaders(
                 data, batch_size=batch_size, num_workers=num_workers, 
@@ -1197,6 +1223,7 @@ class NDN(nn.Module):
             self = self.to(device)
 
             #for data_sample in tqdm(data_dl, desc='Eval models'):
+            #ii = 0
             for data_sample in tqdm(
                 data_dl, desc='Eval models', 
                 bar_format='{desc}: {percentage:3.0f}%|{bar:25}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]{postfix}'):
@@ -1216,8 +1243,11 @@ class NDN(nn.Module):
                     
                     LLsum += self.loss_module.unit_loss( 
                         pred, data_sample['robs'], data_filters=dfs, temporal_normalize=False)
-                    Tsum += torch.sum(data_sample['dfs'], axis=0)
+                    #Tsum += torch.sum(data_sample['dfs'], axis=0)
+                    Tsum += torch.sum(dfs, axis=0)
                     Rsum += torch.sum(torch.mul(dfs, data_sample['robs']), axis=0)
+                    #    print('idx', data_sample['idx'])
+                    #    print(dfs.shape, torch.sum(dfs, axis=0))
             LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
             self = self.to(d0)  # move back to original device
 
