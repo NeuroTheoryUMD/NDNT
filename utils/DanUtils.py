@@ -65,20 +65,32 @@ def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, 
 # END imagesc
 
 
-def scatterplot( arr2, pnt='b.', alpha=1.0, diag=False ):
+def scatterplot( arr2, arrS2=None, clr='b.', alpha=1.0, diag=False ):
     """
     Generates scatter-plot of 2-d data (arr2) using the following options:
 
     Args:
         arr2 (array): 2-d array to plot (Nx2)
-        pnt (str): symbol to use (default 'b.')
+        arrS2 (array): second array if arr2 is 1-d
+        clr (str): symbol to use (default 'b.')
         alpha (float): transparency level (default: 1)
         diag (boolean): whether to draw x-y diagonal line (default False)
 
     Returns:
         None, simply display to screen
     """
-    plt.plot(arr2[:,0], arr2[:,1], pnt, alpha=alpha )
+    if len(arr2.shape) > 1:
+        N, dims = arr2.shape
+        if dims == 2:
+            assert arrS2 is None, "If arr2 is 2D, arrS2 must be None"
+    else:
+        dims = 1
+    if dims == 1:
+        assert arrS2 is not None, "If arr2 is 1D, arrS2 must be provided"
+        assert len(arr2) == len(arrS2), "arr2 and arrS2 must have same length"
+        plt.plot(arr2, arrS2, clr, alpha=alpha )
+    else:
+        plt.plot(arr2[:,0], arr2[:,1], clr, alpha=alpha )
     xs = plt.xlim()
     ys = plt.ylim()
     if diag:

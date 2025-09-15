@@ -395,6 +395,7 @@ class NDNLayer(nn.Module):
                 pp.requires_grad = val
             elif nm == name:
                 pp.requires_grad = val
+        #print('Set requires_grad=%s for %s'%(val, name))
 
     def set_reg_val( self, reg_type, reg_val=None):
         """
