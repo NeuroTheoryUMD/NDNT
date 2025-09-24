@@ -6,7 +6,8 @@ To make this work:
 <     echo 'export PYTHONPATH="/home/jmch/Code/NDNT/imports:$PYTHONPATH"' >> ~/.bashrc     >
     Where the '/home/jmch/Code' is the path to the folder containing NDNT/imports
     This will write the path to your .bashrc file, so that it is always included
-    You will need to restart jupyter notebooks, and VSCode needs additional steps.
+    You will need to restart jupyter notebooks, your terminal window, and VSCode 
+    (needs additional steps).
     
 3) To check that it worked: in any notebook, run [ import os ] 
                                                and [ sys.path ]
