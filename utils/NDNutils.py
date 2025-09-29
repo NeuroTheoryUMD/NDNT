@@ -13,16 +13,17 @@ import io
 
 
 ########### LBFGS TRAINER (just a function!) #################
-def fit_lbfgs(mod, data, #val_data=None,
-              parameters=None,
-              optimizer=None,
-              verbose=True,
-              max_iter=1000,
-              lr=1,
-              line_search='strong_wolfe',
-              history_size=100,
-              tolerance_change=1e-7,
-              tolerance_grad=1e-7):
+def fit_lbfgs(
+        model, data, #val_data=None,
+        parameters=None,
+        optimizer=None,
+        verbose=True,
+        max_iter=1000,
+        lr=1,
+        line_search='strong_wolfe',
+        history_size=100,
+        tolerance_change=1e-7,
+        tolerance_grad=1e-7):
     '''
     Runs fullbatch LBFGS on a Pytorch model and data dictionary
     Inputs:
@@ -31,10 +32,10 @@ def fit_lbfgs(mod, data, #val_data=None,
     '''
 
     assert isinstance(data, dict), "data must be a dictionary"
-    mod.prepare_regularization()
-    mod.train()
+    model.prepare_regularization()
+    model.train()
     if parameters is None:
-        parameters = mod.parameters()
+        parameters = model.parameters()
     if optimizer is None:
         optimizer = torch.optim.LBFGS(
             parameters,
@@ -46,7 +47,7 @@ def fit_lbfgs(mod, data, #val_data=None,
         
     def closure():
         optimizer.zero_grad()
-        out = mod.training_step(data)
+        out = model.training_step(data)
         loss = out['loss']
         if np.isnan(loss.item()):
             return loss

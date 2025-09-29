@@ -83,6 +83,7 @@ class FFnetwork(nn.Module):
             'partial': layers.NDNLayerPartial,
             'partial_conv': layers.ConvLayerPartial,
             'partial_oriconv': layers.OriConvLayerPartial,
+            'ptunlayer': layers.ParametricTuneLayer
             #'PyrLayer': layers.PyrLayer,
             #'ConvPyrLayer': layers.ConvPyrLayer
             # 'external': layers.ExternalLayer,    

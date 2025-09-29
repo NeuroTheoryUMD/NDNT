@@ -269,37 +269,6 @@ class L1convLayer(NDNLayer):
         self.weight.data[self.weight < 0] = 0.0
 
 
-# class L1convLayer(ConvLayer):
-
-#     def __init__(self, **kwargs):  # same as ConvLayer, with some extras built in...
-#         # Set up ConvLayer
-#         super().__init__(**kwargs)
-#         # Add second set of weights (corresponding to w-)
-#         self.weight_minus = Parameter(torch.Tensor(size=self.shape))
-#     # END L1convLayer.__init__
-        
-#     def preprocess_weights(self):
-#         w = F.relu(self.weight) - F.relu(self.weight_minus)
-#         # Do all preprocessing for NDNlayer, and then conv-layer below
-#         #w = super().preprocess_weights()
-
-#         if self.window:
-#             w = w.view(self.filter_dims+[self.num_filters]) # [C, H, W, T, D]
-#             if self.is1D:
-#                 w = torch.einsum('chwln,h->chwln', w, self.window_function)
-#             else:
-#                 w = torch.einsum('chwln, hw->chwln', w, self.window_function)
-#             w = w.reshape(-1, self.num_filters)
-
-#         if self.tent_basis is not None:
-#             wdims = self.tent_basis.shape[0]
-            
-#             w = w.view(self.filter_dims[:3] + [wdims] + [-1]) # [C, H, W, T, D]
-#             w = torch.einsum('chwtn,tz->chwzn', w, self.tent_basis)
-#             w = w.reshape(-1, self.num_filters)
-        
-        return w
-
     @classmethod
     def layer_dict(cls, **kwargs):
         """
@@ -315,6 +284,141 @@ class L1convLayer(NDNLayer):
         Ldict['layer_type'] = 'l1layer'
 
         return Ldict
+
+
+class ParametricTuneLayer(NDNLayer):
+    """
+    Function specific to Declan/Huk datasets: generates parametric orientation tuning curves that 
+    are comobined with weights over spatial frequency
+    """ 
+
+    def __init__(self,
+            input_dims=None,
+            num_filters=None,
+            pos_constraint=True,
+            bias=False,
+            static_Ftuning=False,
+            **kwargs):
+        """
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+        """
+        assert input_dims is not None, "ParametricTuneLayer: Must specify input_dims"
+        # Put filter weights in time-lag dimension to allow regularization using d2t etc
+        if static_Ftuning:
+            #assert len(static_Ftuning) == 4, "ParametricTuneLayer: static_Ftuning must have length 4"
+            #self.register_buffer( 'Ftuning', torch.tensor(static_Ftuning, dtype=torch.float32) )
+            filter_dims = [1, 1, 1, 1]  # weights are just frequency weights
+        else:
+            filter_dims = [1, 4, 1, 1]  # weights are just frequency weights
+            #self.Ftuning = None
+
+        super().__init__(
+            input_dims, num_filters,
+            filter_dims=filter_dims,
+            pos_constraint=True,
+            bias=False,                         
+            **kwargs)
+
+        self.output_dims = [num_filters] + [1,1,1]
+        self.num_outputs = num_filters
+
+        self.register_buffer( 'thetas', torch.zeros(self.num_filters, dtype=torch.float32) )
+        self.register_buffer( 'widths', torch.zeros(self.num_filters, dtype=torch.float32) )
+        self.register_buffer( 'ds_index', torch.ones(self.num_filters, dtype=torch.float32) )
+
+        self.filters = None  # this will be precomputed 12x
+    # END ParametricTuneLayer.__init__
+
+    def make_orientation_filters( self, theta_list, width_list, ds_list ):
+        """
+        Construct self.tuning_cuves based on thetas, widths, and ds_index lists. If a single
+        value is passed, it is used for all filters. If a list is passed, it must be the same
+        length as num_filters. 
+
+        Args:
+            theta_list: list or float, preferred angles (0-6) corresponding to 0-180 degrees
+            width_list: list or float, tuning widths (std of gaussian)
+            ds_list: list or float, ratio of preferred orientation to 180 off
+
+        Returns:
+            None, but creates self.tuning_curves
+        """
+        ORItuning = np.ones([12, self.num_filters])
+        if not (isinstance(theta_list, list) or isinstance(theta_list, np.ndarray)):
+            ORItuning *= self.stim_tuning( theta_list, width_list, ds_list )[:,None]
+        else:
+            for cc in range(self.num_filters):
+                ORItuning[:,cc] = self.stim_tuning( theta_list[cc], width_list[cc], ds_list[cc] )
+        self.tuning_curves = torch.tensor( ORItuning, dtype=torch.float32, device=self.weight.device)
+    # END ParametricTuneLayer.make_orientation_filters()
+
+    @staticmethod
+    def stim_tuning( theta, width, ds_index ):
+        """
+        Generate parametric tuning curve over 12 angles (6 are preferred direction)
+        
+        Args:
+            theta: preferred angle (0-6) corresponding to 0-180 degrees
+            width: tuning width (std of gaussian)
+            ds_index: ratio of preferred orientation to 180 off
+        """    
+        xs = np.arange(6).astype(np.float32)
+        frac_theta = theta - np.floor(theta)
+        f = np.exp(-(xs-(2+frac_theta))**2/(2*width**2))
+        #width = 0.5 # 0.2, 0.5, 1, 2
+        #ds_index = 0.5 
+        # Make max 1 and min 0
+        f = f-np.min(f)
+        f = f/np.max(f)
+        f = np.concatenate((f, ds_index*f ))
+        
+        # Now roll the right amount
+        f = np.roll(f, int(np.floor(theta))-2)
+        #plt.plot(f)
+        #plt.show()
+        return f
+    # END ParametricTuneLayer.stim_tuning()
+
+    def preprocess_weights( self ):
+        # note the square is to enforce positive constraints
+        if self.filter_dims[1] > 1:
+            return torch.einsum('ac,bc->abc', torch.square(self.weight), 
+                                self.tuning_curves).reshape([-1, self.num_filters])
+        else:
+            return torch.einsum('ac,bc->abc', torch.square(self.weight).repeat((4,1)), 
+                                self.tuning_curves).reshape([-1, self.num_filters])
+            #return torch.multiply(self.tuning_curves, torch.square(self.weight)) # 12xN x 1xN broadcast
+        # END ParametricTuneLayer.preprocess_weights()
+
+    def get_weights( self, basic=False, to_reshape=True ):
+        """Because preprocess_weights is overloaded, need to overload get_weights too"""
+        if basic:
+            return self.weight.data.cpu().detach().numpy()
+        else:
+            w = self.preprocess_weights().data.cpu().detach().numpy()
+            if to_reshape:
+                if self.filter_dims[1] > 1:
+                    return w.reshape([4,12,self.num_filters])
+                else:
+                    return w.reshape([12,self.num_filters])
+            else:
+                return w
+        
+    def _layer_abbrev( self ):
+        return '  partun'
+
+    @classmethod
+    def layer_dict(cls, static_Ftuning=False, **kwargs):  
+        Ldict = super().layer_dict(**kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'ptunlayer'
+        Ldict['static_Ftuning'] = static_Ftuning
+        del Ldict['pos_constraint']
+        del Ldict['bias']
+        return Ldict
+    # END ParametricTuneLayer.layer_dict()
 
 
 class OnOffLayer(Tlayer):

@@ -730,10 +730,14 @@ class NDN(nn.Module):
         if block_sample is not None:
             self.block_sample = block_sample
         if self.block_sample:
-            assert dataset.block_sample, "dataset block_sample does not match model_block_sample"
+            if hasattr(dataset, 'block_sample'):
+                assert dataset.block_sample, "dataset block_sample does not match model_block_sample"
+            else: 
+                print('Note there is no block_sample support in dataset.')
             self.loss_module.num_lags = dataset.num_lags
         else:
-            assert dataset.block_sample == False, "dataset block_sample does not match model_block_sample"
+            if hasattr(dataset, 'block_sample'):
+              assert dataset.block_sample == False, "dataset block_sample does not match model_block_sample"
             self.loss_module.num_lags = 0
 
         # Should be set ahead of time

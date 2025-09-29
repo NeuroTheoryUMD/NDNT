@@ -18,6 +18,7 @@ from .reslayers import IterSTlayer
 from .specialtylayers import Tlayer
 from .specialtylayers import L1convLayer
 from .specialtylayers import OnOffLayer
+from .specialtylayers import ParametricTuneLayer
 from .masklayers import MaskLayer
 from .masklayers import MaskSTconvLayer
 from .orilayers import OriLayer
