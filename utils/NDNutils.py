@@ -1042,23 +1042,34 @@ def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0
     summary_str += "----------------------------------------------------------------" + "\n"
     # return summary
     return summary_str, (total_params, trainable_params)
+# END summary_string()
 
-def get_fit_versions(data_dir, model_name):
-    '''
-        Find versions of the fit model
-        Arguments:
-            data_dir: directory where the checkpoints are stored
-            model_name: name of the model
-    '''
 
+def get_fit_versions(checkpoint_dir, model_name):
+    '''
+    This looks in the checkpoint_dir and finds all the versions of the fit model
+    and returns a dictionary with the version number, events file, model file, and
+    best validation loss
+
+    Arguments:
+        checkpoint_dir: directory where the checkpoints are stored
+        model_name: name of the model (as it would be in the checkpoint_dir)
+    
+    Returns:
+        outdict: dictionary with the following keys:
+            'version_num': list of version numbers
+            'events_file': list of events files
+            'model_file': list of model files
+            'val_loss': list of best validation losses
+            'val_loss_steps': list of validation losses at each epoch
+    '''
     import re
     from tensorboard.backend.event_processing import event_accumulator
 
-    dirlist = [x for x in os.listdir(os.path.join(data_dir, model_name)) if os.path.isdir(os.path.join(data_dir, model_name, x))]
-        
+    dirlist = [x for x in os.listdir(os.path.join(checkpoint_dir, model_name)) if os.path.isdir(os.path.join(checkpoint_dir, model_name, x))]
+     
     versionlist = [re.findall(r'(?!version)\d+', x) for x in dirlist]
-    versionlist = [int(x[0]) for x in versionlist if not not x]
-
+    versionlist = np.sort([int(x[0]) for x in versionlist if not not x])
     outdict = {'version_num': [],
         'events_file': [],
         'model_file': [],
@@ -1066,8 +1077,8 @@ def get_fit_versions(data_dir, model_name):
         'val_loss_steps': []}
 
     for v in versionlist:
-        # events_file = os.path.join(data_dir, model_name, 'version_%d' %v, 'events.out.tfevents.%d' %v)
-        vpath = os.path.join(data_dir, model_name, 'version%d' %v)
+        # events_file = os.path.join(checkpoint_dir, model_name, 'version_%d' %v, 'events.out.tfevents.%d' %v)
+        vpath = os.path.join(checkpoint_dir, model_name, 'version%d' %v)
         vplist = os.listdir(vpath)
 
         tfeventsfiles = [x for x in vplist if 'events.out.tfevents' in x]
@@ -1091,6 +1102,7 @@ def get_fit_versions(data_dir, model_name):
                 continue
 
     return outdict
+# END get_fit_versions()
 
 
 def ensure_dir(dir_name: str):
@@ -1216,7 +1228,7 @@ def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0
     # return summary
     return summary_str, (total_params, trainable_params)
 
-def load_model(checkpoint_path, model_name=None, version=None, verbose=True, filename=None):
+def load_model_from_checkpoint(checkpoint_path, model_name=None, version=None, verbose=True, filename=None):
     """
     Loads model from checkpoint information. Mostly made for the checkpoint files save as default
     from the trainer-fit, but could in principle be used for other checkpoint files.
@@ -1243,22 +1255,23 @@ def load_model(checkpoint_path, model_name=None, version=None, verbose=True, fil
                 print("No version requested. Using (best) version (v=%d)" %version)
 
         assert version in out['version_num'], "Version %d not found in %s. Must be: %s" %(version, checkpoint_path, str(out['version_num']))
-        #ver_ix = np.where(version==np.asarray(out['version_num']))[0][0]            
+        ver_ix = np.where(version==np.asarray(out['version_num']))[0][0]            
         
         if filename is None:
             # Load the model
             try:
                 #model = torch.load(out['model_file'][ver_ix], map_location=torch.device('cpu'))
                 #dirpath = os.path.dirname(out['model_file'][ver_ix])
-                model = torch.load(out['model_file'][version], map_location=torch.device('cpu'))
-                dirpath = os.path.dirname(out['model_file'][version])
+                model = torch.load(out['model_file'][ver_ix], map_location=torch.device('cpu'))
+                #dirpath = os.path.dirname(out['model_file'][ver_ix])
                 #if os.path.exists(os.path.join(dirpath, 'best_model.ckpt')):
                 #    state_dict = torch.load(os.path.join(dirpath, 'best_model.ckpt'))
-                if os.path.exists(os.path.join(dirpath, 'model_best.pt')):
-                    model = torch.load(os.path.join(dirpath, 'model_best.pt'))
+                #if os.path.exists(os.path.join(dirpath, 'model_best.pt')):
+                #    model = torch.load(os.path.join(dirpath, 'model_best.pt'))
                     #state_dict = torch.load(os.path.join(dirpath, 'model_best.pt'))
                     #model.load_state_dict(state_dict['net'])
                     #model.load_state_dict(state_dict)
+                print("Loaded %s" %out['model_file'][ver_ix])
             except AttributeError:
                 print("load_model: could not load model. AttributeError. This likely means that the file [%s] was not pickled correctly because you were changing the class too much while training" %out['model_file'][ver_ix])
                 print("Loading the state dict from the last checkpoint instead")

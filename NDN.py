@@ -1995,7 +1995,7 @@ class NDN(nn.Module):
         Returns:
             model: The loaded model
         """
-        from NDNT.utils.NDNutils import load_model as load
+        from NDNT.utils.NDNutils import load_model_from_checkpoint as load
 
         assert checkpoint_path is not None, "Need to provide a checkpoint_path"
         #assert model_name is not None, "Need to provide a model_name"
