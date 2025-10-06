@@ -183,7 +183,7 @@ def init_vars(project=None, GPU=0, verbose=True):
     ##### DAN BUTTS  #####
     if user.lower() in ['dbutts', 'dab']:
         # Overwrite general defaults for my laptop
-        if myhost=='hoser': 
+        if myhost=='BIOLMCN045926': 
             base_datadir = '/Users/dbutts/Data/'
             dirname = '/Users/dbutts/Projects/'
         if project.lower() == 'colorv1':
