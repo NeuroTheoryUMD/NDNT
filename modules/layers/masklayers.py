@@ -31,7 +31,9 @@ class MaskLayer(NDNLayer):
                  **kwargs,
                  ):
         """
-        MaskLayer: Layer with a mask applied to the weights.
+        MaskLayer: Layer with a mask applied to the weights: the mask would be values of zero and one, with zeros
+        indicating weights that should be forced to zero. Additionally, can specify a replacement value for the zeros weights,
+        using replacement argument in set_mask function. This should be the same size, and only have values where the mask is zero.
 
         Args:
             input_dims: tuple or list of ints, (num_channels, height, width, lags)
@@ -64,20 +66,27 @@ class MaskLayer(NDNLayer):
         self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
         #self.register_buffer('mask_is_set', torch.zeros(1, dtype=torch.int8))  # have to convert to save in state_dict
         #self.mask_is_set = False
+        self.register_buffer('mask_replace', torch.zeros( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
+        self.replace = False
 
         # Must be done after mask is filled in
         if initialize_center:
             self.initialize_gaussian_envelope()
     # END MaskLayer.__init__
 
-    def set_mask( self, mask=None ):
+    def set_mask( self, mask=None, replacement=None ):
         """
-        Sets mask -- instead of plugging in by hand. Registers mask as being set, and checks dimensions.
-        Can also use to rest to have trivial mask (all 1s)
-        Mask will be numpy, leave mask blank if want to set to default mask (all ones)
-        
+        Sets mask -- instead of setting the variable directly. It registers mask as being set, and checks dimensions. If mask left
+        as None, it will set to all ones (no masking).
+
+        Mask should be passed in as numpy, and will be appropriately reshaped to be plugged in. Can also enter a "replacement" array,
+        which would be a different operaation: instead of zeroing out weights, it will replace them with the replacement values.
+        If replacement is passed in, it will zero out all places where the mask is set to 1 (unmasked) and just replace where the zeros are.
+                
         Args:
             mask: numpy array of size of filters (filter_dims x num_filters)
+            replacement: numpy array of size of filters (filter_dims x num_filters), if want to mask to
+                be replaced (rather than set to zero, which is default). If None, will not replace.
         """
         #self.mask_is_set = 1
         if mask is None:
@@ -85,6 +94,13 @@ class MaskLayer(NDNLayer):
         else:
             assert np.prod(mask.shape) == np.prod(self.filter_dims)*self.num_filters
             self.mask = torch.tensor( mask.reshape([-1, self.num_filters]), dtype=torch.float32)
+
+        if replacement is not None:
+            assert np.prod(replacement.shape) == np.prod(self.filter_dims)*self.num_filters
+            self.mask_replace = torch.tensor( replacement.reshape([-1, self.num_filters]), dtype=torch.float32) * (1.0 - self.mask)  # only keep where mask is zero
+            self.replace = True
+        else:
+            self.replace = False
     # END MaskLayer.set_mask()
 
     def preprocess_weights( self ):
@@ -95,7 +111,10 @@ class MaskLayer(NDNLayer):
             w: torch.Tensor, preprocessed weights
         """
         w = super().preprocess_weights()
-        return w*self.mask
+        if self.replace:
+            return  w*self.mask + self.mask_replace
+        else:
+            return w*self.mask
     # END MaskLayer.preprocess_weights()
 
     def _layer_abbrev( self ):
