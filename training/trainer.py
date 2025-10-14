@@ -88,7 +88,7 @@ class Trainer:
         self.epoch = 0
         self.max_epochs = max_epochs
         self.n_iter = 0
-        self.val_loss_min = np.Inf
+        self.val_loss_min = np.inf
 
         # scheduler defaults
         self.step_scheduler_after = scheduler_after # this is the only option for now
