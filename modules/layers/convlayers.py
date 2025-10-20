@@ -653,12 +653,12 @@ class TconvLayer(ConvLayer):
         return y
     #END TconvLayer.forward
 
-    def plot_filters( self, cmaps='viridis', num_cols=8, row_height=2, time_reverse=None):
-        # Place-holder: does nothing specific that NDNLayer does not do  
+    def plot_filters( self, cmaps='viridis', num_cols=8, row_height=2, time_reverse=None, **kwargs):
+        # Place-holder: does nothing specific that NDNLayer does not do
 
         super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
-            time_reverse=time_reverse)
+            time_reverse=time_reverse, **kwargs)
     # END TconvLayer.plot_filters()
 
     def _layer_abbrev( self ):
@@ -819,11 +819,11 @@ class STconvLayer(TconvLayer):
         return y
     # END STconvLayer.forward()
 
-    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
+    def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False, **kwargs):
         # Overload plot_filters to automatically time_reverse
         super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
-            time_reverse=time_reverse)
+            time_reverse=time_reverse, **kwargs)
     # END STconvLayer.plot_filters()
 
     def _layer_abbrev( self ):

@@ -125,11 +125,14 @@ def plot_filters_ST2D(ws, sort=False, **kwargs):
         plt.axis("off")
 
 
-def plot_filters_ST3D(ws, sort=False, **kwargs):
+def plot_filters_ST3D(ws, sort=False, rgb=False, **kwargs):
     from NDNT.utils import subplot_setup
 
     MAX_PER_LINE = 2
-    clrs='kgbrcm'
+    if rgb:
+        clrs='rgbmck'
+    else:
+        clrs='kgbrcm'
 
     nfilt = ws.shape[-1]
     ei_mask = np.ones(nfilt)
