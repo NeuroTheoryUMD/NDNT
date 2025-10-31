@@ -186,19 +186,28 @@ class MaskSTconvLayer(STconvLayer):
         #assert mask is not None, "MaskSTConvLayer: must include mask!"
         self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
         #self.register_buffer('mask_is_set', torch.zeros(1, dtype=torch.int8))     
+        self.register_buffer('mask_replace', torch.zeros( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
+        self.replace = False
 
         if initialize_center:
             self.initialize_gaussian_envelope()
     # END MaskSTconvLayer.__init__
 
-    def set_mask( self, mask=None ):
+    def set_mask( self, mask=None, replacement=None ):
         """
         Sets mask -- instead of plugging in by hand. Registers mask as being set, and checks dimensions.
-        Can also use to rest to have trivial mask (all 1s)
-        Mask will be numpy, leave mask blank if want to set to default mask (all ones)
-        
+        Can also use to rest to have trivial mask (all 1s). Mask is multipled by filter weights to result in 
+        final filter, so can be 0, 1, or -1: -1 would only be if using positive constraints on weight, which 
+        effectively turns it into a negative constraint for that filter.
+
+        Mask should be passed in as numpy, and will be appropriately reshaped to be plugged in. Can also enter a "replacement" array,
+        which would be a different operaation: instead of zeroing out weights, it will replace them with the replacement values.
+        If replacement is passed in, it will zero out all places where the mask is set to 1 (unmasked) and just replace where the zeros are.
+                
         Args:
             mask: numpy array of size of filters (filter_dims x num_filters)
+            replacement: numpy array of size of filters (filter_dims x num_filters), if want to mask to
+                be replaced (rather than set to zero, which is default). If None, will not replace.
         """
         #self.mask_is_set = torch.ones()
         if mask is None:
@@ -206,6 +215,13 @@ class MaskSTconvLayer(STconvLayer):
         else:
             assert np.prod(mask.shape) == np.prod(self.filter_dims)*self.num_filters
             self.mask = torch.tensor( mask.reshape([-1, self.num_filters]), dtype=torch.float32)
+    
+        if replacement is not None:
+            assert np.prod(replacement.shape) == np.prod(self.filter_dims)*self.num_filters
+            self.mask_replace = torch.tensor( replacement.reshape([-1, self.num_filters]), dtype=torch.float32) * (1.0 - self.mask)  # only keep where mask is zero
+            self.replace = True
+        else:
+            self.replace = False
     # END MaskSTconvLayer.set_mask()
 
     def preprocess_weights( self ):
@@ -215,15 +231,12 @@ class MaskSTconvLayer(STconvLayer):
         Returns:
             w: torch.Tensor, preprocessed weights
         """
-        w = super().preprocess_weights()
-        return w*self.mask
+        w = super().preprocess_weights()    
+        if self.replace:
+            return  w*self.mask + self.mask_replace
+        else:
+            return w*self.mask
     # END MaskSTconvLayer.preprocess_weights()
-
-    # DONT CHECK TO SEE IF MASK SET -- will work either way
-    #def forward( self, x):
-    #    assert self.mask_is_set > 0, "ERROR: Must set mask before using MaskSTconvLayer"
-    #    return super().forward(x)
-    # END MaskSTconvLayer.forward()
 
     def _layer_abbrev( self ):
         return super()._layer_abbrev().replace('v', 'M')
