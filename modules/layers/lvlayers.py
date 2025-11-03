@@ -10,7 +10,7 @@ import numpy as np
 
 class LVLayer(NDNLayer):
     """
-    Generates output at based on a number of LVs, sampled by time point.
+    Generates output based on a number of LVs, sampled by time points
     Each LV has T weights, and can be many LVs (so weight matrix is T x NLVs.
     Requires specifically formatted input that passes in indices of LVs and relative
     weight, so will linearly interpolate. Also, can have trial-structure so will have 
@@ -30,21 +30,22 @@ class LVLayer(NDNLayer):
         """
         If num_trials is None, then assumes one continuous sequence, otherwise will assume num_time_pnts
         is per-trial, and dimensionality of filter is [num_trials, 1, 1, num_time_pnts].
+        This is built to have tent-bases if num_time_pnts is specified, otherwise will have per-trial LVs.
         
         Args:
-            num_time_pnts: int, number of time points
+            num_time_pnts: int, number of time points within each trial, or default (None) means per-trial LVs
             num_lvs: int, number of latent variables
-            num_trials: int, number of trials
+            num_trials: int, number of trials, default (None) assumes no trial structure
             norm_type: int, normalization type
             weights_initializer: str, 'uniform', 'normal', 'xavier', 'zeros', or None
-            **kwargs: keyword arguments to pass to the parent class
         """
 
         if num_trials is None:
+            assert num_time_pnts is not None, "LVLayer: If num_trials is None, must specify num_time_pnts"
             num_trials = 1
 
         if num_time_pnts is None:
-            print('Making trial-level LVs')
+            #print('Making trial-level LVs')
             num_time_pnts = num_trials
             num_trials = 1
             self.use_tent_basis = False
@@ -78,13 +79,14 @@ class LVLayer(NDNLayer):
             
     def forward( self, x ):
         """
-        Assumes input of B x 3 (where three numbers are indexes of 2 surrounding LV and relative weight of LV1).
+        if using tent-basis, then input is B x 3 (where three numbers are indexes of 2 surrounding LV and relative weight of LV1).
+        otherwise, assumes input is B x 1 (where number is index of LV).
         
         Args:
-            x: torch.Tensor, input tensor.
+            x: torch.Tensor, input tensor
 
         Returns:
-            y: torch.Tensor, output tensor.
+            y: torch.Tensor, output tensor
         """
         weights = self.preprocess_weights()
 
@@ -139,7 +141,10 @@ class LVLayer(NDNLayer):
         Ldict['num_lvs'] = num_lvs
         Ldict['num_trials'] = num_trials
         Ldict['weights_initializer'] = weights_initializer
-        Ldict['input_dims'] = [3, 1, 1, 1]
+        if num_time_pnts is not None:
+            Ldict['input_dims'] = [3, 1, 1, 1]
+        else:
+            Ldict['input_dims'] = [1, 1, 1, 1]  
         return Ldict
 # END LVLayer
 

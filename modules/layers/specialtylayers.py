@@ -305,13 +305,14 @@ class ParametricTuneLayer(NDNLayer):
             num_filters: number of output filters
         """
         assert input_dims is not None, "ParametricTuneLayer: Must specify input_dims"
+        NFS = input_dims[0]  # number of frequencies
         # Put filter weights in time-lag dimension to allow regularization using d2t etc
         if static_Ftuning:
             #assert len(static_Ftuning) == 4, "ParametricTuneLayer: static_Ftuning must have length 4"
             #self.register_buffer( 'Ftuning', torch.tensor(static_Ftuning, dtype=torch.float32) )
             filter_dims = [1, 1, 1, 1]  # weights are just frequency weights
         else:
-            filter_dims = [1, 4, 1, 1]  # weights are just frequency weights
+            filter_dims = [1, NFS, 1, 1]  # weights are just frequency weights
             #self.Ftuning = None
 
         super().__init__(
@@ -333,7 +334,7 @@ class ParametricTuneLayer(NDNLayer):
 
     def make_orientation_filters( self, theta_list, width_list, ds_list ):
         """
-        Construct self.tuning_cuves based on thetas, widths, and ds_index lists. If a single
+        Construct self.tuning_curves based on thetas, widths, and ds_index lists. If a single
         value is passed, it is used for all filters. If a list is passed, it must be the same
         length as num_filters. 
 

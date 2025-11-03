@@ -55,7 +55,7 @@ codedir = '/home/' + user + '/Code/'
 
 # User-specific cases (if needed)
 if user.lower() in ['dbutts', 'dab']:
-    if myhost == 'hoser':
+    if myhost == 'BIOLMCN045926':
         codedir = '/Users/dbutts/Code/'
 # Add any other user/hostname specific exceptions to coding directories
 
@@ -175,6 +175,13 @@ def init_vars(project=None, GPU=0, verbose=True):
         globs.update(new_entries)
 
         datadir = base_datadir + 'Antolik/'
+    ##### Huk running project ######
+    elif project.lower() == 'running':
+        from NTdatasets.Huk.declan_datasets import DeclanSampleData
+        new_entries = {
+            'DeclanSampleData': DeclanSampleData}
+        globs.update(new_entries)
+
     ##### OTHER PROJECTS ######
     else:
         new_entries = {}
@@ -186,13 +193,17 @@ def init_vars(project=None, GPU=0, verbose=True):
         if myhost=='BIOLMCN045926': 
             base_datadir = '/Users/dbutts/Data/'
             dirname = '/Users/dbutts/Projects/'
+            device = device0
         if project.lower() == 'colorv1':
             datadir = base_datadir + 'ColorV1/'
             dirname = dirname + 'ColorV1/CLRworkspace/'
         elif project.lower() == 'simcloud':
             datadir = base_datadir + 'Antolik/'
             dirname = dirname + 'Antolik/'
-
+        elif project.lower() == 'running':
+            datadir = base_datadir + 'Huk/'
+            dirname = dirname + 'Running/'
+ 
     ##### ISABEL FERNANDEZ #####
     elif user.lower() == 'ifernand':
         if project.lower() == 'cloudsim':

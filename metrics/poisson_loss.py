@@ -32,7 +32,7 @@ class PoissonLoss_datafilter(nn.Module):
         self.loss_name = 'poisson'
         self.loss = nn.PoissonNLLLoss(log_input=False, reduction='mean')
         self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
-        self.unit_weighting = False
+        self.unit_weighting = True
         self.batch_weighting = 0
         self.register_buffer('unit_weights', None)  
         self.register_buffer('av_batch_size', None) 

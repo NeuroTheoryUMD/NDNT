@@ -73,6 +73,7 @@ class Regularization(nn.Module):
 
         self.register_buffer( '_unit_reg', torch.zeros(1, dtype=torch.int8) )
         self.unit_reg = False
+        self.register_buffer( 'proximalL1', torch.zeros(1, dtype=torch.float32) )
 
         # read user input
         if vals is not None:
@@ -105,6 +106,10 @@ class Regularization(nn.Module):
             if reg_type in ['bc', 'bcs', 'BC', 'BCs']:
                 assert isinstance(reg_val, dict), "Regularization: boundary conditions must be a dictionary."
                 self.boundary_conditions = deepcopy(reg_val)  # set potential boundary conditions
+                return
+            elif reg_type in ['proximal', 'proximalL1']:
+                assert reg_val >= 0.0, "Regularization: proximalL1 reg_val must be non-negative."
+                self.proximalL1.data[:] = reg_val
                 return
             else:
                 print("Regularization: %s not recognized as a valid regularization type" % reg_type)
