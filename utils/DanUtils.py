@@ -65,7 +65,7 @@ def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, 
 # END imagesc
 
 
-def scatterplot( arr2, arrS2=None, clr='b.', alpha=1.0, diag=False ):
+def scatterplot( arr2, arrS2=None, clr='b.', alpha=1.0, diag=False, square=False ):
     """
     Generates scatter-plot of 2-d data (arr2) using the following options:
 
@@ -79,6 +79,9 @@ def scatterplot( arr2, arrS2=None, clr='b.', alpha=1.0, diag=False ):
     Returns:
         None, simply display to screen
     """
+    if square:
+        _, ax = plt.subplots(1,1)
+
     if len(arr2.shape) > 1:
         N, dims = arr2.shape
         if dims == 2:
@@ -95,11 +98,13 @@ def scatterplot( arr2, arrS2=None, clr='b.', alpha=1.0, diag=False ):
     ys = plt.ylim()
     if diag:
         mn = np.minimum(xs[0], ys[0])
-        mx = np.minimum(xs[1], ys[1])
+        mx = np.maximum(xs[1], ys[1])
         plt.plot([mn,mx], [mn,mx],'k')
-        plt.xlim(xs)
-        plt.ylim(ys)
+        plt.xlim([mn, mx])
+        plt.ylim([mn, mx])
     #plt.show()
+    if square:
+        ax.set_box_aspect(1) 
 # END scatterplot()
 
 
