@@ -32,7 +32,7 @@ class PoissonLoss_datafilter(nn.Module):
         self.loss_name = 'poisson'
         self.loss = nn.PoissonNLLLoss(log_input=False, reduction='mean')
         self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
-        self.unit_weighting = False
+        self.unit_weighting = True
         self.batch_weighting = 0
         self.register_buffer('unit_weights', None)  
         self.register_buffer('av_batch_size', None) 
@@ -62,7 +62,7 @@ class PoissonLoss_datafilter(nn.Module):
             self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none', eps=epsilon)
     # END PoissonLoss_datafilter.set_log_epsilon()
 
-    def set_loss_weighting( self, batch_weighting=None, unit_weighting=None, unit_weights=None, av_batch_size=None ):
+    def set_loss_weighting( self, batch_weighting=None, unit_weighting=None, unit_weights=None, av_batch_size=None, device=None ):
         """
         This changes default loss function weights to adjust for the dataset by setting two flags:
             unit_weighting: whether to weight neurons by different amounts in loss function (e.g., av spike rate), which
@@ -83,19 +83,20 @@ class PoissonLoss_datafilter(nn.Module):
             None, but sets self-variables as described
         """
         import numpy as np  # added as zero-weighting kluge (for np.maximum)
-
+        if device is None:
+            device = torch.device('cpu')
+            
         if batch_weighting is not None:
             self.batch_weighting = batch_weighting 
         if unit_weighting is not None:
             self.unit_weighting = unit_weighting 
-
         if unit_weights is not None:
-            self.unit_weights = torch.tensor(unit_weights, dtype=torch.float32)
+            self.unit_weights = torch.tensor(unit_weights, dtype=torch.float32, device=device)
 
         assert self.batch_weighting in [-1, 0, 1, 2], "LOSS: Invalid batch_weighting"
         
         if av_batch_size is not None:
-            self.av_batch_size = torch.tensor(av_batch_size, dtype=torch.float32)
+            self.av_batch_size = torch.tensor(av_batch_size, dtype=torch.float32, device=device)
     # END PoissonLoss_datafilter.set_loss_weighting
 
     def forward(self, pred, target, data_filters=None ):        

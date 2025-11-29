@@ -1024,15 +1024,14 @@ class NDN(nn.Module):
             T = len(data_inds)
             num_batches = np.ceil(T/batch_size)
             av_batch_size = T/num_batches
-            
             # Compute unit weights based on number of spikes in dataset (and/or firing rate) if requested
-            unit_weights = 1.0/np.maximum( self.compute_average_responses(dataset, data_inds=data_inds), 1e-8 )
+            unit_weights = 1.0/np.maximum( self.compute_average_responses(dataset, data_inds=data_inds).detach().cpu().numpy(), 1e-8 )
             # Make this the RELATIVE average firing rate rather than absolute average firing rate
             unit_weights /= np.mean(unit_weights)
-            
+
         self.loss_module.set_loss_weighting( 
             batch_weighting=batch_weighting, unit_weighting=unit_weighting, 
-            unit_weights=unit_weights, av_batch_size=av_batch_size )
+            unit_weights=unit_weights, av_batch_size=av_batch_size, device=self.device )
     # END NDNT.initialize_loss()
 
     def calc_spikingNL( 
@@ -1085,8 +1084,14 @@ class NDN(nn.Module):
         if hasattr( dataset, 'avrates' ):
             return dataset.avrates()
 
+        if isinstance(dataset, dict): ## then this is easy
+            return torch.divide( dataset['robs'].sum(0), torch.maximum(dataset['dfs'].sum(0), torch.tensor(1)) ) 
+
         # Iterate through dataset to compute average rates
-        NC = dataset[0]['robs'].shape[-1]
+        if isinstance(dataset, dict):
+            NC = dataset['robs'].shape[-1]
+        else:
+            NC = dataset[0]['robs'].shape[-1]
         Rsum, Tsum = torch.zeros(NC), torch.zeros(NC)
         for tt in data_inds:
             sample = dataset[tt]

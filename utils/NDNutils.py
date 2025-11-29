@@ -33,6 +33,7 @@ def fit_lbfgs(
 
     assert isinstance(data, dict), "data must be a dictionary"
     model.prepare_regularization()
+    model.initialize_loss(data, batch_size=len(data)) 
     model.train()
     if parameters is None:
         parameters = model.parameters()
