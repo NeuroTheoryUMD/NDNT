@@ -330,6 +330,29 @@ class NDNLayer(nn.Module):
         return self.reg.compute_reg_loss(self.preprocess_weights())
     # END NDNLayer.compute_reg_loss()
 
+    def proximal_step( self, lr=1.0 ):
+        """
+        Apply proximal step for regularization (if applicable). This is called after each gradient step.
+        """
+        if ('proximalL1' in self.reg.vals) and (self.reg.vals['proximalL1'] > 0):
+            with torch.no_grad():
+                self.weight.data = F.softshrink(self.weight.data, lr*self.reg.vals['proximalL1'])
+    # END NDNLayer.proximal_step()
+
+    def need_proximal(self):
+        """
+        Check if the layer needs proximal step for regularization. This would just be stored in
+        the reg_vals since proximal reg is not calculated internally.
+
+        Args:
+            None
+
+        Returns:
+            need_proximal: bool, whether the layer needs proximal step
+        """
+        return ('proximalL1' in self.reg.vals) and (self.reg.vals['proximalL1'] > 0)
+    # END NDNLayer.need_proximal()
+
     def get_weights(self, to_reshape=True, time_reverse=False, num_inh=0):
         """
         num-inh can take into account previous layer inhibition weights.

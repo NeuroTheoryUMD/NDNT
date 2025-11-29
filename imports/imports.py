@@ -175,6 +175,15 @@ def init_vars(project=None, GPU=0, verbose=True):
         globs.update(new_entries)
 
         datadir = base_datadir + 'Antolik/'
+
+    ##### BarV1 projects/tutorials ######
+    elif project.lower() == 'barv1':
+        from NTdatasets.cumming.monocular import MultiDataset
+        from NTdatasets.cumming.binocular import binocular_single
+        new_entries = {
+            'MultiDataset': MultiDataset, 'binocular_single': binocular_single}
+        globs.update(new_entries)
+
     ##### Huk running project ######
     elif project.lower() == 'running':
         from NTdatasets.Huk.declan_datasets import DeclanSampleData
@@ -200,6 +209,13 @@ def init_vars(project=None, GPU=0, verbose=True):
         elif project.lower() == 'simcloud':
             datadir = base_datadir + 'Antolik/'
             dirname = dirname + 'Antolik/'
+        elif project.lower() == 'barv1':
+            if myhost=='BIOLMCN045926':
+                datadir = base_datadir + '/V1/BruceV1/Mdata/HDF5/'
+                dirname = dirname + 'Projecs/ScaffoldV1/'
+            else: 
+                datadir = dirname + '/V1/Mdata/'
+                dirname = dirname + 'V1/'
         elif project.lower() == 'running':
             datadir = base_datadir + 'Huk/'
             dirname = dirname + 'Running/'

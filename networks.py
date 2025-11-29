@@ -278,6 +278,20 @@ class FFnetwork(nn.Module):
         #return torch.cat([out[ind] for ind in self.scaffold_levels], dim=1)
     # END FFnetwork.forward
 
+    def proximal_step(self, learning_rate=1.0):
+        for layer in self.layers:
+            if hasattr(layer, 'proximal_step'):
+                layer.proximal_step(learning_rate)
+    # END FFnetwork.proximal_step()
+
+    def need_proximal(self):
+        for layer in self.layers:
+            if hasattr(layer, 'need_proximal'):
+                if layer.need_proximal():
+                    return True
+        return False
+    #END FFnetwork.need_proximal()
+ 
     def __reg_setup_ffnet(self, reg_params=None):
         """
         Sets up the regularization params for the network.

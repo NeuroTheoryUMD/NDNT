@@ -388,7 +388,7 @@ class ParametricTuneLayer(NDNLayer):
             return torch.einsum('ac,bc->abc', torch.square(self.weight), 
                                 self.tuning_curves).reshape([-1, self.num_filters])
         else:
-            return torch.einsum('ac,bc->abc', torch.square(self.weight).repeat((4,1)), 
+            return torch.einsum('ac,bc->abc', torch.square(self.weight).repeat((self.input_dims[0],1)), 
                                 self.tuning_curves).reshape([-1, self.num_filters])
             #return torch.multiply(self.tuning_curves, torch.square(self.weight)) # 12xN x 1xN broadcast
         # END ParametricTuneLayer.preprocess_weights()

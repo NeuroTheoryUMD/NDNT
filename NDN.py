@@ -16,6 +16,7 @@ from NDNT.utils import create_optimizer_params, NpEncoder, chunker
 from NDNT.modules.experiment_sampler import ExperimentSampler
 
 from NDNT import networks as NDNnetworks
+from NDNT.training.trainer import ProximalLBFGS
 
 FFnets = {
     'normal': NDNnetworks.FFnetwork,
@@ -289,7 +290,6 @@ class NDN(nn.Module):
             dfs = batch['dfs']
 
         y_hat = self(batch)
-
         loss = self.loss(y_hat, y, dfs)
         regularizers = self.compute_reg_loss()
 
@@ -378,6 +378,7 @@ class NDN(nn.Module):
         """
 
         from NDNT.training import Trainer, EarlyStopping, LBFGSTrainer
+        from NDNT.training.trainer import ProximalLBFGS
         import os
 
         #trainers = {'step': Trainer, 'AdamW': Trainer, 'Adam': Trainer, 'sgd': Trainer, 'lbfgs': LBFGSTrainer}
@@ -411,10 +412,12 @@ class NDN(nn.Module):
         if optimizer is not None:
             if isinstance(optimizer, torch.optim.LBFGS):
                 trainer_type = 'lbfgs'
+            if isinstance(optimizer, ProximalLBFGS):
+                trainer_type = 'lbfgs'
         else:
             if optimizer_type == 'LBFGS':
                 trainer_type = 'lbfgs'
-
+        
         trainer = trainers[trainer_type](model=self,
                                          optimizer=optimizer,
                                          early_stopping=earlystopper,
@@ -426,8 +429,8 @@ class NDN(nn.Module):
                                          save_epochs=save_epochs,
                                          verbose=verbose,
                                          **kwargs)
-
         return trainer
+    # END NDN.get_trainer()
 
     def get_dataloaders(self,
             dataset,
@@ -638,19 +641,27 @@ class NDN(nn.Module):
             #  differentiable=False, fused=None)
             
         elif optimizer_type=='LBFGS':
-
-            optimizer = torch.optim.LBFGS(
-                self.parameters(), 
-                history_size=history_size, max_iter=max_iter, 
-                tolerance_change=tolerance_change,
-                tolerance_grad=tolerance_grad,
-                line_search_fn=line_search_fn)
+            if self.need_proximal():
+                optimizer = ProximalLBFGS(
+                    self, #self.parameters(), 
+                    history_size=history_size, max_iter=max_iter, 
+                    tolerance_change=tolerance_change,
+                    tolerance_grad=tolerance_grad,
+                    line_search_fn=line_search_fn)
+                
+            else:
+                optimizer = torch.optim.LBFGS(
+                    self.parameters(), 
+                    history_size=history_size, max_iter=max_iter, 
+                    tolerance_change=tolerance_change,
+                    tolerance_grad=tolerance_grad,
+                    line_search_fn=line_search_fn)
 
         else:
             raise ValueError('optimizer [%s] not supported' %optimizer_type)
         
         return optimizer
-    # END NDN.get_optimizer
+    # END NDN.get_optimizer()
     
     def prepare_regularization(self):
         """
@@ -662,6 +673,20 @@ class NDN(nn.Module):
 
         for network in self.networks:
             network.prepare_regularization(device=self.device)
+    # END NDN.prepare_regularization()
+
+    def proximal_step(self, learning_rate=1.0):
+        for networks in self.networks:
+            networks.proximal_step(learning_rate)
+    # END NDN.FFnetwork.proximal_step()
+
+    def need_proximal(self):
+        for network in self.networks:
+            if hasattr(network, 'need_proximal'):
+                if network.need_proximal():
+                    return True
+        return False
+    # END NDN.need_proximal()
 
     def fit(self,
         dataset,
@@ -831,7 +856,7 @@ class NDN(nn.Module):
         t0 = time.time()
         if force_dict_training:
             from NDNT.training import LBFGSTrainer
-            assert isinstance(trainer, LBFGSTrainer), "force_dict_training will not work unless using LBFGS." 
+            #assert isinstance(trainer, LBFGSTrainer), "force_dict_training will not work unless using LBFGS." 
 
             #trainer.fit(self, train_dl.dataset[:], valid_dl.dataset[:], seed=seed)
             trainer.fit(self, dataset[train_inds], dataset[val_inds], seed=seed)

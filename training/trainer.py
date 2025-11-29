@@ -1,4 +1,5 @@
 import os
+from xml.parsers.expat import model
 import numpy as np
 import torch
 import torch.nn as nn
@@ -7,6 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm # progress bar
 from ..utils import save_checkpoint, ensure_dir
 from .lbfgsnew import LBFGSNew
+
 
 class Trainer:
     '''
@@ -22,6 +24,7 @@ class Trainer:
             accumulate_grad_batches=1,
             verbose=1,
             save_epochs=False,
+            proximal=False,
             optimize_graph=False, set_grad_to_none=False, log_activations=False,
             scheduler=None, scheduler_after='batch', scheduler_metric=None,
             **kwargs):
@@ -57,7 +60,8 @@ class Trainer:
         self.accum_train_loss = 0.0
         self.accum_reg = 0.0
         self.accum_count = 0.0
-
+        self.proximal = proximal
+        
         ensure_dir(dirpath)
 
         self.save_epochs = save_epochs
@@ -277,6 +281,7 @@ class Trainer:
                     if self.verbose > 0:
                         print("Early stopping")
                     break
+    # END trainer.fit_loop()
 
     def validate_one_epoch(self, model, val_loader):
         """
@@ -417,7 +422,8 @@ class Trainer:
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none=self.set_to_none)
             # self.optimizer.zero_grad() # zero the gradients for the next batch
-            
+            model.proximal_step()
+
             if self.scheduler:
                 if self.step_scheduler_after == "batch":
                     if self.step_scheduler_metric is None:
@@ -512,6 +518,7 @@ class Trainer:
         #     os.path.exists(os.path.join(self.dirpath, 'best_model.ckpt'))                
         #     'best_model.pt'
 
+
 class LBFGSTrainer(Trainer):
     """
     This class is for training with the LBFGS optimizer. It is a subclass of Trainer.
@@ -526,8 +533,8 @@ class LBFGSTrainer(Trainer):
             full_batch (bool): Whether to use full batch optimization.
         """
         super().__init__(**kwargs)
-
         self.fullbatch = full_batch
+    #END LBFGSTrainer.__init__()
     
     def fit(self, model, train_loader, val_loader=None, seed=None):
         """
@@ -545,8 +552,13 @@ class LBFGSTrainer(Trainer):
         self.prepare_fit(model, seed=seed)
 
         if isinstance(train_loader, dict):
-            ''' fit entire dataset at once'''
-            self.fit_data_dict(model, train_loader)
+
+            # check for proximal:
+            if model.need_proximal():
+                self.fit_proximal_data_dict2(model, train_loader)
+            else:
+                #### fit entire dataset in one step ####
+                self.fit_data_dict(model, train_loader)
 
             if val_loader is None:
                 val_loader = train_loader
@@ -584,6 +596,7 @@ class LBFGSTrainer(Trainer):
                 return
 
         self.graceful_exit(model)
+    # END LBFGSTrainer.fit()
 
     def fit_data_dict(self, model, train_data):
         """
@@ -609,7 +622,7 @@ class LBFGSTrainer(Trainer):
             if np.isnan(loss.item()):
                 return loss
             loss.backward()
-            
+
             # torch.cuda.empty_cache()
             if self.verbose > 1:
                 print('Iteration: {} | Loss: {}'.format(self.optimizer.state_dict()['state'][0]['n_iter'], loss.item()))
@@ -622,8 +635,133 @@ class LBFGSTrainer(Trainer):
                 torch.cuda.empty_cache()
 
         return {'train_loss': loss}
+    # END LBFGSTrainer.fit_data_dict()
         
+    def fit_proximal_data_dict(self, model, train_data):
+        """
+        Fit data one step at a time with proximal updates.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            train_data (dict): Training data.
+
+        Returns:
+            None
+        """
+        if self.optimizer.param_groups[0]['line_search_fn'] is None:
+            print('  Warning: line search will be set to strong_wolfe')
+            self.optimizer.param_groups[0]['line_search_fn'] = 'strong_wolfe'
+        tol_change = self.optimizer.param_groups[0]['tolerance_change']
+        #tol_grad = self.optimizer.param_groups[0]['tolerance_grad']
+        lr = self.optimizer.param_groups[0]['lr']
+        max_iter = self.optimizer.param_groups[0]['max_iter']
+        self.optimizer.param_groups[0]['max_iter'] = 1  # only do one iteration per call to fit_proximal_data_dict  
+        print(self.optimizer.param_groups[0]['line_search_fn'])
+        for dsub in train_data:
+            train_data[dsub] = train_data[dsub].to(self.device)
+            
+        def closure():
         
+            self.optimizer.zero_grad(set_to_none=self.set_to_none)
+            loss = torch.zeros(1, device=self.device)
+
+            out = model.training_step(train_data)
+            loss = out['loss']
+            if np.isnan(loss.item()):
+                return loss
+            loss.backward()
+
+            # torch.cuda.empty_cache()
+            if self.verbose > 1:
+                print('Eval: {} | Loss: {}'.format(self.optimizer.state_dict()['state'][0]['n_iter'], loss.item()))
+            
+            return loss
+
+        prev_loss = float('inf')
+        #w_old = None
+        for it in range(max_iter):
+            loss = self.optimizer.step(closure)
+            # Proximal L1 after *each* LBFGS iteration
+            #w_new = None
+            #for p in model.parameters():
+            #    if w_new is None:
+            #        w_new = p.detach().clone().flatten()
+            #        w_grad = p.grad.detach().clone().flatten()
+                #else:
+        
+                #    w_new = torch.cat((w_new, p.detach().clone()), dim=0)
+                #    w_grad = torch.cat((w_grad, p.grad.detach().clone()), dim=0)
+            #if w_old is not None:
+            #    lr = torch.sqrt(torch.linalg.vector_norm(w_new-w_old, ord=2)) / torch.sqrt(torch.linalg.vector_norm(w_grad, ord=2))
+                #print( lr )
+            #w_old = w_new
+        
+            model.proximal_step(learning_rate=lr)
+
+            # Stopping rule (emulating LBFGS-style criteria)
+            if abs(prev_loss - loss.item()) < tol_change:
+                break
+            prev_loss = loss.item()
+
+        #    loss = self.optimizer.step(closure)
+        self.optimizer.zero_grad(set_to_none=self.set_to_none)
+        if self.use_gpu:
+            torch.cuda.empty_cache()
+
+        return {'train_loss': loss}
+    # END LBFGSTrainer.fit_proximal_data_dict()
+
+    def fit_proximal_data_dict2(self, model, train_data):
+        """
+        Fit data one step at a time with proximal updates.
+
+        Args:
+            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
+            train_data (dict): Training data.
+
+        Returns:
+            None
+        """
+        max_iter = self.optimizer.max_iter
+        tol_change = self.optimizer.tol_change
+
+        for dsub in train_data:
+            train_data[dsub] = train_data[dsub].to(self.device)
+        model.train()
+
+        def closure():
+        
+            self.optimizer.zero_grad(set_to_none=self.set_to_none)
+            #loss = torch.zeros(1, device=self.device)
+
+            out = model.training_step(train_data)
+            loss = out['loss']
+        
+            if np.isnan(loss.item()):
+                return loss
+
+            loss.backward()
+            return loss
+
+        prev_loss = float('inf')
+        for it in range(max_iter):
+            loss = self.optimizer.step(closure)
+            
+            if self.verbose > 1:
+                print( "Eval: %3d | Loss %11.8f"%(it, loss.item()) )
+
+            # Stopping rule (emulating LBFGS-style criteria)
+            if abs(prev_loss - loss.item()) < tol_change:
+                break
+            prev_loss = loss.item()
+
+        self.optimizer.zero_grad(set_to_none=self.set_to_none)
+        if self.use_gpu:
+                torch.cuda.empty_cache()
+
+        return {'train_loss': loss}
+    # END LBFGSTrainer.fit_proximal_data_dict2()
+
     def train_one_epoch(self, model, train_loader, epoch=0):
         """
         Train for one epoch.
@@ -686,7 +824,6 @@ class LBFGSTrainer(Trainer):
             loss.backward()
 
             self.iter += 1
-
             return loss
 
         loss = self.optimizer.step(closure)
@@ -697,40 +834,136 @@ class LBFGSTrainer(Trainer):
                 torch.cuda.empty_cache()
 
         return {'train_loss': loss} # should this be an aggregate out?
+    # END LBFGSTrainer.train_one_epoch()
+# END LBFGSTrainer class
+   
 
+### FROM PERPLEXITY ###
+from torch.optim import Optimizer
+from torch.nn.functional import softshrink as soft_threshold
 
-class TemperatureCalibratedTrainer(Trainer):
-    """
-    This class is for training with temperature calibration. It is a subclass of Trainer.
-    """
+#def soft_threshold(x, thresh):
+#    # prox_{thresh * ||.||_1}(x)
+#    return torch.sign(x) * torch.clamp(x.abs() - thresh, min=0.0)
 
-    def __init__(self,
-            **kwargs,
-            ):
+class ProximalLBFGS(Optimizer):
+    """Proximal L-BFGS optimizer with L1 regularization"""
+
+    def __init__(self, model, lr=1.0, history_size=10, max_iter=300, 
+                tolerance_change=1e-10, tolerance_grad=1e-8,
+                line_search_fn='strong_wolfe'):        
+        
+        defaults = dict(lr=lr, history_size=history_size) #, l1_lambda=l1_lambda)
+        super().__init__(model.parameters(), defaults)
+        self.model = model
+        self.max_iter = max_iter
+        self.lr = lr
+        self.tol_change = tolerance_change
+        self.tolerance_grad = tolerance_grad
+        self.line_search_fn = line_search_fn
+    # END __init__()
+
+    #@torch.no_grad()
+    def step(self, closure):
         """
-        Args:
-            None
+        closure: function that recomputes loss and gradients, returns loss.
         """
-        super().__init__(**kwargs)
+        loss = closure()
 
-    def validate_one_epoch(self, model, val_loader):
-        """
-        Validation step for one epoch.
+        for group in self.param_groups:
+            #lr = group["lr"]
+            lr = self.lr
+            hist_size = group["history_size"]
+            #lam = group["l1_lambda"]
 
-        Args:
-            model (nn.Module): Pytorch Model. Needs training_step and validation_step defined.
-            val_loader (DataLoader): Validation data.
+            # Flatten parameters and gradients into a single vector
+            params = []
+            grads = []
+            shapes = []
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                params.append(p)
+                grads.append(p.grad.view(-1))
+                shapes.append(p.shape)
 
-        Returns:
-            dict: validation loss
-        """
-        # bring models to evaluation mode
-        model.eval()
-        assert hasattr(model, 'temperature'), 'Model must have a temperature attribute'
-        assert hasattr(model, 'set_temperature'), 'Model must have a set_temperature method'
+            if not params:
+                continue
 
-        model.temperature.requries_grad = True
-        after_temperature_nll = model.set_temperature(val_loader, self.device)
-        model.temperature.requries_grad = False
+            flat_params = torch.cat([p.data.view(-1) for p in params])
+            flat_grad = torch.cat(grads)
 
-        return {'val_loss': after_temperature_nll}
+            state = self.state.setdefault(id(group), {})
+            if "s_list" not in state:
+                state["s_list"] = []
+                state["y_list"] = []
+                state["rho_list"] = []
+
+            s_list = state["s_list"]
+            y_list = state["y_list"]
+            rho_list = state["rho_list"]
+
+            # Compute search direction via L-BFGS two-loop recursion
+            q = flat_grad.clone()
+            alpha_list = []
+
+            for s, y, rho in reversed(list(zip(s_list, y_list, rho_list))):
+                alpha = rho * torch.dot(s, q)
+                alpha_list.append(alpha)
+                q.add_(y, alpha=-alpha)
+
+            if len(s_list) > 0:
+                # Initial Hessian scaling (scalar)
+                ys = torch.dot(y_list[-1], s_list[-1])
+                yy = torch.dot(y_list[-1], y_list[-1])
+                H0 = ys / yy
+            else:
+                H0 = 1.0
+
+            r = q * H0
+
+            for (s, y, rho, alpha) in zip(s_list, y_list, rho_list, reversed(alpha_list)):
+                beta = rho * torch.dot(y, r)
+                r.add_(s, alpha=(alpha - beta))
+
+            # r is an approximation of B_k^{-1} * grad
+            # Standard L-BFGS uses d = -r. For proximal step, form tentative point:
+            d = -r
+            z = flat_params + lr * d  # smooth quasi-Newton step
+
+            #if lam > 0.0:
+                # proximal L1 in parameter space
+            #z = soft_threshold(z, lr * lam)
+            self.model.proximal_step(learning_rate=lr)
+
+            # Update parameters from z
+            offset = 0
+            for p, shape in zip(params, shapes):
+                numel = p.numel()
+                p.data.copy_(z[offset:offset+numel].view(shape))
+                offset += numel
+
+            # Recompute gradient at new point for next curvature pair
+            loss = closure()  # computes new gradients at updated params
+
+            new_grad = torch.cat([p.grad.view(-1) for p in params])
+
+            # Update L-BFGS history
+            s_k = (z - flat_params).detach()
+            y_k = (new_grad - flat_grad).detach()
+
+            ys = torch.dot(y_k, s_k)
+            if ys > 1e-10:
+                rho_k = 1.0 / ys
+                s_list.append(s_k)
+                y_list.append(y_k)
+                rho_list.append(rho_k)
+
+                if len(s_list) > hist_size:
+                    s_list.pop(0)
+                    y_list.pop(0)
+                    rho_list.pop(0)
+
+        return loss
+    #END ProximalLBFGS.step()
+# END ProximalLBFGS class 

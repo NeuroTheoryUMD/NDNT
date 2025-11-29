@@ -73,7 +73,8 @@ class Regularization(nn.Module):
 
         self.register_buffer( '_unit_reg', torch.zeros(1, dtype=torch.int8) )
         self.unit_reg = False
-        self.register_buffer( 'proximalL1', torch.zeros(1, dtype=torch.float32) )
+        #self.register_buffer( 'proximalL1', torch.zeros(1, dtype=torch.float32) )
+        #self.proximalL1 = 0.0
 
         # read user input
         if vals is not None:
@@ -109,7 +110,12 @@ class Regularization(nn.Module):
                 return
             elif reg_type in ['proximal', 'proximalL1']:
                 assert reg_val >= 0.0, "Regularization: proximalL1 reg_val must be non-negative."
-                self.proximalL1.data[:] = reg_val
+                self.vals['proximalL1'] = reg_val
+                if 'l1' in self.vals:
+                    print('WARNING: eliminating l1 previously set to', self.vals['l1'] )
+                    del self.vals['l1']
+                #self.proximalL1.data[:] = reg_val
+                # Just needs proximal defined in dictionary values (not computed here)
                 return
             else:
                 print("Regularization: %s not recognized as a valid regularization type" % reg_type)
@@ -190,11 +196,12 @@ class Regularization(nn.Module):
                     BC = self.boundary_conditions[reg]
                     #print('  Setting boundary conditions for', reg, '=', BC)
 
-            reg_obj = self.get_reg_class(reg)(
-                reg_type=reg, reg_val=val, 
-                input_dims=self.input_dims, pos_constraint=self.pos_constraint,
-                folded_lags=self.folded_lags, unit_reg=self.unit_reg, bc_val=BC)
-            self.reg_modules.append(reg_obj.to(device))
+            if reg not in ['proximalL1']:
+                reg_obj = self.get_reg_class(reg)(
+                    reg_type=reg, reg_val=val, 
+                    input_dims=self.input_dims, pos_constraint=self.pos_constraint,
+                    folded_lags=self.folded_lags, unit_reg=self.unit_reg, bc_val=BC)
+                self.reg_modules.append(reg_obj.to(device))
 
             if reg == 'activity':
                 self.activity_regmodule = self.reg_modules[-1]  # hoping this acts as a pointer (otherwise use explicit indexing)

@@ -54,7 +54,10 @@ class MseLoss_datafilter(nn.Module):
             self.unit_weighting = unit_weighting 
 
         if unit_weights is not None:
-            self.unit_weights = torch.tensor(unit_weights, dtype=torch.float32)
+            if isinstance(unit_weights, torch.Tensor):
+                self.unit_weights = unit_weights.clone()
+            else:
+                self.unit_weights = torch.tensor(unit_weights, dtype=torch.float32)
 
         assert self.batch_weighting in [0, 1, 2, -1], "LOSS: Invalid batch_weighting"
         
