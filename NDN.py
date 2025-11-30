@@ -17,6 +17,7 @@ from NDNT.modules.experiment_sampler import ExperimentSampler
 
 from NDNT import networks as NDNnetworks
 from NDNT.training.trainer import ProximalLBFGS
+from NDNT.training import trainer
 
 FFnets = {
     'normal': NDNnetworks.FFnetwork,
@@ -408,15 +409,16 @@ class NDN(nn.Module):
             elif not isinstance(device, torch.device):
                 raise ValueError("opt_params['device'] must be a string or torch.device")
 
-        trainer_type = 'step'
+        #trainer_type = 'step'
+        trainer_type = optimizer_type.lower()
         if optimizer is not None:
             if isinstance(optimizer, torch.optim.LBFGS):
-                trainer_type = 'lbfgs'
-            if isinstance(optimizer, ProximalLBFGS):
-                trainer_type = 'lbfgs'
-        else:
-            if optimizer_type == 'LBFGS':
-                trainer_type = 'lbfgs'
+                assert trainer_type == 'lbfgs', "NDN.get_trainer: LBFGS optimizer requires 'lbfgs' trainer type."
+            #if isinstance(optimizer, ProximalLBFGS):
+            #    trainer_type = 'lbfgs'
+        #else:
+        #    if optimizer_type == 'LBFGS':
+        #        trainer_type = 'lbfgs'
         
         trainer = trainers[trainer_type](model=self,
                                          optimizer=optimizer,
@@ -679,6 +681,21 @@ class NDN(nn.Module):
         for networks in self.networks:
             networks.proximal_step(learning_rate)
     # END NDN.FFnetwork.proximal_step()
+
+    def get_proximal_reg_list(self):
+        """assemble flattened proximal L1 parameters that are fit"""
+        regL1list = []
+        for network in self.networks:
+            if hasattr(network, 'proxL1list2'):
+                regL1list += network.proxL1list2()
+            #if hasattr(network, 'proxL1list'):
+            #    regL1_list.append(network.proxL1list())
+        #if len(regL1_list) > 0:
+        #    return np.concatenate(regL1_list)
+        #else:
+        #    return np.zeros(0, dtype=np.float32)
+        # END NDN.get_proximal_reg_list()
+        return regL1list
 
     def need_proximal(self):
         for network in self.networks:
@@ -952,8 +969,6 @@ class NDN(nn.Module):
         
         if seed is not None:
             torch.manual_seed(seed)
-        train_dl = DataLoader( train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
-        valid_dl = DataLoader( val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
 
         # Make trainer
         trainer = self.get_trainer(
@@ -969,10 +984,12 @@ class NDN(nn.Module):
         t0 = time.time()
         if force_dict_training:
             from NDNT.training import LBFGSTrainer
-            assert isinstance(trainer, LBFGSTrainer), "force_dict_training will not work unless using LBFGS." 
-
-            trainer.fit(self, train_dl.dataset[:], valid_dl.dataset[:], seed=seed)
+            #assert isinstance(trainer, LBFGSTrainer), "force_dict_training will not work unless using LBFGS." 
+            trainer.fit(self, train_ds[:], val_ds[:], seed=seed)
+            #trainer.fit(self, train_dl.dataset[:], valid_dl.dataset[:], seed=seed)
         else:
+            train_dl = DataLoader( train_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
+            valid_dl = DataLoader( val_ds, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle_data) 
             trainer.fit(self, train_dl, valid_dl, seed=seed)
         t1 = time.time()
 
@@ -1025,7 +1042,9 @@ class NDN(nn.Module):
             num_batches = np.ceil(T/batch_size)
             av_batch_size = T/num_batches
             # Compute unit weights based on number of spikes in dataset (and/or firing rate) if requested
-            unit_weights = 1.0/np.maximum( self.compute_average_responses(dataset, data_inds=data_inds).detach().cpu().numpy(), 1e-8 )
+            unit_weights = 1.0/np.maximum( self.compute_average_responses(dataset, data_inds=data_inds), 1e-8 )
+            if type(unit_weights) == torch.Tensor:
+                unit_weights = unit_weights.cpu().detach().numpy()
             # Make this the RELATIVE average firing rate rather than absolute average firing rate
             unit_weights /= np.mean(unit_weights)
 

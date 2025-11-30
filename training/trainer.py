@@ -555,6 +555,7 @@ class LBFGSTrainer(Trainer):
 
             # check for proximal:
             if model.need_proximal():
+                #print('  Using proximal LBFGS training')
                 self.fit_proximal_data_dict2(model, train_loader)
             else:
                 #### fit entire dataset in one step ####
@@ -656,7 +657,7 @@ class LBFGSTrainer(Trainer):
         lr = self.optimizer.param_groups[0]['lr']
         max_iter = self.optimizer.param_groups[0]['max_iter']
         self.optimizer.param_groups[0]['max_iter'] = 1  # only do one iteration per call to fit_proximal_data_dict  
-        print(self.optimizer.param_groups[0]['line_search_fn'])
+
         for dsub in train_data:
             train_data[dsub] = train_data[dsub].to(self.device)
             
@@ -843,7 +844,8 @@ from torch.optim import Optimizer
 from torch.nn.functional import softshrink as soft_threshold
 
 #def soft_threshold(x, thresh):
-#    # prox_{thresh * ||.||_1}(x)
+    # prox_{thresh * ||.||_1}(x)
+#    print(thresh.device)
 #    return torch.sign(x) * torch.clamp(x.abs() - thresh, min=0.0)
 
 class ProximalLBFGS(Optimizer):
@@ -886,6 +888,7 @@ class ProximalLBFGS(Optimizer):
                 params.append(p)
                 grads.append(p.grad.view(-1))
                 shapes.append(p.shape)
+            # need list of L1 parameters from model to match parameters
 
             if not params:
                 continue
@@ -926,22 +929,35 @@ class ProximalLBFGS(Optimizer):
                 beta = rho * torch.dot(y, r)
                 r.add_(s, alpha=(alpha - beta))
 
+            # flat_grad compared with r should give the step size
+            print(flat_grad.shape, r.shape, lr)
+            print(torch.nanmean(r / flat_grad))
             # r is an approximation of B_k^{-1} * grad
             # Standard L-BFGS uses d = -r. For proximal step, form tentative point:
             d = -r
             z = flat_params + lr * d  # smooth quasi-Newton step
-
             #if lam > 0.0:
                 # proximal L1 in parameter space
-            #z = soft_threshold(z, lr * lam)
-            self.model.proximal_step(learning_rate=lr)
 
             # Update parameters from z
-            offset = 0
+            #prox_list = torch.tensor(lr*self.model.get_proximal_reg_list(), device=z.device, dtype=z.dtype)
+            #print('prox_list', prox_list.device)
+            #assert len(prox_list) == z.numel(), "Proximal parameter size does not match total parameter size"
+            #z = soft_threshold(z, lr * lam)
+            #z = soft_threshold(z, prox_list)
+            l1list = self.model.get_proximal_reg_list()
+            offset, ii = 0, 0
             for p, shape in zip(params, shapes):
                 numel = p.numel()
+                #print(ii, numel, l1list[ii])
+                z[offset:offset+numel] = soft_threshold(z[offset:offset+numel], lr * l1list[ii] )
                 p.data.copy_(z[offset:offset+numel].view(shape))
                 offset += numel
+                ii += 1
+
+            # This applies after the parameters have been put back into the model (not z)
+            # but does not update p.data directly so also does not work
+            #self.model.proximal_step(learning_rate=lr)
 
             # Recompute gradient at new point for next curvature pair
             loss = closure()  # computes new gradients at updated params

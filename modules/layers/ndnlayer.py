@@ -335,10 +335,45 @@ class NDNLayer(nn.Module):
         Apply proximal step for regularization (if applicable). This is called after each gradient step.
         """
         if ('proximalL1' in self.reg.vals) and (self.reg.vals['proximalL1'] > 0):
+            #print('prox step', lr*self.reg.vals['proximalL1'], self.weight.data.shape)
             with torch.no_grad():
                 self.weight.data = F.softshrink(self.weight.data, lr*self.reg.vals['proximalL1'])
     # END NDNLayer.proximal_step()
 
+    def proxL1list(self):
+        """
+        Return list of proximal L1 values for all the parameters with grad=True.
+
+        Args:
+            None
+        Returns:
+            proxL1_list: list of floats, proximal L1 values for each parameter
+        """
+        trainable_params, num_L1, reg = 0, 0, 0.0 
+        if 'proximalL1' in self.reg.vals:
+            reg = self.reg.vals['proximalL1']
+        for ii, param in enumerate(self.parameters()):
+            if param.requires_grad:
+                    trainable_params += param.numel()
+                    if ii == 0:
+                        num_L1 = param.numel()
+        regsL1 = np.zeros(trainable_params, dtype=np.float32)
+        regsL1[:num_L1] = reg
+        return regsL1
+    # END NDNLayer.proxL1list()
+
+    def proxL1list2(self):
+        l1list = []
+        for ii, param in enumerate(self.parameters()):
+            if param.requires_grad:
+                reg = 0.0
+                if ii == 0:
+                    if 'proximalL1' in self.reg.vals:
+                        reg = self.reg.vals['proximalL1']
+                l1list.append(reg)
+        return l1list
+    # END proxL1list2()
+ 
     def need_proximal(self):
         """
         Check if the layer needs proximal step for regularization. This would just be stored in

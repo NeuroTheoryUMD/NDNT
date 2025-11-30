@@ -284,6 +284,26 @@ class FFnetwork(nn.Module):
                 layer.proximal_step(learning_rate)
     # END FFnetwork.proximal_step()
 
+    def proxL1list2(self):
+        L1list = []
+        for layer in self.layers:
+            if hasattr(layer, 'proxL1list'):
+                L1list += layer.proxL1list2()
+        return L1list
+        # END FFnetwork.proxL1list2()
+
+    def proxL1list(self):
+        regL1_list = []
+        for layer in self.layers:
+            if hasattr(layer, 'proxL1list2'):
+                regL1_list.append(layer.proxL1list2())
+        if len(regL1_list) > 0:
+            return np.concatenate(regL1_list)
+        else:
+            return np.zeros(0, dtype=np.float32)
+        # END FFnetwork.proxL1list()
+
+
     def need_proximal(self):
         for layer in self.layers:
             if hasattr(layer, 'need_proximal'):
