@@ -929,9 +929,12 @@ class ProximalLBFGS(Optimizer):
                 beta = rho * torch.dot(y, r)
                 r.add_(s, alpha=(alpha - beta))
 
-            # flat_grad compared with r should give the step size
-            print(flat_grad.shape, r.shape, lr)
-            print(torch.nanmean(r / flat_grad))
+            #### flat_grad compared with r should give the step size -- median (!)
+            step_size = torch.nanmedian(r / flat_grad)
+            #print(torch.nanmedian(r / flat_grad))
+            ###from matplotlib import pyplot as plt
+            ###plt.plot((r / flat_grad).cpu().numpy())
+            ###plt.show()
             # r is an approximation of B_k^{-1} * grad
             # Standard L-BFGS uses d = -r. For proximal step, form tentative point:
             d = -r
@@ -944,13 +947,12 @@ class ProximalLBFGS(Optimizer):
             #print('prox_list', prox_list.device)
             #assert len(prox_list) == z.numel(), "Proximal parameter size does not match total parameter size"
             #z = soft_threshold(z, lr * lam)
-            #z = soft_threshold(z, prox_list)
             l1list = self.model.get_proximal_reg_list()
             offset, ii = 0, 0
             for p, shape in zip(params, shapes):
                 numel = p.numel()
                 #print(ii, numel, l1list[ii])
-                z[offset:offset+numel] = soft_threshold(z[offset:offset+numel], lr * l1list[ii] )
+                z[offset:offset+numel] = soft_threshold(z[offset:offset+numel], step_size* lr * l1list[ii] )
                 p.data.copy_(z[offset:offset+numel].view(shape))
                 offset += numel
                 ii += 1

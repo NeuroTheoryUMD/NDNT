@@ -26,7 +26,7 @@ class MseLoss_datafilter(nn.Module):
         self.register_buffer('av_batch_size', None) 
     # END MseLoss_datafilter.__init__
 
-    def set_loss_weighting( self, batch_weighting=None, unit_weighting=None, unit_weights=None, av_batch_size=None ):
+    def set_loss_weighting( self, batch_weighting=None, unit_weighting=None, unit_weights=None, av_batch_size=None, device=None ):
         """
         This changes default loss function weights to adjust for the dataset by setting two flags:
             unit_weighting: whether to weight neurons by different amounts in loss function (e.g., av spike rate)
