@@ -1047,7 +1047,7 @@ class NDN(nn.Module):
                 unit_weights = unit_weights.cpu().detach().numpy()
             # Make this the RELATIVE average firing rate rather than absolute average firing rate
             unit_weights /= np.mean(unit_weights)
-
+ 
         self.loss_module.set_loss_weighting( 
             batch_weighting=batch_weighting, unit_weighting=unit_weighting, 
             unit_weights=unit_weights, av_batch_size=av_batch_size, device=self.device )

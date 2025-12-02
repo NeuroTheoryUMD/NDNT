@@ -26,7 +26,7 @@ class MseLoss_datafilter(nn.Module):
         self.register_buffer('av_batch_size', None) 
     # END MseLoss_datafilter.__init__
 
-    def set_loss_weighting( self, batch_weighting=None, unit_weighting=None, unit_weights=None, av_batch_size=None, device=None ):
+    def set_loss_weighting( self, batch_weighting=0, unit_weighting=False, unit_weights=None, av_batch_size=None, device=None ):
         """
         This changes default loss function weights to adjust for the dataset by setting two flags:
             unit_weighting: whether to weight neurons by different amounts in loss function (e.g., av spike rate)
@@ -45,13 +45,12 @@ class MseLoss_datafilter(nn.Module):
         Returns:
             None
         """
-
         import numpy as np
 
-        if batch_weighting is not None:
-            self.batch_weighting = batch_weighting 
-        if unit_weighting is not None:
-            self.unit_weighting = unit_weighting 
+        #if batch_weighting is not None:
+        self.batch_weighting = batch_weighting 
+        #if unit_weighting is not None:
+        self.unit_weighting = unit_weighting 
 
         if unit_weights is not None:
             if isinstance(unit_weights, torch.Tensor):
@@ -63,6 +62,7 @@ class MseLoss_datafilter(nn.Module):
         
         if av_batch_size is not None:
             self.av_batch_size = torch.tensor(av_batch_size, dtype=torch.float32)
+    # END MseLoss_datafilter.set_loss_weighting()
 
     def forward(self, pred, target, data_filters=None ):
         """
