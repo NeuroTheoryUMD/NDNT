@@ -382,8 +382,8 @@ class NDN(nn.Module):
         from NDNT.training.trainer import ProximalLBFGS
         import os
 
-        #trainers = {'step': Trainer, 'AdamW': Trainer, 'Adam': Trainer, 'sgd': Trainer, 'lbfgs': LBFGSTrainer}
-        trainers = {'step': Trainer, 'lbfgs': LBFGSTrainer}
+        trainers = {'step': Trainer, 'adamw': Trainer, 'adam': Trainer, 'sgd': Trainer, 'lbfgs': LBFGSTrainer}
+        #trainers = {'step': Trainer, 'lbfgs': LBFGSTrainer}
 
         if optimizer is None:  # then specified through optimizer inputs
             optimizer = self.get_optimizer(optimizer_type=optimizer_type, **kwargs)
