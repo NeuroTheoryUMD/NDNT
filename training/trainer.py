@@ -556,7 +556,7 @@ class LBFGSTrainer(Trainer):
             # check for proximal:
             if model.need_proximal():
                 #print('  Using proximal LBFGS training')
-                self.fit_proximal_data_dict2(model, train_loader)
+                self.fit_proximal_data_dict(model, train_loader)
             else:
                 #### fit entire dataset in one step ####
                 self.fit_data_dict(model, train_loader)
@@ -633,7 +633,7 @@ class LBFGSTrainer(Trainer):
         loss = self.optimizer.step(closure)
         self.optimizer.zero_grad(set_to_none=self.set_to_none)
         if self.use_gpu:
-                torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
 
         return {'train_loss': loss}
     # END LBFGSTrainer.fit_data_dict()
@@ -649,9 +649,9 @@ class LBFGSTrainer(Trainer):
         Returns:
             None
         """
-        if self.optimizer.param_groups[0]['line_search_fn'] is None:
-            print('  Warning: line search will be set to strong_wolfe')
-            self.optimizer.param_groups[0]['line_search_fn'] = 'strong_wolfe'
+        #if self.optimizer.param_groups[0]['line_search_fn'] is None:
+            #print('  Warning: line search will be set to strong_wolfe')
+            #self.optimizer.param_groups[0]['line_search_fn'] = 'strong_wolfe'
         tol_change = self.optimizer.param_groups[0]['tolerance_change']
         #tol_grad = self.optimizer.param_groups[0]['tolerance_grad']
         lr = self.optimizer.param_groups[0]['lr']
@@ -674,7 +674,7 @@ class LBFGSTrainer(Trainer):
 
             # torch.cuda.empty_cache()
             if self.verbose > 1:
-                print('Eval: {} | Loss: {}'.format(self.optimizer.state_dict()['state'][0]['n_iter'], loss.item()))
+                print('Eval: %3d | Loss: %9.6f'%(self.optimizer.state_dict()['state'][0]['n_iter'], loss.item()))
             
             return loss
 
@@ -696,8 +696,9 @@ class LBFGSTrainer(Trainer):
             #    lr = torch.sqrt(torch.linalg.vector_norm(w_new-w_old, ord=2)) / torch.sqrt(torch.linalg.vector_norm(w_grad, ord=2))
                 #print( lr )
             #w_old = w_new
-        
-            model.proximal_step(learning_rate=lr)
+            #with torch.no_grad():
+                #print(self.optimizer.param_groups[0]['lr'])
+            model.proximal_step(learning_rate=self.optimizer.param_groups[0]['lr'])
 
             # Stopping rule (emulating LBFGS-style criteria)
             if abs(prev_loss - loss.item()) < tol_change:
@@ -952,7 +953,9 @@ class ProximalLBFGS(Optimizer):
             for p, shape in zip(params, shapes):
                 numel = p.numel()
                 #print(ii, numel, l1list[ii])
-                z[offset:offset+numel] = soft_threshold(z[offset:offset+numel], step_size* lr * l1list[ii] )
+                #z[offset:offset+numel] = soft_threshold(z[offset:offset+numel], step_size* lr * l1list[ii] )
+                with torch.no_grad():
+                    z[offset:offset+numel] = soft_threshold(z[offset:offset+numel], lr * l1list[ii] )
                 p.data.copy_(z[offset:offset+numel].view(shape))
                 offset += numel
                 ii += 1

@@ -643,21 +643,21 @@ class NDN(nn.Module):
             #  differentiable=False, fused=None)
             
         elif optimizer_type=='LBFGS':
-            if self.need_proximal():
-                optimizer = ProximalLBFGS(
-                    self, #self.parameters(), 
-                    history_size=history_size, max_iter=max_iter, 
-                    tolerance_change=tolerance_change,
-                    tolerance_grad=tolerance_grad,
-                    line_search_fn=line_search_fn)
-                
-            else:
-                optimizer = torch.optim.LBFGS(
-                    self.parameters(), 
-                    history_size=history_size, max_iter=max_iter, 
-                    tolerance_change=tolerance_change,
-                    tolerance_grad=tolerance_grad,
-                    line_search_fn=line_search_fn)
+            #if self.need_proximal():
+            #    optimizer = ProximalLBFGS(
+            #        self, #self.parameters(), 
+            #        history_size=history_size, max_iter=max_iter, 
+            #        tolerance_change=tolerance_change,
+            #        tolerance_grad=tolerance_grad,
+            #        line_search_fn=line_search_fn)
+            #    
+            #else:
+            optimizer = torch.optim.LBFGS(
+                self.parameters(), 
+                history_size=history_size, max_iter=max_iter, 
+                tolerance_change=tolerance_change,
+                tolerance_grad=tolerance_grad,
+                line_search_fn=line_search_fn)
 
         else:
             raise ValueError('optimizer [%s] not supported' %optimizer_type)
