@@ -1043,8 +1043,8 @@ class NDN(nn.Module):
             av_batch_size = T/num_batches
             # Compute unit weights based on number of spikes in dataset (and/or firing rate) if requested
             unit_weights = 1.0/np.maximum( self.compute_average_responses(dataset, data_inds=data_inds), 1e-8 )
-            if type(unit_weights) == torch.Tensor:
-                unit_weights = unit_weights.cpu().detach().numpy()
+            #if type(unit_weights) == torch.Tensor:
+            #    unit_weights = unit_weights.cpu().detach().numpy()
             # Make this the RELATIVE average firing rate rather than absolute average firing rate
             unit_weights /= np.mean(unit_weights)
  
@@ -1101,10 +1101,12 @@ class NDN(nn.Module):
         
         # Check if dataset has specified function
         if hasattr( dataset, 'avrates' ):
+
             return dataset.avrates()
 
         if isinstance(dataset, dict): ## then this is easy
-            return torch.divide( dataset['robs'].sum(0), torch.maximum(dataset['dfs'].sum(0), torch.tensor(1)) ) 
+            #return torch.divide( dataset['robs'].sum(0), torch.maximum(dataset['dfs'].sum(0), torch.tensor(1)) ) 
+            return (torch.divide( torch.sum( dataset['robs'], dim=0 ), torch.clamp( torch.sum(dataset['dfs'], dim=0), 1) )).cpu().detach().numpy()
 
         # Iterate through dataset to compute average rates
         if isinstance(dataset, dict):
@@ -1121,7 +1123,7 @@ class NDN(nn.Module):
                 Tsum += torch.sum(sample['dfs'], axis=0).cpu()
                 Rsum += torch.sum(torch.mul(sample['dfs'], sample['robs']), axis=0).cpu()
 
-        return torch.divide( Rsum, Tsum.clamp(1) ).cpu().detach().numpy()
+        return (torch.divide( Rsum, Tsum.clamp(1) )).cpu().detach().numpy()
     # END NDNT.compute_average_responses()
 
     def initialize_biases( self, dataset, data_inds=None, ffnet_target=-1, layer_target=-1 ):
