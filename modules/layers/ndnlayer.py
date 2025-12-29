@@ -401,7 +401,7 @@ class NDNLayer(nn.Module):
             ws: np.ndarray, weights of the layer, on the CPU
         """
 
-        ws = self.preprocess_weights().detach().cpu().numpy()
+        ws = self.preprocess_weights().detach().cpu().clone().numpy()
         num_filts = ws.shape[-1]
         if time_reverse or (num_inh>0):
             ws_tmp = np.reshape(ws, self.filter_dims + [num_filts])
@@ -432,7 +432,7 @@ class NDNLayer(nn.Module):
         Returns:
             bs: np.ndarray, biases of the layer, on the CPU
         """
-        return self.bias.detach().numpy().squeeze()
+        return deepcopy(self.bias.cpu().detach().numpy().squeeze())
     # END NDN.get_biases()
 
     def list_parameters(self):

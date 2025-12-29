@@ -156,7 +156,7 @@ class Tlayer(NDNLayer):
             self.reg.compute_activity_regularization(y)
 
         return y
-    # END Tlayer.forward 
+    # END Tlayer.forward() 
 
     def plot_filters( self, cmaps='gray', num_cols=8, row_height=2, time_reverse=False):
         """

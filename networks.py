@@ -38,12 +38,24 @@ class FFnetwork(nn.Module):
                 input_dims_list: list = None,
                 reg_list: list = None,
                 scaffold_levels: list = None,
+                stim_dims = None,
                 **kwargs,
                 ):
         # if len(kwargs) > 0:
         #     print("FFnet: unknown kwargs:", kwargs)
-        assert layer_list is not None, "FFnetwork: Must supply a layer_list."
-        
+        #print('inside', input_dims_list)
+        if ffnet_type == 'mult' and layer_list is None:
+            #layer_list = []
+            if xstim_n is not None:
+                assert stim_dims is not None, "FFnetwork: mult ffnet with xstim_n must have stim_dims specified"
+                if layer_list is not None:
+                    self.input_dims = layer_list[0]['input_dims']
+                else:
+                    self.input_dims = stim_dims
+                    layer_list = []
+        else:
+            assert layer_list is not None, "FFnetwork: Must supply a layer_list."
+            
         super().__init__()
 
         self.LayerTypes = {
@@ -64,7 +76,7 @@ class FFnetwork(nn.Module):
             'oolayer': layers.OnOffLayer,
             'masklayer': layers.MaskLayer,
             'maskSTClayer': layers.MaskSTconvLayer,
-            'iter': layers.IterLayer,
+            'maskTlayer': layers.MaskTlayer,
             'iterT': layers.IterTlayer,
             'iterST': layers.IterSTlayer,
             'readout': layers.ReadoutLayer,
@@ -104,6 +116,8 @@ class FFnetwork(nn.Module):
 
         if num_layers == 0:
             self.layers = nn.ModuleList()
+            self.determine_input_dims( input_dims_list=input_dims_list, ffnet_type=ffnet_type )
+            self.output_dims = deepcopy(self.input_dims)
             return
             
         # Establish input dims from the network
@@ -134,7 +148,7 @@ class FFnetwork(nn.Module):
 
         # output dims determined by last layer
         self.output_dims = self.layers[-1].output_dims
-
+        
         # Make scaffold output if requested
         if scaffold_levels is None:
             self.scaffold_levels = [-1] # output last layer only
@@ -502,6 +516,8 @@ class FFnetwork(nn.Module):
                     output += f", {L['window']}"
                 output += f")  |  {L['output_norm']}  |  {L['NLtype']}"
                 print(output)
+            #if self.network_type == 'mult' and len(self.layer_list) == 0:
+            #    print( "  ")
         else: 
             print('not implemented yet')
     # END FFnetwork.get_network_info()
@@ -531,11 +547,13 @@ class FFnetwork(nn.Module):
         info_string = self.network_type + ': Input = '
         if self.xstim_n is not None:
             info_string += "'" + self.xstim_n + "' "
-        else:
+        if self.ffnets_in is not None:
+            if self.xstim_n is not None:
+                info_string += '+ '        
             info_string += 'ffnet '
             for ii in range(len(self.ffnets_in)):
                 info_string += "%d "%self.ffnets_in[ii]
-        info_string += str(self.input_dims)
+        info_string += '-> ' + str(self.input_dims)
         return info_string
     # END FFnetwork.generate_info_string()
 
@@ -556,12 +574,15 @@ class FFnetwork(nn.Module):
         Returns:
             ffnet_dict (dict): The dictionary of the feedforward network.
         """
-        return {
+        dict_out = {
             'ffnet_type': ffnet_type,
             'xstim_n':xstim_n, 'ffnet_n':ffnet_n,
             'layer_list': deepcopy(layer_list),
             'scaffold_levels': scaffold_levels,
             'num_lags_out': num_lags_out}
+        if ffnet_type == 'mult' and xstim_n is not None: # let's passively read from xstim_n
+            dict_out['stim_dims'] = kwargs.get('stim_dims', None)
+        return dict_out
     # END FFnetwork class
 
 

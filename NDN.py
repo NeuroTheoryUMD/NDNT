@@ -194,7 +194,10 @@ class NDN(nn.Module):
             if ffnet_list[mm]['xstim_n'] is None:
                 input_dims_list = []
             else:
-                input_dims_list = [ffnet_list[mm]['layer_list'][0]['input_dims']]
+                if ffnet_list[mm]['ffnet_type'] == 'mult': # empty mult list will have stim dims info
+                    input_dims_list = [ffnet_list[mm]['stim_dims']]
+                else:
+                    input_dims_list = [ffnet_list[mm]['layer_list'][0]['input_dims']]
 
             if ffnet_list[mm]['ffnet_n'] is not None:
                 nets_in = ffnet_list[mm]['ffnet_n']
@@ -202,7 +205,7 @@ class NDN(nn.Module):
                     assert nets_in[ii] < mm, "FFnet%d (%d): input networks must come earlier"%(mm, ii)
                     input_dims_list.append(networks[nets_in[ii]].output_dims)
                 ffnet_list[mm]['input_dims_list'] = input_dims_list
-        
+            
             # Create corresponding FFnetwork
             net_type = ffnet_list[mm]['ffnet_type']
             if net_type == 'external':  # separate case because needs to pass in external modules directly
@@ -229,7 +232,6 @@ class NDN(nn.Module):
         Note:
             This method currently saves only the network outputs and does not return the network inputs.
         """
-
         assert 'networks' in dir(self), "compute_network_outputs: No networks defined in this NDN"
 
         net_ins, net_outs = [], []
@@ -337,7 +339,8 @@ class NDN(nn.Module):
             """
             rloss = []
             for network in self.networks:
-                rloss.append(network.compute_reg_loss())
+                if len(network.layers) > 0:
+                    rloss.append(network.compute_reg_loss())
             return reduce(torch.add, rloss)
     # END NDN.compute_reg_loss()
     

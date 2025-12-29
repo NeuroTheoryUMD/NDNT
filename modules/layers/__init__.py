@@ -20,7 +20,7 @@ from .specialtylayers import L1convLayer
 from .specialtylayers import OnOffLayer
 from .specialtylayers import ParametricTuneLayer
 from .masklayers import MaskLayer
-from .masklayers import MaskSTconvLayer
+from .masklayers import MaskSTconvLayer, MaskTlayer
 from .orilayers import OriLayer
 from .orilayers import OriConvLayer
 from .orilayers import HermiteOriConvLayer
