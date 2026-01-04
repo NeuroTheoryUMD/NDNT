@@ -178,7 +178,7 @@ def init_vars(project=None, GPU=0, verbose=True):
         datadir = base_datadir + 'Antolik/'
 
     ##### BarV1 projects/tutorials ######
-    elif project.lower() == 'barv1':
+    elif project.lower() in ['barv1', 'binoc']:
         from NTdatasets.cumming.monocular import MultiDataset
         from NTdatasets.cumming.binocular import binocular_single
         new_entries = {
@@ -220,6 +220,13 @@ def init_vars(project=None, GPU=0, verbose=True):
         elif project.lower() == 'running':
             datadir = base_datadir + 'Huk/'
             dirname = dirname + 'Running/'
+        elif project.lower() == 'binoc':
+            datadir = base_datadir + 'V1/BruceV1/Binocular2/'
+            dirname = dirname + 'Binocular/Bi2026/'
+            if myhost=='ca3':
+                datadir = '/home/dbutts/Binocular/Data/'
+            elif myhost=='m1':
+                datadir = '/home/dbutts/V1/B2data/'
  
     ##### ISABEL FERNANDEZ #####
     elif user.lower() == 'ifernand':
