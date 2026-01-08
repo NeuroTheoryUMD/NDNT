@@ -75,6 +75,7 @@ class FFnetwork(nn.Module):
             'conv3d': layers.ConvLayer3D,
             'oolayer': layers.OnOffLayer,
             'masklayer': layers.MaskLayer,
+            'maskconv': layers.MaskConvLayer,
             'maskSTClayer': layers.MaskSTconvLayer,
             'maskTlayer': layers.MaskTlayer,
             'iterT': layers.IterTlayer,

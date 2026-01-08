@@ -181,8 +181,10 @@ def init_vars(project=None, GPU=0, verbose=True):
     elif project.lower() in ['barv1', 'binoc']:
         from NTdatasets.cumming.monocular import MultiDataset
         from NTdatasets.cumming.binocular import binocular_single
+        import NTdatasets.cumming.BinocUtils as BU # Binoc utilities
+    
         new_entries = {
-            'MultiDataset': MultiDataset, 'binocular_single': binocular_single}
+            'MultiDataset': MultiDataset, 'binocular_single': binocular_single, 'BU': BU}
         globs.update(new_entries)
 
     ##### Huk running project ######
