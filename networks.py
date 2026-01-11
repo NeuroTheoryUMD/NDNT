@@ -90,6 +90,7 @@ class FFnetwork(nn.Module):
             'dimSP': layers.DimSPLayer,
             'dimSPT': layers.DimSPTLayer,
             'channel': layers.ChannelLayer,
+            'chanX': layers.ChannelXLayer,
             'LVlayer': layers.LVLayer,
             'l1layer': layers.L1convLayer,
             'timeshift': layers.TimeShiftLayer,

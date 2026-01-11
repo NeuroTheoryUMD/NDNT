@@ -159,7 +159,7 @@ def init_vars(project=None, GPU=0, verbose=True):
         import ColorDataUtils.ModelBasedEyeTracking as MBET
         import NTdatasets.conway.multi_datasets as multidata
         new_entries = {
-            'CU': CU, 'DDPIutils': DDPIutils, 'ETutils': ETutils, 'readout_fit': readout_fit, 'MEBET': MBET,
+            'CU': CU, 'DDPIutils': DDPIutils, 'ETutils': ETutils, 'readout_fit': readout_fit, 'MBET': MBET,
             'pproc': pproc, 'cal': cal, 'cme': cme, 'RFutils': RFutils, 'multidata': multidata}
         globs.update(new_entries)
         datadir = base_datadir + 'ColorV1/'

@@ -7,7 +7,7 @@ from .timelayers import TimeLayer
 from .dimlayers import Dim0Layer
 from .dimlayers import DimSPLayer
 from .dimlayers import DimSPTLayer
-from .dimlayers import ChannelLayer
+from .dimlayers import ChannelLayer, ChannelXLayer
 from .laglayers import LagLayer
 from .lvlayers import LVLayer
 from .bilayers import BiConvLayer1D, BiSTconv1D, BinocShiftLayer

@@ -3,6 +3,176 @@ import torch.nn as nn
 from .ndnlayer import NDNLayer
 import numpy as np
 
+
+class ChannelLayer(NDNLayer):
+    """
+    Applies individual filter for each filter (dim0) dimension, preserving separate channels but filtering over other dimensions
+    => num_filters equals the channel dimension by definition, otherwise like NDNLayer
+    """ 
+
+    def __init__(self,
+            input_dims=None,
+            num_filters=None,
+            **kwargs,
+        ):
+        """
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+        """
+        assert input_dims is not None, "ChannelLayer: Must specify input_dims"
+        assert input_dims[0] > 1, "ChannelLayer: Dim-0 of input must be non-trivial"
+        if num_filters is None:
+            num_filters = input_dims[0]
+            num_input_filters = 1
+        else:
+            assert input_dims[0]%num_filters == 0, "ChannelLayer: num_filters must be multiple of number of filter inputs"
+            num_input_filters = input_dims[0] // num_filters
+ 
+        filter_dims = [num_input_filters] + input_dims[1:]
+        super().__init__(input_dims, num_filters, filter_dims=filter_dims, **kwargs)
+    # END ChannelLayer.__init__
+
+    def _layer_abbrev( self ):
+        return " channel"
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        #del Ldict['num_filters']
+        Ldict['layer_type'] = 'channel'
+        return Ldict
+    # END [classmethod] ChannelLayer.layer_dict
+
+    def forward(self, x):
+        """
+        Args:
+            x: torch.Tensor, input tensor of shape [B, C, H, W, L]
+
+        Returns:
+            y: torch.Tensor, output tensor of shape [B, N, H, W, L]
+        """
+        # Pull weights and process given pos_constrain and normalization conditions
+        w = self.preprocess_weights()
+
+        # Extract filter_dimension 
+        x = torch.reshape( x, [-1, self.num_filters, np.prod(self.filter_dims)])
+
+        # matrix multiplication of non-filter dimensions
+        y = torch.einsum('anb, bn -> an', x, w)
+        if self.norm_type == 2:
+            y = y / self.weight_scale
+
+        y = y + self.bias
+
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+
+        # Constrain output to be signed
+        if self._ei_mask is not None:
+            y = y * self._ei_mask
+
+        return y 
+    # END ChannelLayer.forward
+
+
+class ChannelXLayer(NDNLayer):
+    """
+    Apply filter across the dimension of interest (dim = 1,2,3) for each input channel to collapse that dimension
+    for filters that match the number of channels (i,e, dim-0 = channel input dimension). 
+    So, num_filters is inherited from the channel input dimension
+    """ 
+
+    def __init__(self,
+            input_dims=None,
+            dim=0,
+            num_filters=None,  # to pull out to make sure not there
+            num_inh=None,      # to pull out to make sure not there
+            **kwargs):
+        """
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            dim: dimension to collapse over (default 0)
+        """
+        assert input_dims is not None, "ChannelXLayer: Must specify input_dims"
+        assert (dim < 4) & (dim > 0), "ChannelXLayer: Must choose valid dimension to collapse over (1-3)"
+        assert num_inh is None, "ChannelXLayer: num_inh must not be defined"
+        assert input_dims[dim] > 1, "ChannelXLayer: Collapsed dimension of input must be non-trivial"
+        assert num_filters is None, "ChannelXLayer: num_filters must be specified"
+        num_filters = input_dims[0]
+
+        # Put filter weights in time-lag dimension to allow regularization using d2t etc
+        filter_dims = [1, 1, 1, input_dims[dim]]
+
+        super().__init__(input_dims,
+            num_filters,
+            filter_dims=filter_dims,
+            bias=False,
+            **kwargs)
+
+        self.output_dims = input_dims.copy()
+        self.output_dims[dim] = 1
+        self.num_outputs = np.prod(self.output_dims)
+        #self.register_buffer('dim', torch.tensor(dim, dtype=torch.int))
+        self.dim = dim
+        
+    # END ChannelXLayer.__init__
+
+    def forward(self, x):
+        """
+        Args:
+            x: torch.Tensor, input tensor of shape [B, C, H, W, Q]
+
+        Returns:
+            y: torch.Tensor, output tensor of shape [B, C, ...] with dim collapsed to 1
+        """
+        w = self.preprocess_weights()
+
+        # Reshape input to expose dim0 and put last
+        x = x.view( [-1] + self.input_dims)
+        if self.dim == 1:
+            y = torch.einsum('tabcd,ba->tacd', x, w)
+        elif self.dim == 2:
+            y = torch.einsum('tabcd,ca->tabd', x, w)
+        elif self.dim == 3:
+            y = torch.einsum('tabcd,da->tabc', x, w)
+        y = y.reshape([-1, self.num_outputs])
+
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+
+        return y 
+    # END ChannelXLayer.forward()
+
+    def _layer_abbrev( self ):
+        return " chanX-" + str(self.dim)
+
+    @classmethod
+    def layer_dict(cls, dim=0, **kwargs):
+        """
+        This generates a dictionary with layer-specific defaults. This one deviates from the parent NDNLayer by
+        eliminating the bias, and adding 'dim' keyword which is the dimension to collapse over.
+        """
+        Ldict = super().layer_dict(**kwargs)
+        Ldict['layer_type'] = 'chanX'
+        Ldict['dim'] = int(dim)
+        del Ldict['num_filters']
+        del Ldict['bias']
+        del Ldict['num_inh']
+        return Ldict
+    # END [classmethod] ChannelXLayer.layer_dict()
+
+
 class Dim0Layer(NDNLayer):
     """
     Filters that act solely on filter-dimension (dim-0).
@@ -120,87 +290,6 @@ class Dim0Layer(NDNLayer):
         del Ldict['bias']
         return Ldict
     # END [classmethod] Dim0Layer.layer_dict
-
-
-class ChannelLayer(NDNLayer):
-    """
-    Applies individual filter for each filter (dim0) dimension, preserving separate channels but filtering over other dimensions
-    => num_filters equals the channel dimension by definition, otherwise like NDNLayer
-    """ 
-
-    def __init__(self,
-            input_dims=None,
-            num_filters=None,
-            **kwargs,
-        ):
-        """
-        Args:
-            input_dims: tuple or list of ints, (num_channels, height, width, lags)
-            num_filters: number of output filters
-        """
-        assert input_dims is not None, "ChannelLayer: Must specify input_dims"
-        assert input_dims[0] > 1, "ChannelLayer: Dim-0 of input must be non-trivial"
-        if num_filters is None:
-            num_filters = input_dims[0]
-            num_input_filters = 1
-        else:
-            assert input_dims[0]%num_filters == 0, "ChannelLayer: num_filters must be multiple of number of filter inputs"
-            num_input_filters = input_dims[0] // num_filters
- 
-        filter_dims = [num_input_filters] + input_dims[1:]
-        super().__init__(input_dims, num_filters, filter_dims=filter_dims, **kwargs)
-    # END ChannelLayer.__init__
-
-    def _layer_abbrev( self ):
-        return " channel"
-
-    @classmethod
-    def layer_dict(cls, **kwargs):
-        """
-        This outputs a dictionary of parameters that need to input into the layer to completely specify.
-        Output is a dictionary with these keywords. 
-        -- All layer-specific inputs are included in the returned dict
-        -- Values that must be set are set to empty lists
-        -- Other values will be given their defaults
-        """
-
-        Ldict = super().layer_dict(**kwargs)
-        #del Ldict['num_filters']
-        Ldict['layer_type'] = 'channel'
-        return Ldict
-    # END [classmethod] ChannelLayer.layer_dict
-
-    def forward(self, x):
-        """
-        Args:
-            x: torch.Tensor, input tensor of shape [B, C, H, W, L]
-
-        Returns:
-            y: torch.Tensor, output tensor of shape [B, N, H, W, L]
-        """
-        # Pull weights and process given pos_constrain and normalization conditions
-        w = self.preprocess_weights()
-
-        # Extract filter_dimension 
-        x = torch.reshape( x, [-1, self.num_filters, np.prod(self.filter_dims)])
-
-        # matrix multiplication of non-filter dimensions
-        y = torch.einsum('anb, bn -> an', x, w)
-        if self.norm_type == 2:
-            y = y / self.weight_scale
-
-        y = y + self.bias
-
-        # Nonlinearity
-        if self.NL is not None:
-            y = self.NL(y)
-
-        # Constrain output to be signed
-        if self._ei_mask is not None:
-            y = y * self._ei_mask
-
-        return y 
-    # END ChannelLayer.forward
 
 
 class DimSPLayer(NDNLayer):

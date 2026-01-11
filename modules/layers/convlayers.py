@@ -312,11 +312,12 @@ class ConvLayer(NDNLayer):
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
         """
+        from copy import deepcopy
 
         Ldict = super().layer_dict(**kwargs)
         # Added arguments
         Ldict['layer_type'] = 'conv'
-        Ldict['filter_dims'] = filter_dims
+        Ldict['filter_dims'] = deepcopy(filter_dims)
         Ldict['res_layer'] = res_layer
         Ldict['temporal_tent_spacing'] = 1
         #Ldict['output_norm'] = None  # captured in parent
@@ -326,7 +327,8 @@ class ConvLayer(NDNLayer):
         Ldict['num_groups'] = num_groups
         Ldict['padding'] = padding # values can be 'same' (def), 'valid', 'circular'
         return Ldict
-    
+    # END ConvLayer.layer_dict()
+
     def preprocess_weights(self, mod_weight=None):
         
         if mod_weight is None:
@@ -798,8 +800,6 @@ class STconvLayer(TconvLayer):
         
         y = y.reshape((-1, self.num_outputs))
 
-        # store activity regularization to add to loss later
-        #self.activity_regularization = self.activity_reg.regularize(y)
         if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
             self.reg.compute_activity_regularization(y)
 

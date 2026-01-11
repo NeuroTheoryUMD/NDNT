@@ -656,7 +656,7 @@ class NDNLayer(nn.Module):
 
         return {
             'layer_type': 'normal',
-            'input_dims': input_dims,
+            'input_dims': deepcopy(input_dims),
             'num_filters': num_filters,
             'NLtype': NLtype,
             'norm_type': norm_type,
