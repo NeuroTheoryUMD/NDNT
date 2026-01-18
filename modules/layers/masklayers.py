@@ -18,7 +18,6 @@ class MaskLayer(NDNLayer):
     def __init__(self, input_dims=None,
                  num_filters=None,
                  #filter_dims=None,  # absorbed by kwargs if necessary
-                 #mask=None,  # cant pass in as part of dictionary
                  NLtype:str='lin',
                  norm_type:int=0,
                  pos_constraint=0,
@@ -29,8 +28,7 @@ class MaskLayer(NDNLayer):
                  initialize_center=False,
                  bias_initializer:str='zeros',
                  reg_vals:dict=None,
-                 **kwargs,
-                 ):
+                 **kwargs):
         """
         MaskLayer: Layer with a mask applied to the weights: the mask would be values of zero and one, with zeros
         indicating weights that should be forced to zero. Additionally, can specify a replacement value for the zeros weights,
@@ -39,7 +37,6 @@ class MaskLayer(NDNLayer):
         Args:
             input_dims: tuple or list of ints, (num_channels, height, width, lags)
             num_filters: number of output filters
-            ## NOT CANT BE PART OF DICTIONARY mask: np.ndarray, mask to apply to the weights
             NLtype: str, 'lin', 'relu', 'tanh', 'sigmoid', 'elu', 'none'
             norm_type: int, normalization type
             pos_constraint: int, whether to enforce non-negative weights
@@ -73,7 +70,7 @@ class MaskLayer(NDNLayer):
         # Must be done after mask is filled in
         if initialize_center:
             self.initialize_gaussian_envelope()
-    # END MaskLayer.__init__
+    # END MaskLayer.__init__()
 
     def set_mask( self, mask=None, replacement=None ):
         """
@@ -106,20 +103,42 @@ class MaskLayer(NDNLayer):
 
     def preprocess_weights( self ):
         """
-        Preprocess weights for MaskLayer.
+        Preprocess weights for MaskLayer: completely overloaded so that pos_constraints and normalization
+        handled after the mask is applied.
+        -> norm_type=1 will just normalize unmasked components
+        -> norm_type=2 will add mask and normalize after
 
         Returns:
             w: torch.Tensor, preprocessed weights
         """
-        w = super().preprocess_weights()
-        if self.replace:
-            return  w*self.mask + self.mask_replace
+        #w = super().preprocess_weights()
+        #if self.replace:
+        #    return  w*self.mask + self.mask_replace
+        #else:
+        #    return w*self.mask
+        
+        # Standard preprocessing of pos_constraints with mask applied (note mask is not constrained)
+        if self.pos_constraint > 0:
+            w = torch.square(self.weight) * self.mask
+        elif self.pos_constraint < 0:
+            w = -torch.square(self.weight) * self.mask  # to promote continuous gradients around 0
         else:
-            return w*self.mask
+            w = self.weight * self.mask
+
+        # Normalize before adding replacement (norm_type=1)
+        if self.norm_type == 1: # only normalizing unmasked components
+            w = F.normalize( w, dim=0 ) 
+
+        if self.replace:
+            w = w + self.mask_replace
+        if self.norm_type == 2: 
+            w = F.normalize( w, dim=0 ) # normalize with replacement in place
+
+        return w
     # END MaskLayer.preprocess_weights()
 
     def _layer_abbrev( self ):
-        return " normalM"
+        return "normMASK"
 
     #def forward( self, x):
     #    assert self.mask_is_set > 0, "ERROR: Must set mask before using MaskLayer"
@@ -159,11 +178,9 @@ class MaskSTconvLayer(STconvLayer):
     def __init__(self, input_dims=None,
                  num_filters=None,
                  #filter_dims=None,  # absorbed by kwargs if necessary
-                 #mask=None,
                  initialize_center=False,
                  output_norm=None,
-                 **kwargs,
-                 ):
+                 **kwargs):
         """
         MaskSTconvLayer: STconvLayer with a mask applied to the weights.
 
@@ -192,7 +209,7 @@ class MaskSTconvLayer(STconvLayer):
 
         if initialize_center:
             self.initialize_gaussian_envelope()
-    # END MaskSTconvLayer.__init__
+    # END MaskSTconvLayer.__init__()
 
     def set_mask( self, mask=None, replacement=None ):
         """
@@ -227,20 +244,37 @@ class MaskSTconvLayer(STconvLayer):
 
     def preprocess_weights( self ):
         """
-        Preprocess weights for MaskLayer.
+        Preprocess weights for MaskSTconvLayer -- completely overloaded so that pos_constraints and normalization
+        handled after the mask is applied.
+        -> norm_type=1 will just normalize unmasked components
+        -> norm_type=2 will add mask and normalize after
 
         Returns:
             w: torch.Tensor, preprocessed weights
         """
-        w = super().preprocess_weights()    
-        if self.replace:
-            return  w*self.mask + self.mask_replace
+        # Standard preprocessing of pos_constraints with mask applied (note mask is not constrained)
+        if self.pos_constraint > 0:
+            w = torch.square(self.weight) * self.mask
+        elif self.pos_constraint < 0:
+            w = -torch.square(self.weight) * self.mask  # to promote continuous gradients around 0
         else:
-            return w*self.mask
+            w = self.weight * self.mask
+
+        # Normalize before adding replacement (norm_type=1)
+        if self.norm_type == 1: # only normalizing unmasked components
+            w = F.normalize( w, dim=0 ) 
+
+        if self.replace:
+            w = w + self.mask_replace
+        if self.norm_type == 2: 
+            w = F.normalize( w, dim=0 ) # normalize with replacement in place
+
+        return w
     # END MaskSTconvLayer.preprocess_weights()
 
     def _layer_abbrev( self ):
-        return super()._layer_abbrev().replace('v', 'M')
+        s = super()._layer_abbrev()
+        return 'MK' + s[2:]
 
     @classmethod
     def layer_dict(cls, **kwargs):
@@ -275,11 +309,9 @@ class MaskTlayer(Tlayer):
     def __init__(self, input_dims=None,
                  num_filters=None,
                  num_lags=None,
-                 #mask=None,
                  initialize_center=False,
                  output_norm=None,
-                 **kwargs,
-                 ):
+                 **kwargs):
         """
         MaskTconvLayer: TconvLayer with a mask applied to the weights.
 
@@ -307,7 +339,7 @@ class MaskTlayer(Tlayer):
 
         if initialize_center:
             self.initialize_gaussian_envelope()
-    # END MaskTconvLayer.__init__
+    # END MaskTconvLayer.__init__()
 
     def set_mask( self, mask=None, replacement=None ):
         """
@@ -342,20 +374,43 @@ class MaskTlayer(Tlayer):
 
     def preprocess_weights( self ):
         """
-        Preprocess weights for MaskLayer
+        Preprocess weights for MaskTconvLayer -- completely overloaded so that pos_constraints and normalization
+        handled after the mask is applied.
+        -> norm_type=1 will just normalize unmasked components
+        -> norm_type=2 will add mask and normalize after
 
         Returns:
             w: torch.Tensor, preprocessed weights
         """
-        w = super().preprocess_weights()    
-        if self.replace:
-            return  w*self.mask + self.mask_replace
+        #w = super().preprocess_weights()
+        #if self.replace:
+        #    return  w*self.mask + self.mask_replace
+        #else:
+        #    return w*self.mask
+
+        # Standard preprocessing of pos_constraints with mask applied (note mask is not constrained)
+        if self.pos_constraint > 0:
+            w = torch.square(self.weight) * self.mask
+        elif self.pos_constraint < 0:
+            w = -torch.square(self.weight) * self.mask  # to promote continuous gradients around 0
         else:
-            return w*self.mask
+            w = self.weight * self.mask
+
+        # Normalize before adding replacement (norm_type=1)
+        if self.norm_type == 1: # only normalizing unmasked components
+            w = F.normalize( w, dim=0 ) 
+
+        if self.replace:
+            w = w + self.mask_replace
+        if self.norm_type == 2: 
+            w = F.normalize( w, dim=0 ) # normalize with replacement in place
+
+        return w
     # END MaskTconvLayer.preprocess_weights()
 
     def _layer_abbrev( self ):
-        return super()._layer_abbrev().replace('v', 'M')
+        s = super()._layer_abbrev()
+        return 'MK' + s[2:]
 
     @classmethod
     def layer_dict(cls, **kwargs):
@@ -384,7 +439,7 @@ class MaskTlayer(Tlayer):
 
 class MaskConvLayer(ConvLayer):
     """
-    MaskSTConvLayer: STconvLayer with a mask applied to the weights.
+    MaskConvLayer: ConvLayer with a mask applied to the weights.
     """
 
     def __init__(self, input_dims=None,
@@ -393,8 +448,7 @@ class MaskConvLayer(ConvLayer):
                  #mask=None,
                  initialize_center=False,
                  output_norm=None,
-                 **kwargs,
-                 ):
+                 **kwargs):
         """
         MaskConvLayer: ConvLayer with a mask applied to the weights.
 
@@ -406,8 +460,8 @@ class MaskConvLayer(ConvLayer):
             **kwargs: additional arguments to pass to STConvLayer
         """
 
-        assert input_dims is not None, "MaskSTconvLayer: input_dims must be specified"
-        assert num_filters is not None, "MaskSTconvLayer: num_filters must be specified"
+        assert input_dims is not None, "MaskConvLayer: input_dims must be specified"
+        assert num_filters is not None, "MaskConvLayer: num_filters must be specified"
 
         super().__init__(
             input_dims=input_dims, num_filters=num_filters,
@@ -415,15 +469,13 @@ class MaskConvLayer(ConvLayer):
             **kwargs)
 
         # Now make mask
-        #assert mask is not None, "MaskSTConvLayer: must include mask!"
         self.register_buffer('mask', torch.ones( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
-        #self.register_buffer('mask_is_set', torch.zeros(1, dtype=torch.int8))     
         self.register_buffer('mask_replace', torch.zeros( [np.prod(self.filter_dims), self.num_filters], dtype=torch.float32))
         self.replace = False
 
         if initialize_center:
             self.initialize_gaussian_envelope()
-    # END MaskSTconvLayer.__init__
+    # END MaskConvLayer.__init__
 
     def set_mask( self, mask=None, replacement=None ):
         """
@@ -454,24 +506,42 @@ class MaskConvLayer(ConvLayer):
             self.replace = True
         else:
             self.replace = False
-    # END MaskSTconvLayer.set_mask()
+    # END MaskConvLayer.set_mask()
 
     def preprocess_weights( self ):
         """
-        Preprocess weights for MaskLayer.
+        Preprocess weights for MaskConvLayer: calls super for standard preprocessing (includes pos_constraints),
+        but will have to redo normalization ON UNMASKED components. 
+        -- Regular norm_type=1 will just normalize unmasked components
+        -- Added norm_type=2 will add mask and normalize after
 
         Returns:
             w: torch.Tensor, preprocessed weights
         """
-        w = super().preprocess_weights()    
-        if self.replace:
-            return  w*self.mask + self.mask_replace
+        # Standard preprocessing of pos_constraints with mask applied (note mask is not constrained)
+        if self.pos_constraint > 0:
+            w = torch.square(self.weight) * self.mask
+        elif self.pos_constraint < 0:
+            w = -torch.square(self.weight) * self.mask  # to promote continuous gradients around 0
         else:
-            return w*self.mask
-    # END MaskSTconvLayer.preprocess_weights()
+            w = self.weight * self.mask
+
+        # Normalize before adding replacement (norm_type=1)
+        if self.norm_type == 1: # only normalizing unmasked components
+            w = F.normalize( w, dim=0 ) 
+
+        if self.replace:
+            w = w + self.mask_replace
+
+        if self.norm_type == 2: 
+            w = F.normalize( w, dim=0 ) 
+
+        return w
+    # END MaskConvLayer.preprocess_weights()
 
     def _layer_abbrev( self ):
-        return super()._layer_abbrev().replace('v', 'M')
+        s = super()._layer_abbrev()
+        return 'Msk' + s[3:]
 
     @classmethod
     def layer_dict(cls, **kwargs):
