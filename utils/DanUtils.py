@@ -154,9 +154,9 @@ def regression2d( x2s, Yobs ):
 
     regr_mat = np.zeros([2,num_vars], dtype=np.float32)
     regr_off = np.zeros(num_vars)
-    x1 = x2s[:, 0]
-    x2 = x2s[:, 1]
-    denom = np.sum(x1**2) * np.sum(x2**2) - np.sum(x1*x2)
+    x1 = x2s[:, 0] - np.mean(x2s[:, 0])
+    x2 = x2s[:, 1] - np.mean(x2s[:, 1])
+    denom = np.sum(x1**2) * np.sum(x2**2) - np.sum(x1*x2)**2
     assert denom != 0, "Does not converge: denominator is zero"
     for ii in range(num_vars):
         yi = Yobs[:,ii]
