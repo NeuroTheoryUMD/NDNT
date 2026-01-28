@@ -135,6 +135,8 @@ def init_vars(project=None, GPU=0, verbose=True):
         print('  cuda0:', torch.cuda.get_device_properties(0).name)
         print('  cuda1:', torch.cuda.get_device_properties(1).name)
         GPU = abs((torch.cuda.get_device_properties(0).minor == 9) - (GPU==0))
+    elif myhost == 'fovea.umd.edu':
+        base_datadir = '/data/'
     
     device0 = torch.device("cpu")
     if GPU == 0:

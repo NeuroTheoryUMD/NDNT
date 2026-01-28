@@ -304,7 +304,9 @@ class ConvLayer(NDNLayer):
     # END ConvLayer.layer_abbrev()
 
     @classmethod
-    def layer_dict(cls, padding='same', filter_dims=None, res_layer=False, window=None, num_groups=1, **kwargs):
+    def layer_dict(cls, 
+        padding='same', filter_dims=None, res_layer=False, window=None, 
+        temporal_tent_spacing=1, num_groups=1, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -315,11 +317,12 @@ class ConvLayer(NDNLayer):
         from copy import deepcopy
 
         Ldict = super().layer_dict(**kwargs)
+        print(temporal_tent_spacing)
         # Added arguments
         Ldict['layer_type'] = 'conv'
         Ldict['filter_dims'] = deepcopy(filter_dims)
         Ldict['res_layer'] = res_layer
-        Ldict['temporal_tent_spacing'] = 1
+        Ldict['temporal_tent_spacing'] = temporal_tent_spacing
         #Ldict['output_norm'] = None  # captured in parent
         Ldict['window'] = window  # could be 'hamming'
         Ldict['stride'] = 1
@@ -532,7 +535,7 @@ class TconvLayer(ConvLayer):
                 self.output_norm = nn.BatchNorm3d(self.num_filters)
         else:
             self.output_norm = None
-    #END TconvLayer.__init__
+    #END TconvLayer.__init__()
 
     @property
     def padding(self):
@@ -585,7 +588,6 @@ class TconvLayer(ConvLayer):
         #self.output_dims = self.output_dims # annoying fix for the num_outputs dependency on all output_dims values being updated
 
     def forward(self, x):
-
         if self._padding == 'circular':
             pad_type = 'circular'
         else:
@@ -605,7 +607,6 @@ class TconvLayer(ConvLayer):
                 stride=self.stride, dilation=self.dilation)
 
         else:
-
             w = w.view(self.filter_dims + [self.num_filters]).permute(4,0,1,2,3) # [C,H,W,T,N]->[N,C,H,W,T]
             x = x.view([-1] + self.input_dims) # [B,C*W*H*T]->[B,C,W,H,T]
 
@@ -640,7 +641,7 @@ class TconvLayer(ConvLayer):
             self.reg.compute_activity_regularization(y)
 
         return y
-    #END TconvLayer.forward
+    #END TconvLayer.forward()
 
     def plot_filters( self, cmaps='viridis', num_cols=8, row_height=2, time_reverse=None, **kwargs):
         # Place-holder: does nothing specific that NDNLayer does not do

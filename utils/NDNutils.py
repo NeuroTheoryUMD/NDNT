@@ -599,8 +599,9 @@ def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spac
                 cur_spacing *= 2
 
     # Generate tent-basis given anchor points
-    NB = len(tbx)
-    NX = (np.max(tbx)+1).astype(int)
+    NB = len(tbx)-1  # dont include the last anchor
+    NX = np.max(tbx).astype(int)
+
     tent_basis = np.zeros([NX,NB], dtype='float32')
     for nn in range(NB):
         if nn > 0:
@@ -612,8 +613,9 @@ def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spac
         if nn < NB-1:
             dx = tbx[nn+1]-tbx[nn]
             tent_basis[range(tbx[nn], tbx[nn+1]+1), nn] = 1-np.array(list(range(dx+1)))/dx
-
+ 
     return tent_basis
+# END tent_basis_generate()
 
 
 def shift_mat_zpad(x, shift, dim=0):
