@@ -317,7 +317,6 @@ class ConvLayer(NDNLayer):
         from copy import deepcopy
 
         Ldict = super().layer_dict(**kwargs)
-        print(temporal_tent_spacing)
         # Added arguments
         Ldict['layer_type'] = 'conv'
         Ldict['filter_dims'] = deepcopy(filter_dims)

@@ -159,11 +159,11 @@ def regression2d( x2s, Yobs ):
     denom = np.sum(x1**2) * np.sum(x2**2) - np.sum(x1*x2)**2
     assert denom != 0, "Does not converge: denominator is zero"
     for ii in range(num_vars):
-        yi = Yobs[:,ii]
+        yi = Yobs[:,ii] - np.mean(Yobs[:,ii])
         regr_mat[0,ii] = ( np.sum(x2**2) * np.sum(x1*yi) - np.sum(x1*x2) * np.sum(x2*yi) ) / denom # b1
         regr_mat[1,ii] = ( np.sum(x1**2) * np.sum(x2*yi) - np.sum(x1*x2) * np.sum(x1*yi) ) / denom # b2
-        regr_off[ii] = np.mean(yi) - np.mean(regr_mat[0,ii]*x1 + regr_mat[1,ii]*x2) # a
-    
+        #regr_off[ii] = np.mean(yi) - np.mean(regr_mat[0,ii]*x1 + regr_mat[1,ii]*x2) # a
+        regr_off[ii] = np.mean(Yobs[:,ii]) - np.mean(regr_mat[0,ii]*x2s[:, 0] + regr_mat[1,ii]*x2s[:, 1]) # a
     return regr_mat.squeeze(), regr_off
 # END regression2d()
 
