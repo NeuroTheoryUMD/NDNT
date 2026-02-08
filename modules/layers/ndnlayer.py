@@ -100,7 +100,7 @@ class NDNLayer(nn.Module):
         if filter_dims is None:
             self.filter_dims = deepcopy(input_dims)
         else:
-            self.filter_dims = filter_dims
+            self.filter_dims = deepcopy(filter_dims)
 
         output_dims = [num_filters, 1, 1, 1]
         self.output_dims = output_dims  # this automatically sets num_outputs as well

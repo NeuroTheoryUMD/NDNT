@@ -610,10 +610,8 @@ def tent_basis_generate( xs=None, num_params=None, doubling_time=None, init_spac
         elif tbx[0] > 0:  # option to have function go to zero at beginning
             dx = tbx[0]
             tent_basis[range(tbx[nn]+1), nn] = np.array(list(range(dx+1)))/dx
-        if nn < NB-1:
-            dx = tbx[nn+1]-tbx[nn]
-            tent_basis[range(tbx[nn], tbx[nn+1]+1), nn] = 1-np.array(list(range(dx+1)))/dx
- 
+        dx = tbx[nn+1]-tbx[nn]
+        tent_basis[range(tbx[nn], tbx[nn+1]), nn] = 1-np.array(list(range(dx)))/dx
     return tent_basis
 # END tent_basis_generate()
 

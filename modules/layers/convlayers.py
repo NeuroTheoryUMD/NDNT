@@ -6,6 +6,8 @@ import torch.nn as nn
 from .ndnlayer import NDNLayer
 import numpy as np
 
+from copy import deepcopy
+
 class ConvLayer(NDNLayer):
     """
     Convolutional NDN Layer
@@ -60,9 +62,11 @@ class ConvLayer(NDNLayer):
             assert not is1D, "ConvLayer: invalid filter_dims"
             filter_dims = [input_dims[0], filter_dims[0], filter_dims[1], input_dims[-1]]
         elif len(filter_dims) == 3:  # Assume didn't pass in filter dimension
-            from copy import copy
-            filter_dims = [input_dims[0]] + copy(filter_dims)
-        # otherwise filter_dims is correct
+            filter_dims = [input_dims[0]] + deepcopy(filter_dims)
+        else:
+            # otherwise filter_dims is correct (but want to modify without changing inputs)
+            filter_dims = deepcopy(filter_dims)
+            
         # potential conv-groups
         if num_groups > 1:
             assert input_dims[0] % num_groups == 0, "ConvLayer: num_groups must divide input_dims[0]"
@@ -79,29 +83,30 @@ class ConvLayer(NDNLayer):
                 
         self.window = False
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
-        self.tent_basis = None
+        tent_basis = None
         if temporal_tent_spacing is not None and temporal_tent_spacing > 1:
             from NDNT.utils import tent_basis_generate
-            num_lags = filter_dims[-1] #conv_dims[2]
-            tentctrs = list(np.arange(0, num_lags, temporal_tent_spacing))
-            self.tent_basis = tent_basis_generate(tentctrs)
-            if self.tent_basis.shape[0] != num_lags:
+            #tentctrs = list(np.arange(0, num_lags+1, temporal_tent_spacing))
+            num_lags = filter_dims[-1]
+            tentctrs = np.arange(0, num_lags+temporal_tent_spacing, temporal_tent_spacing)
+            tent_basis = tent_basis_generate(tentctrs)
+            if tent_basis.shape[0] != num_lags:
                 print('Warning: tent_basis.shape[0] != num_lags')
-                print('tent_basis.shape = ', self.tent_basis.shape)
+                print('tent_basis.shape = ', tent_basis.shape)
                 print('num_lags = ', num_lags)
                 print('Adding zeros or truncating to match')
-                if self.tent_basis.shape[0] > num_lags:
+                if tent_basis.shape[0] > num_lags:
                     print('Truncating')
-                    self.tent_basis = self.tent_basis[:num_lags,:]
+                    tent_basis = tent_basis[:num_lags,:]
                 else:
                     print('Adding zeros')
-                    self.tent_basis = np.concatenate(
-                        [self.tent_basis, np.zeros((num_lags-self.tent_basis.shape[0], self.tent_basis.shape[1]))],
+                    tent_basis = np.concatenate(
+                        [tent_basis, np.zeros((num_lags-tent_basis.shape[0], tent_basis.shape[1]))],
                         axis=0)
-                
-            self.tent_basis = self.tent_basis[:num_lags,:]
-            num_lag_params = self.tent_basis.shape[1]
-            print('ConvLayer temporal tent spacing: num_lag_params =', num_lag_params)
+            tent_basis = tent_basis[:num_lags,:]
+            num_lag_params = tent_basis.shape[1]
+            num_lags = num_lag_params
+            num_lag_params = tent_basis.shape[1]
             filter_dims[-1] = num_lag_params
 
         super().__init__(
@@ -114,13 +119,12 @@ class ConvLayer(NDNLayer):
         self.is1D = is1D
         self.res_layer = res_layer
        
-        if self.tent_basis is not None:
-            self.register_buffer('tent_basis', torch.Tensor(self.tent_basis.T))
-            filter_dims[-1] = self.tent_basis.shape[0]
+        if tent_basis is not None:
+            self.register_buffer('tent_basis', torch.Tensor(tent_basis.T))
         else:
             self.tent_basis = None
 
-        self.filter_dims = filter_dims
+        self.filter_dims = deepcopy(filter_dims)
 
         # Checks to ensure cuda-bug with large convolutional filters is not activated #1
         # assert self.filter_dims[1] < self.input_dims[1], "Spatial Filter widths must be smaller than input dims."
@@ -183,7 +187,6 @@ class ConvLayer(NDNLayer):
     #    self.num_outputs = int(np.prod(self._output_dims))
 
     def batchnorm_clone(self, bn_orig):
-        from copy import deepcopy
 
         assert self.output_norm is not None, "Must already have initialized batch_norm"
         NF0 = bn_orig.num_features
@@ -210,8 +213,6 @@ class ConvLayer(NDNLayer):
     def batchnorm_convert( self ):
         """Converts layer with batch_norm to have the same output without batch_norm. This involves
         adjusting the weights and adding offsets"""
-
-        from copy import deepcopy
 
         assert self.output_norm is not None, "Layer does not have batch norm"
         assert self.norm_type == 1, "Layer should have norm type 1"
@@ -314,8 +315,6 @@ class ConvLayer(NDNLayer):
         -- Values that must be set are set to empty lists
         -- Other values will be given their defaults
         """
-        from copy import deepcopy
-
         Ldict = super().layer_dict(**kwargs)
         # Added arguments
         Ldict['layer_type'] = 'conv'
@@ -475,17 +474,8 @@ class ConvLayer(NDNLayer):
 
 class TconvLayer(ConvLayer):
     """
-    Temporal convolutional layer.
+    Temporal convolutional layer
     TConv does not integrate out the time dimension and instead treats it as a true convolutional dimension
-
-    Args:
-        input_dims (list of ints): input dimensions [C, W, H, T]
-        num_filters (int): number of filters
-        filter_dims (list of ints): filter dimensions [C, w, h, T]
-            w < W, h < H
-        stride (int): stride of convolution
-
-    
     """ 
 
     def __init__(self,
@@ -493,14 +483,23 @@ class TconvLayer(ConvLayer):
         num_filters=None, # int
         conv_dims=None, # [w,h,t]
         filter_dims=None, # [C, w, h, t]
+        temporal_tent_spacing=None,
         padding='spatial',
         output_norm=None,
         **kwargs):
-        
-        assert input_dims is not None, "TConvLayer: input_dims must be specified"
-        assert num_filters is not None, "TConvLayer: num_filters must be specified"
-        assert (conv_dims is not None) or (filter_dims is not None), "TConvLayer: conv_dims or filter_dims must be specified"
-        
+        """
+        Args:
+            input_dims (list of ints): input dimensions [C, W, H, T]
+            num_filters (int): number of filters
+            filter_dims (list of ints): filter dimensions [C, w, h, T]
+                w < W, h < H
+            temporal_tent_spacing: if want tent basis, otherwise default None
+            stride (int): stride of convolution    
+        """
+        assert input_dims is not None, "TconvLayer: input_dims must be specified"
+        assert num_filters is not None, "TconvLayer: num_filters must be specified"
+        assert (conv_dims is not None) or (filter_dims is not None), "TconvLayer: conv_dims or filter_dims must be specified"
+
         # Convoluted way to use either filter_dims or conv_dims
         if (filter_dims is not None) and (not isinstance(filter_dims, list)):
             filter_dims = [filter_dims]
@@ -513,7 +512,7 @@ class TconvLayer(ConvLayer):
 
         # All parameters of filter (weights) should be correctly fit in layer_params
         super().__init__(
-            input_dims=input_dims, num_filters=num_filters, 
+            input_dims=input_dims, num_filters=num_filters, temporal_tent_spacing=temporal_tent_spacing,
             filter_dims=filter_dims, padding=padding, output_norm=output_norm, 
             **kwargs)
 
@@ -691,19 +690,20 @@ class STconvLayer(TconvLayer):
         input_dims=None, # [C, W, H, T]
         num_filters=None, # int
         output_norm=None,
+        temporal_tent_spacing=None,
         **kwargs):
 
         # filter_dims=None, # [C, w, h, t]
         
-        assert input_dims is not None, "STConvLayer: input_dims must be specified"
-        assert num_filters is not None, "STConvLayer: num_filters must be specified"
-        # assert (conv_dims is not None) or (filter_dims is not None), "STConvLayer: conv_dims or filter_dims must be specified"
+        assert input_dims is not None, "STconvLayer: input_dims must be specified"
+        assert num_filters is not None, "STconvLayer: num_filters must be specified"
+        # assert (conv_dims is not None) or (filter_dims is not None), "STconvLayer: conv_dims or filter_dims must be specified"
         
         # All parameters of filter (weights) should be correctly fit in layer_params
-        super().__init__(input_dims,
-            num_filters, output_norm=output_norm, **kwargs)
+        super().__init__(
+            input_dims, num_filters, output_norm=output_norm, temporal_tent_spacing=temporal_tent_spacing, **kwargs)
 
-        #assert self.input_dims[3] == self.filter_dims[3], "STConvLayer: input_dims[3] must equal filter_dims[3]"    
+        #assert self.input_dims[3] == self.filter_dims[3], "STconvLayer: input_dims[3] must equal filter_dims[3]"    
         self.input_dims[3] = self.filter_dims[3]  # num_lags for convolution specified in filter_dims (not input_dims)
         self.num_lags = self.input_dims[3]
         self.input_dims[3] = 1  # take lag info and use for temporal convolution
