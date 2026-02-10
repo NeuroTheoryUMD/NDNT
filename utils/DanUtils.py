@@ -271,6 +271,35 @@ def load_python_data( filename, show_keys=False ):
 # END load_python_data()
 
 
+def load_hdf5_data( filename, show_keys=False, to_arrays=False ):
+    """
+    Load python data from hdf5 file
+
+    Args:
+        filename: name of the file to save
+        show_keys: to display components of dictionary (default=False)
+        to_arrays: whether to convert datasets to numpy arrays (default=True)
+    """
+    import h5py
+    with h5py.File( filename, 'r') as f:
+        data = {}
+        for key in f.keys():
+            if to_arrays:
+                data[key] = np.array(f[key], dtype=np.float32).squeeze()
+            else:
+                data[key] = f[key][:]
+ 
+    #print( 'Loaded data from', filename )
+    if show_keys:
+        n = filename.rfind('/')
+        print('%s keys: ' % filename[n+1:])
+        for key in data.keys():
+            print('  ', key,'\t', data[key].shape)
+        #print(data.keys())
+    return data
+# END load_hdf5_data()
+
+
 def clean_jupyter_notebook(notebook_filename, new_filename):
     """ 
     Take jupyter notebook file (ipynb) and scrubs the output, in case it takes up too much memory or other

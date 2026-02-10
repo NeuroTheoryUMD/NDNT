@@ -196,6 +196,9 @@ def init_vars(project=None, GPU=0, verbose=True):
             'DeclanSampleData': DeclanSampleData}
         globs.update(new_entries)
 
+    elif project.lower() == 'runningMT':
+        datadir = '/Users/dbutts/Library/CloudStorage/Dropbox/HukLab/'
+        
     ##### OTHER PROJECTS ######
     else:
         new_entries = {}
