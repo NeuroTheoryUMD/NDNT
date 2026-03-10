@@ -545,7 +545,8 @@ class NDN(nn.Module):
             train_dl = DataLoader(dataset, batch_sampler=train_sampler, num_workers=num_workers)
             valid_dl = DataLoader(dataset, batch_sampler=val_sampler, num_workers=num_workers)
 
-        elif self.block_sample:
+        #elif self.block_sample:
+        else:
             train_sampler = torch.utils.data.sampler.BatchSampler(
                 #torch.utils.data.sampler.SubsetRandomSampler(train_inds),
                 ValueRandomSampler(train_inds),
@@ -562,19 +563,20 @@ class NDN(nn.Module):
                                   collate_fn=block_collate)
             valid_dl = DataLoader(dataset, batch_sampler=val_sampler, num_workers=num_workers, 
                                   collate_fn=block_collate)
-        else:
+        
+        # this used to be when not block sample, but above works for both
             # Standard ints
-            train_ds = Subset(dataset, train_inds)
-            val_ds = Subset(dataset, val_inds)
+            #train_ds = Subset(dataset, train_inds)
+            #val_ds = Subset(dataset, val_inds)
 
-            if pin_memory:
-                print('Pinning memory')
-            train_dl = DataLoader(
-                train_ds, batch_size=batch_size, shuffle=True,
-                num_workers=num_workers, pin_memory=pin_memory)
-            valid_dl = DataLoader(
-                val_ds, batch_size=batch_size, shuffle=False,
-                num_workers=num_workers, pin_memory=pin_memory)
+            #if pin_memory:
+            #    print('Pinning memory')
+            #train_dl = DataLoader(
+            #    train_ds, batch_size=batch_size, shuffle=True,
+            #    num_workers=num_workers, pin_memory=pin_memory)
+            #valid_dl = DataLoader(
+            #    val_ds, batch_size=batch_size, shuffle=False,
+            #    num_workers=num_workers, pin_memory=pin_memory)
             
         return train_dl, valid_dl
     # END NDN.get_dataloaders
@@ -1168,7 +1170,8 @@ class NDN(nn.Module):
         self, data, data_inds=None, bits=False, null_adjusted=False, speckledXV=False, train_val=1,
         batch_size=1000, num_workers=0, device=None, **kwargs ):
         '''
-        Evaluate the neural network models on the given data.
+        Evaluate the neural network models on the given data. Note that if data is organized in blocks but block_sample is False
+        and batch_size is not organized by block-size, then this will generate erroneous predictions at block-boundaries
 
         get null-adjusted log likelihood (if null_adjusted = True)
         bits=True will return in units of bits/spike
@@ -1298,14 +1301,13 @@ class NDN(nn.Module):
                             dfs = data_sample['dfs']*data_sample['Mtrn']
                     else:
                         dfs = data_sample['dfs']
-                    
+
                     LLsum += self.loss_module.unit_loss( 
                         pred, data_sample['robs'], data_filters=dfs, temporal_normalize=False)
-                    #Tsum += torch.sum(data_sample['dfs'], axis=0)
+
                     Tsum += torch.sum(dfs, axis=0)
                     Rsum += torch.sum(torch.mul(dfs, data_sample['robs']), axis=0)
-                    #    print('idx', data_sample['idx'])
-                    #    print(dfs.shape, torch.sum(dfs, axis=0))
+
             LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
             self = self.to(d0)  # move back to original device
 
