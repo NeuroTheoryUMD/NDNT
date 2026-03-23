@@ -1309,7 +1309,7 @@ class NDN(nn.Module):
                     Rsum += torch.sum(torch.mul(dfs, data_sample['robs']), axis=0)
 
             LLneuron = torch.divide(LLsum, Rsum.clamp(1) )
-            self = self.to(d0)  # move back to original device
+            del data_dl
 
             # Null-adjust
             if null_adjusted:
@@ -1320,6 +1320,7 @@ class NDN(nn.Module):
             LLneuron/=np.log(2)
 
         self = self.to(d0)  # put back on original device
+        torch.cuda.empty_cache()
 
         return LLneuron.detach().cpu().numpy()
     # END NDN.eval_models()
@@ -1418,7 +1419,8 @@ class NDN(nn.Module):
                 pred[batch_size*bb + np.arange(len(trange)-num_lags), :] = pred_tmp[num_lags:, :]
             
             self = self.to(model_device)
-    
+
+        torch.cuda.empty_cache()
         return pred.cpu().detach()
 
     def change_loss( self, new_loss_type, dataset=None ):

@@ -399,7 +399,6 @@ class NDNLayer(nn.Module):
         Returns:
             ws: np.ndarray, weights of the layer, on the CPU
         """
-
         ws = self.preprocess_weights().detach().cpu().clone().numpy()
         num_filts = ws.shape[-1]
         if time_reverse or (num_inh>0):
@@ -467,7 +466,7 @@ class NDNLayer(nn.Module):
         """
         self.reg.set_reg_val( reg_type=reg_type, reg_val=reg_val )
 
-    def plot_filters( self, time_reverse=None, **kwargs):
+    def plot_filters( self, time_reverse=None, ws=None, **kwargs):
         """
         Plot the filters in the layer. It first determines whether layer is spatiotemporal (STRF plot)
         or "internal": the different being that spatiotemporal will have lags / dim-3 of filter
@@ -477,6 +476,7 @@ class NDNLayer(nn.Module):
             num_cols: int, number of columns to use in plot (default 8)
             row_height: int, number of rows to use in plot (default 2)
             time_reverse: bool, whether to reverse the time dimension (default depends on dimension)
+            ws: optional argument if want to pass in weights to plot (if not, will use get_weights() to pull and preprocess weights)
 
         Returns:
             None
@@ -489,7 +489,8 @@ class NDNLayer(nn.Module):
             else:
                 time_reverse = False
 
-        ws = self.get_weights(time_reverse=time_reverse)
+        if ws is None:
+            ws = self.get_weights(time_reverse=time_reverse)
 
         if self.filter_dims[3] > 1:
             # Spatiotemporal layers

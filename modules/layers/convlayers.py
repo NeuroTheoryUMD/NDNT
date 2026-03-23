@@ -81,13 +81,12 @@ class ConvLayer(NDNLayer):
         for ii in [1,2]:
             if filter_dims[ii]%2 != 1: print("ConvDim %d should be odd."%ii) 
                 
-        self.window = False
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         tent_basis = None
         if temporal_tent_spacing is not None and temporal_tent_spacing > 1:
             from NDNT.utils import tent_basis_generate
             #tentctrs = list(np.arange(0, num_lags+1, temporal_tent_spacing))
-            num_lags = filter_dims[-1]
+            num_lags = filter_dims[-1]  # this is from input_dims[-1] or passed in (but should be in real lags)
             tentctrs = np.arange(0, num_lags+temporal_tent_spacing, temporal_tent_spacing)
             tent_basis = tent_basis_generate(tentctrs)
             if tent_basis.shape[0] != num_lags:
@@ -105,16 +104,13 @@ class ConvLayer(NDNLayer):
                         axis=0)
             tent_basis = tent_basis[:num_lags,:]
             num_lag_params = tent_basis.shape[1]
-            num_lags = num_lag_params
-            num_lag_params = tent_basis.shape[1]
             filter_dims[-1] = num_lag_params
 
         super().__init__(
             input_dims=input_dims,
             num_filters=num_filters,
             filter_dims=filter_dims,
-            **kwargs,
-            )
+            **kwargs)
 
         self.is1D = is1D
         self.res_layer = res_layer
@@ -125,12 +121,6 @@ class ConvLayer(NDNLayer):
             self.tent_basis = None
 
         self.filter_dims = deepcopy(filter_dims)
-
-        # Checks to ensure cuda-bug with large convolutional filters is not activated #1
-        # assert self.filter_dims[1] < self.input_dims[1], "Spatial Filter widths must be smaller than input dims."
-        # # Check if 1 or 2-d convolution required
-        # if self.input_dims[2] > 1:
-        #     assert self.filter_dims[2] < self.input_dims[2], "Spatial Filter widths must be smaller than input dims."
 
         if stride is None:
             self.stride = 1   
@@ -163,6 +153,7 @@ class ConvLayer(NDNLayer):
         else:
             self.output_norm = None
 
+        self.window = False
         if window is not None:
             if window == 'hamming':
                 win=np.hamming(filter_dims[1])
@@ -175,19 +166,11 @@ class ConvLayer(NDNLayer):
                 print("ConvLayer: unrecognized window")
     # END ConvLayer.__init__
 
-    ## This is now defined in NDNLayer so inherited -- applies to all NDNLayer children
-    #@property
-    #def output_dims(self):
-    #    self.num_outputs = int(np.prod(self._output_dims))
-    #    return self._output_dims
-    
-    #@output_dims.setter
-    #def output_dims(self, value):
-    #    self._output_dims = value
-    #    self.num_outputs = int(np.prod(self._output_dims))
-
     def batchnorm_clone(self, bn_orig):
-
+        """
+        Makes new batchnorm module with same parameters as bn_orig, but with num_features equal to self.num_filters. 
+        This is for cloning batchnorm from one layer to another when filter numbers change
+        """
         assert self.output_norm is not None, "Must already have initialized batch_norm"
         NF0 = bn_orig.num_features
         NF = self.output_norm.num_features
@@ -330,8 +313,16 @@ class ConvLayer(NDNLayer):
         return Ldict
     # END ConvLayer.layer_dict()
 
-    def preprocess_weights(self, mod_weight=None):
+    def preprocess_weights(self, mod_weight=None, skip_tent_basis=False):
+        """
+        Overloaded so can use tent basis, windowing, and batch_norm
         
+        Args:
+            mod_weight: if not None, use this weight instead of self.weight
+
+        Output:
+            w: weight tensor that should be applied to input processing
+        """
         if mod_weight is None:
             w = self.weight
         else:
@@ -354,22 +345,90 @@ class ConvLayer(NDNLayer):
         if self.norm_type == 1: # so far just standard filter-specific normalization
             w = F.normalize( w, dim=0 ) / self.weight_scale
 
-        if self.tent_basis is not None:
-            wdims = self.tent_basis.shape[0]
+        #if self.tent_basis is not None and not skip_tent_basis:
+        #    wdims = self.tent_basis.shape[0]
             
-            w = w.view(self.filter_dims[:3] + [wdims] + [-1]) # [C, H, W, T, D]
-            w = torch.einsum('chwtn,tz->chwzn', w, self.tent_basis)
-            w = w.reshape(-1, self.num_filters)
+        #    w = w.view(self.filter_dims[:3] + [wdims] + [-1]) # [C, H, W, T, D]
+        #    w = torch.einsum('chwtn,tz->chwzn', w, self.tent_basis)
+        #    w = w.reshape(-1, self.num_filters)
         
         return w
     # END ConvLayer.preprocess_weights()
+
+    def get_weights(self, to_reshape=True, time_reverse=False, num_inh=0, use_tent_basis=True):
+        """
+        Overloads NDNLayer.get_weights in order to take tent_bases into account
+        
+        Args:
+            to_reshape: bool, whether to reshape the weights to the original filter shape
+            time_reverse: bool, whether to reverse the time dimension
+            num_inh: int, number of inhibitory units
+
+        Returns:
+            ws: np.ndarray, weights of the layer, on the CPU
+        """
+        if (self.tent_basis is None) or (not use_tent_basis):
+            return super().get_weights(to_reshape=to_reshape, time_reverse=time_reverse, num_inh=num_inh)
+
+        ws = super().get_weights(to_reshape=True, time_reverse=False, num_inh=num_inh)
+
+        if self.filter_dims[0] == 1: # would have squeezed the shanel layer out
+            ws = np.einsum('hwtn,tz->hwzn', ws, self.tent_basis)
+        else:
+            ws = np.einsum('chwtn,tz->chwzn', ws, self.tent_basis)
+
+        if time_reverse:
+            ws = ws[:,:,:, ::-1, :]
+        if to_reshape:
+            return ws
+        else:
+            return ws.reshape([-1, self.num_filters])
+    # END ConvLayer.get_weights()
+
+    #def plot_filters(self, time_reverse=False, ws=None, **kwargs):
+        """
+        Overloads NDNLayer.plot_filters to take into account tent_basis
+
+        Args:
+            time_reverse: bool, whether to reverse the time dimension
+            ws: optional argument if want to pass in weights to plot (if not, will use get_weights() to pull and preprocess weights)
+
+        Returns:
+            None
+        """
+    #    if self.tent_basis is None:
+    #        super(ConvLayer, self).plot_filters(time_reverse=time_reverse, ws=ws, **kwargs)
+    #    else:
+    #        super(ConvLayer, self).plot_filters(time_reverse=time_reverse, ws=self.get_weights(), **kwargs)
+    # END ConvLayer.plot_filters()
+
+    def compute_reg_loss(self):
+        """
+        Compute the regularization loss for the layer by calling reg_module function on
+        the preprocessed weights.
+
+        Args:
+            None
+
+        Returns:
+            reg_loss: torch.Tensor, regularization loss
+        """
+        return self.reg.compute_reg_loss(self.preprocess_weights(skip_tent_basis=True))
+    # END NDNLayer.compute_reg_loss()
 
     def forward(self, x):
         # Reshape weight matrix and inputs (note uses 4-d rep of tensor before combinine dims 0,3)
 
         s = x.reshape([-1]+self.input_dims).permute(0,1,4,2,3) # B, C, T, X, Y
 
-        w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2)
+        if self.tent_basis is None:
+            w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2) # ->[N,C,T,H,W]
+        else:
+            w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]) 
+            #wdims = self.tent_basis.shape[0]  # this should be the same as filter_dims[3]
+            #w = w.view(self.filter_dims[:3] + [wdims] + [-1]) # [C, H, W, T, D]
+            w = torch.einsum('chwtn,tz->chwzn', w, self.tent_basis).permute(4,0,3,1,2)
+            
         # puts output_dims first, as required for conv
         if self._padding == 'circular':
             pad_type = 'circular'
@@ -524,7 +583,6 @@ class TconvLayer(ConvLayer):
 
         # padding now property from ConvLayer: set in overload of setter
         self.padding = padding
-        
         # check if output normalization is specified
         if output_norm == 'batch':
             if self.is1D:
@@ -704,8 +762,11 @@ class STconvLayer(TconvLayer):
             input_dims, num_filters, output_norm=output_norm, temporal_tent_spacing=temporal_tent_spacing, **kwargs)
 
         #assert self.input_dims[3] == self.filter_dims[3], "STconvLayer: input_dims[3] must equal filter_dims[3]"    
-        self.input_dims[3] = self.filter_dims[3]  # num_lags for convolution specified in filter_dims (not input_dims)
-        self.num_lags = self.input_dims[3]
+        #self.input_dims[3] = self.filter_dims[3]  # num_lags for convolution specified in filter_dims (not input_dims)
+        if self.tent_basis is not None:
+            self.num_lags = self.tent_basis.shape[1]
+        else:
+            self.num_lags = self.filter_dims[3]
         self.input_dims[3] = 1  # take lag info and use for temporal convolution
         self.output_dims[-1] = 1
         self.output_dims = self.output_dims # annoying fix for the num_outputs dependency on all output_dims values being updated
@@ -717,7 +778,18 @@ class STconvLayer(TconvLayer):
         # pytorch likes 3D convolutions to be [B,C,T,W,H].
         # I benchmarked this and it'sd a 20% speedup to put the "Time" dimension first.
 
-        w = self.preprocess_weights()
+        #w = self.preprocess_weights()
+        #print('w0', w.shape)
+        if self.tent_basis is None:
+            w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]).permute(4,0,3,1,2) # ->[N,C,T,H,W]
+        else:
+            w = self.preprocess_weights().reshape(self.filter_dims+[self.num_filters]) 
+            #wdims = self.tent_basis.shape[0]  # this should be the same as filter_dims[3]
+            #w = w.view(self.filter_dims[:3] + [wdims] + [-1]) # [C, H, W, T, D]
+            w = torch.einsum('chwtn,tz->chwzn', w, self.tent_basis).permute(4,0,3,1,2)
+        fdims = deepcopy(self.filter_dims)
+        if self.tent_basis is not None:
+            fdims[3] = self.tent_basis.shape[1]
         if self._padding == 'circular':
             pad_type = 'circular'
         else:
@@ -725,14 +797,17 @@ class STconvLayer(TconvLayer):
 
         if self.is1D:
             s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
-            w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
-
+            #w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
+            #w = w.reshape(fdims[:2] + [fdims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
+            w = w.squeeze()  # untested -- reshaping should have already happened
+            
             if self._padding != 'valid':
                 # flip order of padding for STconv -- last two are temporal padding
-                pad = (self._npads[2], self._npads[3], self.filter_dims[-1]-1, 0)
+                pad = (self._npads[2], self._npads[3], fdims[-1]-1, 0)
             else:
                 # still need to pad the batch dimension
-                pad = (0,0,self.filter_dims[-1]-1,0)
+                #pad = (0,0,self.filter_dims[-1]-1,0)
+                pad = (0,0,fdims[-1]-1,0)
 
             s = F.pad(s, pad, pad_type, 0)
 
@@ -746,8 +821,7 @@ class STconvLayer(TconvLayer):
 
         else:
             s = x.reshape([-1] + self.input_dims).permute(4,1,0,2,3) # [1,C,B,W,H]
-            w = w.reshape(self.filter_dims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
-            
+            #w = w.reshape(fdims + [-1]).permute(4,0,3,1,2) # [N,C,T,W,H]
             #if self._padding != 'valid':
             #    pad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
             #else:
@@ -756,13 +830,16 @@ class STconvLayer(TconvLayer):
             #s = F.pad(s, pad, pad_type, 0)
             if self._padding == 'valid':
                 # still need to pad the batch dimension
-                s = F.pad(s, (0,0,0,0,self.filter_dims[-1]-1,0), pad_type, 0)
+                #s = F.pad(s, (0,0,0,0,self.filter_dims[-1]-1,0), pad_type, 0)
+                s = F.pad(s, (0,0,0,0,fdims[-1]-1,0), pad_type, 0)
             elif self._padding == 'circular':
                 pad_spatial = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], 0,0)
-                pad_temporal= (0,0,0,0, self.filter_dims[-1]-1,0)
+                #pad_temporal= (0,0,0,0, self.filter_dims[-1]-1,0)
+                pad_temporal= (0,0,0,0, fdims[-1]-1,0)
                 s = F.pad(F.pad(s, pad_spatial, "circular", 0), pad_temporal, "constant", 0)
             else:
-                stimpad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
+                #stimpad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], self.filter_dims[-1]-1,0)
+                stimpad = (self._npads[2], self._npads[3], self._npads[4], self._npads[5], fdims[-1]-1,0)
                 s = F.pad(s, stimpad, pad_type, 0)
 
             y = F.conv3d(

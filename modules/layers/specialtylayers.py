@@ -86,7 +86,7 @@ class Tlayer(NDNLayer):
 
         if tent_basis is not None:
             self.register_buffer('tent_basis', torch.tensor(tent_basis.T, dtype=torch.float32))
-            filter_dims[-1] = self.tent_basis.shape[0]
+            filter_dims[-1] = self.tent_basis.shape[0]  # number of parameters, not number of lags
         else:
             self.tent_basis = None
 
@@ -102,7 +102,6 @@ class Tlayer(NDNLayer):
                 self.output_norm = nn.BatchNorm1d(self.num_filters, affine=affine)
             else:
                 self.output_norm = nn.BatchNorm2d(self.num_filters, affine=affine)
-                #self.output_norm = nn.BatchNorm2d(self.folded_dims, affine=False)
         else:
             self.output_norm = None
     # END Tlayer.__init__()
