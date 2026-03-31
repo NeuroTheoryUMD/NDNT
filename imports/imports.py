@@ -112,7 +112,9 @@ def init_vars(project=None, GPU=0, verbose=True):
 
     user = os.getlogin()
     myhost = os.uname()[1] # get name of machine
-
+    # limit hostname to before dash, if there is one (since some machines have different hostnames for different users)
+    if '-' in myhost:
+        myhost = myhost.split('-')[0]
     print(f"{datetime.datetime.now().strftime('%Y %B %-d')}: {user} running on {myhost}")
 
     ########## DEFAULTS ##########
@@ -126,6 +128,7 @@ def init_vars(project=None, GPU=0, verbose=True):
         print( "Project: ", project ) # display only if left blank so default is clear
     
     ########## Computer-specific data directories and GPU settings ##########
+    
     if myhost in ['ca1', 'm1']:
         base_datadir = '/Data/'
     elif myhost == 'sc':
