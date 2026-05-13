@@ -1228,6 +1228,8 @@ def summary_string(model, input_size, batch_size=-1, device=torch.device('cuda:0
     summary_str += "----------------------------------------------------------------" + "\n"
     # return summary
     return summary_str, (total_params, trainable_params)
+# END summary_string()
+
 
 def load_model_from_checkpoint(checkpoint_path, model_name=None, version=None, verbose=True, filename=None):
     """
@@ -1285,7 +1287,7 @@ def load_model_from_checkpoint(checkpoint_path, model_name=None, version=None, v
             checkpoint_path = os.path.join(checkpoint_path, model_name, 'version%d'%version ) 
         #filename = out['model_file'][ver_ix]     
     return model
-# END load_model()
+# END load_model_from_checkpoint()
 
 
 ## FROM JAKE

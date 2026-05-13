@@ -1822,8 +1822,19 @@ class NDN(nn.Module):
         #with zipfile.ZipFile(path, 'r') as myzip:
         with zipfile.ZipFile(os.path.join(file_dir, file_name)+'.ndn', 'r') as myzip:
             myzip.extractall(temp_dir)
-        with open(temp_name+'.json', 'r') as f:
-            params = json.load(f)
+        try:
+            with open(temp_name+'.json', 'r') as f:
+                params = json.load(f)
+        except FileNotFoundError:
+            # Find json filename in this directory and load that 
+            json_files = [f for f in os.listdir(temp_dir) if f.endswith('.json')]
+            temp_name = os.path.join(temp_dir, json_files[0].split('.json')[0])
+            if len(json_files) == 0:
+                print(f"No json file found in {temp_dir}.")
+            else:                
+                with open(os.path.join(temp_dir, json_files[0]), 'r') as f:
+                    params = json.load(f)
+        
         ffnet_list = params['ffnet_list']
         loss_type = params['loss_type']
         ffnet_out = params['ffnet_out']
