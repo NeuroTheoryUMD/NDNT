@@ -23,7 +23,7 @@ def ss( num_rows=1, num_cols=1, row_height=4, rh=None, fighandle=False):
         return h
     
 
-def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, axis_labels=True, ax=None ):
+def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, min=None, colrow=True, axis_labels=True, ax=None ):
     """Modifications of plt.imshow that choose reasonable defaults"""
     if balanced is None:
         # Make defaults depending on img
@@ -39,8 +39,11 @@ def imagesc( img, cmap=None, balanced=None, aspect=None, max=None, colrow=True, 
         imax = np.max(img)
 
     if max is not None:
-        imin = -max
         imax = max
+        if min is not None:
+            imin = min
+        else:
+            imin = -max
 
     if aspect is None:
         if img.shape[0] == img.shape[1]:

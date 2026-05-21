@@ -131,7 +131,7 @@ class Regularization(nn.Module):
                 if not self.unit_reg:
                     # then intent to have unit_conver set
                     self.unit_reg = True
-                    print("%s: implementing unit_reg"%reg_type)
+                    #print("%s: implementing unit_reg"%reg_type)
             else:
                 if reg_val < 0.0:
                     raise ValueError('`reg_val` must be greater than or equal to zero')
