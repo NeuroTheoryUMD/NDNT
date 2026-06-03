@@ -10,6 +10,7 @@ import zipfile
 import os
 
 from NDNT.metrics import poisson_loss as plosses
+from NDNT.metrics import conv_poisson_loss as conv_plosses
 from NDNT.metrics import mse_loss as glosses
 from NDNT.metrics import rmse_loss as rlosses
 from NDNT.utils import create_optimizer_params, NpEncoder, chunker
@@ -95,6 +96,8 @@ class NDN(nn.Module):
                 self.loss_module = plosses.PoissonLossLagged()
             elif loss_type in ['simple', 'poissonS']:
                 self.loss_module = plosses.SimplePoissonLoss()
+            elif loss_type == 'convpoisson':
+                self.loss_module = conv_plosses.ConvPoissonLoss()
             elif loss_type in ['gaussian', 'mse']:
                 self.loss_module = glosses.MseLoss_datafilter()
             elif loss_type in ['rmse']:
