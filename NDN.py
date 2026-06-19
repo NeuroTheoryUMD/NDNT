@@ -1330,9 +1330,8 @@ class NDN(nn.Module):
 
     def predictions(self, data, data_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
         """
-        Generate predictions for the model for a dataset. Note that will need to send to device if needed, and enter 
-        batch_size information. 
-
+        Generate predictions for the model for a dataset. Note that will need to send to device if needed, and enter
+        batch_size information.
         Args:
             data: The dataset.
             data_inds: The indices to use from the dataset (if block_sample, will be interpreted as block_inds).
@@ -1340,52 +1339,63 @@ class NDN(nn.Module):
             num_lags: The number of lags to use for prediction.
             ffnet_target: The index of the feedforward network to use for prediction. Defaults to None.
             device: The device to use for prediction
-
         Returns:
             torch.Tensor: The predictions array (detached, on cpu)
         """
-
         self.eval()
         if self.block_sample:
             block_inds = data_inds
-
         num_cells = self.networks[-1].output_dims[0]
         model_device = self.device
         if (self.block_sample) and not isinstance(data, dict):
-            
             if device is None:
                 device = data[0]['robs'].device
             self = self.to(device)
-
             #assert data_inds is None, "block_sample currently does not handle data_inds"
             if batch_size is None:
                 batch_size = 10   # default batch size for block_sample
             if block_inds is None:
                 block_inds = np.arange(len(data.block_inds))
-            
             total = len(block_inds)
             data_subset_NT = np.sum([len(data.block_inds[ii]) for ii in block_inds])
-            pred = torch.zeros((data_subset_NT, num_cells)).to(device)
+            if ffnet_target is None or self.networks[-1] == self.networks[ffnet_target]:
+                pred = torch.zeros((data_subset_NT, num_cells)).to(device)
+            else:
+                pred = torch.zeros((data_subset_NT, self.networks[ffnet_target+1].layers[0].shape[0])).to(device)
+            if hasattr(data, 'upsample'):
+                if data.upsample > 1:
+                    pred = pred.repeat(data.upsample, 1)
             with torch.no_grad():
                 #for i in tqdm.tqdm(range(0, total, batch_size)):
+                batch_inds = [-1]
                 for trs in tqdm.tqdm(chunker(np.arange(total), batch_size)):
-                    #batch_block_inds = [data.block_inds[ii] for ii in block_inds[i:i+batch_size]]
-                    batch_block_inds = [data.block_inds[ii] for ii in trs]
-                    batch_block_inds = np.concatenate(batch_block_inds)
-                    batch_block_inds = batch_block_inds[batch_block_inds < data.NT]
+
+                    batch_blocks = [data.block_inds[block_inds[ii]] for ii in trs]
+                    batch_inds_start = 1+batch_inds[-1]
+                    batch_size = len(np.concatenate(batch_blocks))
+                    if data.upsample > 1:
+                        batch_size *= data.upsample
+                    batch_inds_end = batch_inds_start + batch_size
+                    
+                    batch_inds = np.arange(batch_inds_start, batch_inds_end)
                     #data_batch = data[i:np.minimum(i+batch_size, total)]
                     data_batch = data[block_inds[trs]]
                     if device is not None:
                         for key in data_batch.keys():
                             data_batch[key] = data_batch[key].to(device)
                     if ffnet_target is not None:
-                        pred_batch = self.networks[ffnet_target](data_batch)
+                        if self.networks[ffnet_target].xstim_n is not None:
+                            pred_batch = self.networks[ffnet_target](data_batch[self.networks[ffnet_target].xstim_n])
+                        else:
+                            a = []
+                            for ii in self.networks[ffnet_target].ffnets_in:
+                                a.append(self.networks[ii](data_batch[self.networks[ii].xstim_n]))
+                            pred_batch = self.networks[ffnet_target](a)
                     else:
                         pred_batch = self(data_batch)
-                    pred[batch_block_inds] = pred_batch
+                    pred[batch_inds] = pred_batch
             self = self.to(model_device)
             return pred.detach().cpu()
-    
         if isinstance(data, dict):
             # Then assume that this is just to evaluate a sample: keep original here
             assert data_inds is None, "Cannot use data_inds if passing in a dataset dict."
@@ -1393,22 +1403,24 @@ class NDN(nn.Module):
             m0 = self.to(dev0)
             with torch.no_grad():
                 if ffnet_target is not None:
-                    pred = self.networks[ffnet_target](data)
+                    if self.networks[ffnet_target].xstim_n is not None:
+                        pred = self.networks[ffnet_target](data[self.networks[ffnet_target].xstim_n])
+                    else:
+                        a = []
+                        for ii in self.networks[ffnet_target].ffnets_in:
+                            a.append(self.networks[ii](data[self.networks[ii].xstim_n]))
+                        pred = self.networks[ffnet_target](a)
                 else:
                     pred = self(data)
-    
         else:
             if batch_size is None:
                 batch_size = 500   # default batch size for non-block_sample
             dev0 = data[0]['robs'].device
             self = self.to(dev0)
-    
             if data_inds is None:
                 data_inds = np.arange(len(data))
             NT = len(data_inds)
-    
             pred = torch.zeros([NT, num_cells], device=dev0)
-    
             # Must do contiguous sampling despite num_lags
             nblks = np.ceil(NT/batch_size).astype(int)
             for bb in tqdm.tqdm(range(nblks)):
@@ -1420,9 +1432,7 @@ class NDN(nn.Module):
                     else:
                         pred_tmp = self(data[data_inds[trange]])
                 pred[batch_size*bb + np.arange(len(trange)-num_lags), :] = pred_tmp[num_lags:, :]
-            
             self = self.to(model_device)
-
         torch.cuda.empty_cache()
         return pred.cpu().detach()
 
