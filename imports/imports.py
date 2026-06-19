@@ -209,7 +209,7 @@ def init_vars(project=None, GPU=0, verbose=True):
             'Vision2Dsimple': Vision2Dsimple}
         
         globs.update(new_entries)
-        datadir = base_datadir +'/Briggs/'
+        datadir = base_datadir +'Briggs/'
     ##### OTHER PROJECTS ######
     else:
         new_entries = {}
