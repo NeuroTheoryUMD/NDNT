@@ -19,6 +19,7 @@ from .specialtylayers import Tlayer
 from .specialtylayers import L1convLayer
 from .specialtylayers import OnOffLayer
 from .specialtylayers import ParametricTuneLayer
+from .specialtylayers import ConvLayerRank1spatial
 from .masklayers import MaskLayer
 from .masklayers import MaskSTconvLayer, MaskTlayer, MaskConvLayer
 from .orilayers import OriLayer

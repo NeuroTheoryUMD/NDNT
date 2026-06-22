@@ -64,6 +64,7 @@ class FFnetwork(nn.Module):
             'divnorm': layers.DivNormLayer,
             'tconv': layers.TconvLayer,
             'stconv': layers.STconvLayer,
+            'conv1Rsp': layers.ConvLayerRank1spatial,
             'tlayer': layers.Tlayer,
             'biconv': layers.BiConvLayer1D,
             'bishift': layers.BinocShiftLayer,

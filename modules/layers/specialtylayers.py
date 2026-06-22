@@ -4,6 +4,8 @@ from torch.nn import functional as F
 import numpy as np
 from copy import deepcopy
 
+from utils.NDNutils import initialize_gaussian_envelope
+
 from .ndnlayer import NDNLayer
 from .convlayers import ConvLayer
 from torch.nn.parameter import Parameter
@@ -675,3 +677,94 @@ class MaskLayer(NDNLayer):
     
         return Ldict
     # END MaskLayer.layer_dict()
+
+
+class ConvLayerRank1spatial(ConvLayer):
+    """
+    """
+
+    def __init__(self, input_dims=None,
+                 num_filters=None,
+                 filter_width=None,
+                 filter_dims=None,  # pull out of kwargs
+                 initialize_center=False,
+                 output_norm=None,
+                 **kwargs):
+        """
+        ConvLayerRank1spatial: ConvLayer with rank-1 constraints.
+        Convolutional filter for each unit will be the outer product of weights over channels and 
+        spatial masks that must be specified.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_width: int, width of convolutional kernel
+            **kwargs: additional arguments to pass to STConvLay
+        """
+        assert input_dims is not None, "ConvLayerRank1spatial: input_dims must be specified"
+        assert filter_dims is not None, "ConvLayerRank1spatial: should use filter_width instead of filter_dims"
+        assert num_filters is not None, "ConvLayerRank1spatial: num_filters must be specified"
+        assert input_dims[3] == 1, "ConvLayerRank1spatial: input_dims must not have lags (for now)"
+
+        # Effective filter_dims = [input_dims[0], filter_width, filter_width, input_dims[3]]        
+        super().__init__(
+            input_dims=input_dims, num_filters=num_filters, filter_dims=[input_dims[0], 1, 1, 1],
+            initialize_center=False, **kwargs)
+
+        # Now make spatial mask default
+        self.register_buffer('sp_masks', torch.zeros( [filter_width, filter_width, self.num_filters], dtype=torch.float32))
+        if initialize_center:
+            from NDNT.utils import initialize_gaussian_envelope as util_gaussian_envelope
+            self.sp_masks = torch.tensor(initialize_gaussian_envelope( np.ones([filter_width**2, num_filters]), [filter_width, filter_width]), dtype=torch.float32)
+    # END ConvLayerRank1spatial.__init__
+
+    def preprocess_weights( self ):
+        """
+        Preprocess weights: which generates full filter by combining weight parameters with spatial masks
+
+        Returns:
+            w: torch.Tensor, preprocessed weights
+        """
+        # does all standard preprocessing
+        w_chan = super().preprocess_weights()  # channel x num_filters
+        # might be problem with batchnorm
+        return torch.einsum('cn,xn->cxn', w_chan, self.sp_masks) 
+    # END .preprocess_weights()
+
+    def set_spatial_masks(self, masks):
+        """
+        Set spatial masks for the ConvLayerRank1spatial.
+
+        Args:
+            masks: np.ndarray, spatial masks to apply to the weights
+        """
+        assert masks.shape == self.sp_masks.shape, "ConvLayerRank1spatial: masks shape must match sp_masks shape"
+        self.sp_masks = torch.tensor(masks, dtype=torch.float32)
+    # END ConvLayerRank1spatial.set_spatial_masks()
+
+    def _layer_abbrev( self ):
+        #s = super()._layer_abbrev()
+        return 'ConvSP'
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+
+        Args:
+            mask: np.ndarray, mask to apply to the weights
+            **kwargs: additional arguments to pass to NDNLayer
+
+        Returns:
+            Ldict: dict, dictionary of layer parameters
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'conv1Rsp' 
+        return Ldict
+    # END ConvLayerRank1spatial.layer_dict()
