@@ -26,7 +26,7 @@ class ConvPoissonLoss(PoissonLoss_datafilter):
     Note that default is using batch_size, and info must be oassed in using 'set_loss_weighting' to alter behavior
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, L=60, **kwargs):
         super().__init__()
 
         self.loss_name = 'convpoisson'
@@ -37,10 +37,12 @@ class ConvPoissonLoss(PoissonLoss_datafilter):
         self.register_buffer('unit_weights', None)  
         self.register_buffer('av_batch_size', None) 
         self.register_buffer('prior_weight', torch.tensor(0.0, dtype=torch.float32))
-        # pass in parabola prior
-        
-        
-
+        self.L = int(L)
+        # Generate parabola prior
+        oned = (((torch.arange(-self.L//2, self.L//2, dtype=torch.float32))/(self.L//4))**2)
+        prior = oned[None,:] + oned[:,None]
+        self.register_buffer('prior', prior.reshape(1, self.L**2, 1))
+        #prior_reshaped = prior_reshaped.view(1, self.L**2, 1)
     # END PoissonLoss_datafilter.__init__
 
     def forward(self, pred, target, data_filters=None ):        
@@ -56,13 +58,7 @@ class ConvPoissonLoss(PoissonLoss_datafilter):
         Returns:
             loss (torch.tensor): loss value
         """
-
-        self.L = int(pred.shape[1]**0.5)
-        oned = (((torch.arange(-self.L//2,self.L//2, dtype=torch.float32))/(self.L//2))**2).to(pred.device)
-        prior = oned[None,:] + oned[:,None]
-        prior_reshaped = prior.reshape(self.L**2)
-        prior_reshaped = prior_reshaped.view(1, self.L**2, 1)
-
+        pred = pred.view([pred.shape[0], self.L**2, -1])
 
         # Define matrix of normalization by batch_weighting and unit weighting
         unit_time_ws = torch.ones( target.shape[-1], device=pred.device)
@@ -82,17 +78,17 @@ class ConvPoissonLoss(PoissonLoss_datafilter):
         if data_filters is None:
             target = target.unsqueeze(1).expand_as(pred)  # shape: (batch_size*240, 3600, cells)
             loss_full = self.lossNR(pred, target)
-            loss_full = loss_full + self.prior_weight * prior_reshaped  # add prior to loss_full
+            loss_full = loss_full + self.prior_weight * self.prior  # add prior to loss_full
             loss_inter = torch.sum(torch.min(torch.sum(loss_full, dim=2), dim=1)[0]) / (target.shape[0] * target.shape[1])
+            print('warning: not done')
         else:
             target = target.unsqueeze(1).expand_as(pred)  # shape: (batch_size*240, 3600, cells)
             loss_full = self.lossNR(pred, target)
-            loss_full = loss_full + self.prior_weight * prior_reshaped  # add prior to loss_full before weighting by data filters
-
+            loss_full = loss_full + self.prior_weight * self.prior  # add prior to loss_full before weighting by data filters
             # divide by number of valid time points
-
-            loss = torch.sum(torch.min(torch.sum(torch.mul(unit_time_ws[None, None, :], torch.mul(loss_full, data_filters.unsqueeze(1))) / len(unit_time_ws), dim=2), dim=1)[0])
-            
+            loss = torch.sum(
+                torch.min(torch.sum(torch.mul(unit_time_ws[None, None, :], 
+                torch.mul(loss_full, data_filters.unsqueeze(1))) / len(unit_time_ws), dim=2), dim=1)[0])
             # loss = torch.sum(torch.mul(unit_time_ws[None,:], torch.mul(loss_full, data_filters))) / len(unit_time_ws)
         return loss
     # END PoissonLoss_datafilter.forward()
