@@ -1381,7 +1381,13 @@ class NDN(nn.Module):
                         for key in data_batch.keys():
                             data_batch[key] = data_batch[key].to(device)
                     if ffnet_target is not None:
-                        pred_batch = self.networks[ffnet_target](data_batch)
+                        if self.networks[ffnet_target].xstim_n is not None:
+                            pred_batch = self.networks[ffnet_target](data_batch[self.networks[ffnet_target].xstim_n])
+                        else:
+                            a = []
+                            for ii in self.networks[ffnet_target].ffnets_in:
+                                a.append(self.networks[ii](data_batch[self.networks[ii].xstim_n]))
+                            pred_batch = self.networks[ffnet_target](a)
                     else:
                         pred_batch = self(data_batch)
                     pred[batch_block_inds] = pred_batch
@@ -1395,7 +1401,13 @@ class NDN(nn.Module):
             m0 = self.to(dev0)
             with torch.no_grad():
                 if ffnet_target is not None:
-                    pred = self.networks[ffnet_target](data)
+                    if self.networks[ffnet_target].xstim_n is not None:
+                        pred = self.networks[ffnet_target](data[self.networks[ffnet_target].xstim_n])
+                    else:
+                        a = []
+                        for ii in self.networks[ffnet_target].ffnets_in:
+                            a.append(self.networks[ii](data[self.networks[ii].xstim_n]))
+                        pred = self.networks[ffnet_target](a)
                 else:
                     pred = self(data)
     
