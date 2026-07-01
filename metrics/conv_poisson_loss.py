@@ -27,15 +27,12 @@ class ConvPoissonLoss(PoissonLoss_datafilter):
     """
 
     def __init__(self, L=60, **kwargs):
+        """
+        Initialize the ConvPoissonLoss.
+        """
         super().__init__()
-
         self.loss_name = 'convpoisson'
-        self.loss = nn.PoissonNLLLoss(log_input=False, reduction='mean')
-        self.lossNR = nn.PoissonNLLLoss(log_input=False, reduction='none')
-        self.unit_weighting = False
-        self.batch_weighting = 0
-        self.register_buffer('unit_weights', None)  
-        self.register_buffer('av_batch_size', None) 
+        self.register_buffer('temporal_pooling', None) 
         self.register_buffer('prior_weight', torch.tensor(0.0, dtype=torch.float32))
         self.L = int(L)
         # Generate parabola prior
@@ -43,7 +40,18 @@ class ConvPoissonLoss(PoissonLoss_datafilter):
         prior = oned[None,:] + oned[:,None]
         self.register_buffer('prior', prior.reshape(1, self.L**2, 1))
         #prior_reshaped = prior_reshaped.view(1, self.L**2, 1)
-    # END PoissonLoss_datafilter.__init__
+    # END ConvPoissonLoss.__init__
+
+    def set_temporal_pooling(self, temporal_pooling=None):
+        """
+        This sets the temporal pooling factor for the loss function. The temporal pooling factor must divide 240, which is the number of time steps in the input data. The temporal pooling factor is
+        """
+        if temporal_pooling is None:
+            self.temporal_pooling = None
+        else:
+            assert int(240/temporal_pooling) == 240//temporal_pooling, "temporal pooling must divide 240" 
+            self.temporal_pooling = torch.tensor(temporal_pooling, dtype=torch.int64, device=self.prior.device)
+        # END ConvPoissonLoss.set_temporal_pooling()
 
     def forward(self, pred, target, data_filters=None ):        
         """
@@ -86,41 +94,56 @@ class ConvPoissonLoss(PoissonLoss_datafilter):
             loss_full = self.lossNR(pred, target)
             loss_full = loss_full + self.prior_weight * self.prior  # add prior to loss_full before weighting by data filters
             # divide by number of valid time points
-            loss = torch.sum(
-                torch.min(torch.sum(torch.mul(unit_time_ws[None, None, :], 
-                torch.mul(loss_full, data_filters.unsqueeze(1))) / len(unit_time_ws), dim=2), dim=1)[0])
+
+            if self.temporal_pooling is None:
+                loss = torch.sum(
+                    torch.min(torch.sum(torch.mul(unit_time_ws[None, None, :], 
+                    torch.mul(loss_full, data_filters.unsqueeze(1))) / len(unit_time_ws), dim=2), dim=1)[0])
+
+            else:  # temporal pooling
+                loss = torch.sum(
+                    torch.min(
+                        torch.sum( # sum over temporal pooling
+                            torch.sum(  # Sum over units, and reshaped for temporal pooling
+                                    torch.mul(unit_time_ws[None, None, :],
+                                        torch.mul(loss_full, data_filters.unsqueeze(1))) / len(unit_time_ws), 
+                            dim=2).reshape([-1, self.temporal_pooling, self.L**2]),
+                        dim=1), # sum over temporal pooling
+                    dim=1)[0]) # min over L**2, and then overall sum across time (remaining dim)
+
             # loss = torch.sum(torch.mul(unit_time_ws[None,:], torch.mul(loss_full, data_filters))) / len(unit_time_ws)
         return loss
-    # END PoissonLoss_datafilter.forward()
+    # END ConvPoissonLoss.forward()
 
-    def unit_loss(self, pred, target, data_filters=None, temporal_normalize=True ):        
-        """
-        This should be equivalent of forward, without sum over units, and no unit-specific weighting.
-        Currently only true if batch_weighting = 'data_filter'.
+    ### HAVEN'T DONE YET
+    #def unit_loss(self, pred, target, data_filters=None, temporal_normalize=True ):        
+    #    """
+    #    This should be equivalent of forward, without sum over units, and no unit-specific weighting.
+    #    Currently only true if batch_weighting = 'data_filter'.
         
-        Args:
-            pred (torch.tensor): prediction data
-            target (torch.tensor): target data
-            data_filters (torch.tensor): data filters for each unit
-            temporal_normalize (bool): whether to normalize by time steps
+    #    Args:
+    #        pred (torch.tensor): prediction data
+    #        target (torch.tensor): target data
+    #        data_filters (torch.tensor): data filters for each unit
+    #        temporal_normalize (bool): whether to normalize by time steps
 
-        Returns:
-            unitloss (torch.tensor): loss value for each unit
-        """
+    #    Returns:
+    #        unitloss (torch.tensor): loss value for each unit
+    #    """
 
-        if data_filters is None:
-            unitloss = torch.mean( self.lossNR(pred, target), axis=0)
-        else:
-            loss_full = self.lossNR(pred, target)
+    #    if data_filters is None:
+    #        unitloss = torch.mean( self.lossNR(pred, target), axis=0)
+    #    else:
+    #        loss_full = self.lossNR(pred, target)
 
-            unit_time_ws = 1.0/torch.sum(data_filters, axis=0).clamp(1.0)
+    #        unit_time_ws = 1.0/torch.sum(data_filters, axis=0).clamp(1.0)
 
-            if temporal_normalize:
-                unitloss = torch.mul(unit_time_ws, torch.sum( torch.mul(loss_full, data_filters), axis=0) )
-            else:
-                unitloss = torch.sum( torch.mul(loss_full, data_filters), axis=0 )
-        return unitloss
-        # END PoissonLoss_datafilter.unit_loss()
+    #        if temporal_normalize:
+    #            unitloss = torch.mul(unit_time_ws, torch.sum( torch.mul(loss_full, data_filters), axis=0) )
+    #        else:
+    #            unitloss = torch.sum( torch.mul(loss_full, data_filters), axis=0 )
+    #    return unitloss
+    #    # END PoissonLoss_datafilter.unit_loss()
 
 
 class PoissonLossLagged(PoissonLoss_datafilter):

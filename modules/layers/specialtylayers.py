@@ -691,13 +691,13 @@ class ConvLayerRank1spatial(ConvLayer):
         """
         ConvLayerRank1spatial: ConvLayer with rank-1 constraints.
         Convolutional filter for each unit will be the outer product of weights over channels and 
-        spatial masks that must be specified.
+        spatial masks that must be specified. Can specify filter_Width if lag (dim-4) is 1, or filter_dims if lag dim > 1.
 
         Args:
             input_dims: tuple or list of ints, (num_channels, height, width, lags)
             num_filters: number of output filters
-            filter_width: int, width of convolutional kernel
-            filter_dims: list of ints, dimensions of convolutional kernel
+            filter_width: int, width of convolutional kernel: only specify if no dim-4 otherwise use filter_dims 
+            filter_dims: use instead of filter_width if dim-4 > 1, specify as [C,W,W,T]
             initialize_center: bool, whether to initialize center of spatial masks
             output_norm: str, type of normalization for output
             **kwargs: additional arguments to pass to STConvLay
@@ -705,14 +705,23 @@ class ConvLayerRank1spatial(ConvLayer):
         assert input_dims is not None, "ConvLayerRank1spatial: input_dims must be specified"
         assert filter_dims is None, "ConvLayerRank1spatial: should use filter_width instead of filter_dims"
         assert num_filters is not None, "ConvLayerRank1spatial: num_filters must be specified"
-        assert input_dims[3] == 1, "ConvLayerRank1spatial: input_dims must not have lags (for now)"
+        #assert input_dims[3] == 1, "ConvLayerRank1spatial: input_dims must not have lags (for now)"
+
+        if filter_dims is None:
+            assert filter_width is not None, "ConvLayerRank1spatial: must specify filter_width if filter_dims is None"
+            filter_dims = [input_dims[0], filter_width, filter_width, input_dims[3]]
+            if input_dims[2] == 1:
+                filter_dims[2] = 1
+        else:
+            assert filter_width is None, "ConvLayerRank1spatial: can't use filter_dims and filter_width at the same time"
+            filter_width = filter_dims[1]
 
         # Effective filter_dims = [input_dims[0], filter_width, filter_width, input_dims[3]]        
         super().__init__(
-            input_dims=input_dims, num_filters=num_filters, filter_dims=[input_dims[0], 1, 1, 1],
+            input_dims=input_dims, num_filters=num_filters, filter_dims=[filter_dims[0], 1, 1, filter_dims[3]],
             initialize_center=False, **kwargs)
 
-        self.filter_dims = [input_dims[0], int(filter_width), int(filter_width), 1]  # has to think this is how big the filter is: just not all parameters
+        self.filter_dims = filter_dims
         self.padding = self._padding   # has to be rerun once filter_dims are fixed
 
         # Now make spatial mask default
@@ -730,9 +739,11 @@ class ConvLayerRank1spatial(ConvLayer):
             w: torch.Tensor, preprocessed weights
         """
         # does all standard preprocessing
-        w_chan = super().preprocess_weights(mod_weight=mod_weight, skip_tent_basis=skip_tent_basis)  # channel x num_filters
-        # might be problem with batchnorm
-        return torch.einsum('cn,xn->cxn', w_chan, self.sp_masks).reshape([-1, self.num_filters]) 
+        w_chan = super().preprocess_weights(
+            mod_weight=mod_weight, skip_tent_basis=skip_tent_basis).reshape(
+                [self.filter_dims[0], self.filter_dims[3], self.num_filters])  
+        # check: might be problem with batchnorm
+        return torch.einsum('cqn,xn->cxqn', w_chan, self.sp_masks).reshape([-1, self.num_filters]) 
     # END ConvLayerRank1spatial.preprocess_weights()
 
     def set_spatial_masks(self, masks):
