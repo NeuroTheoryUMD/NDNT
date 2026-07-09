@@ -69,6 +69,7 @@ class FFnetwork(nn.Module):
             'biconv': layers.BiConvLayer1D,
             'bishift': layers.BinocShiftLayer,
             'bistconv': layers.BiSTconv1D,
+            'monoc_stconv': layers.MonocSTconvLayer,
             #'channelconv': layers.ChannelConvLayer,
             'ori': layers.OriLayer,
             'oriconv': layers.OriConvLayer,

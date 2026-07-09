@@ -399,6 +399,54 @@ class BiConvLayer1D(ConvLayer):
         return Ldict
     # END [classmethod] BinConvLayer1D.layer_dict
 
+
+class MonocSTconvLayer(STconvLayer):
+    """
+    STconvLayer that received binocular input (input_dims[0] = 2) and treats this as a doubling of the first
+    spatial dimension so that the output the ST-filters of this layer applied to each eye, i.e., 
+    output is 2xnum_filters in the channel dimension and the filters themselves process left and right eye identically
+    This should work with binocular 1d or 2d stimuli
+    """ 
+
+    def __init__(self, input_dims=None, **kwargs ):
+        """
+        Same arguments as STconvLayer, but will reshape output to divide space in half.
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags) note that input_dims[0] must be 2 for binocular processing
+            num_filters: number of output filters
+            ...
+        """
+        assert input_dims[0] == 2, "Input channels must be 2 for binocular processing"
+        in_dims = [1, input_dims[1]*2, input_dims[2], input_dims[3]]
+
+        super().__init__(input_dims=in_dims, **kwargs)
+
+        # now manipulate output dimensions to interpet output as from double number of filters
+        self.output_dims[0] = self.output_dims[0]*2
+        self.output_dims[1] = self.output_dims[1]//2
+    # END MonocSTconvLayer.__init__
+
+    def _layer_abbrev( self ):
+        return "M_STconv" 
+
+    #def forward(self, x):
+    #    # Call conv forward, but then option to reshape
+    #    super.forward( x )
+    #    if self.group_filters:
+    #        # Output will be batch x 2 x num_filters x space (with the two corresponding to left and right eyes)
+
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        Ldict = super().layer_dict(**kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'monoc_stconv'
+        return Ldict
+    # END [classmethod] MonocSTconvLayer.layer_dict()
+
+
+
 class BiSTconv1D(NDNLayer):
 #class BiSTconv1D(STconvLayer):
     """
