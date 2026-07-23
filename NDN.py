@@ -1343,14 +1343,18 @@ class NDN(nn.Module):
             torch.Tensor: The predictions array (detached, on cpu)
         """
         self.eval()
+
         if self.block_sample:
             block_inds = data_inds
+
         num_cells = self.networks[-1].output_dims[0]
         model_device = self.device
+        
         if (self.block_sample) and not isinstance(data, dict):
             if device is None:
                 device = data[0]['robs'].device
             self = self.to(device)
+            
             #assert data_inds is None, "block_sample currently does not handle data_inds"
             if batch_size is None:
                 batch_size = 10   # default batch size for block_sample
@@ -1358,13 +1362,17 @@ class NDN(nn.Module):
                 block_inds = np.arange(len(data.block_inds))
             total = len(block_inds)
             data_subset_NT = np.sum([len(data.block_inds[ii]) for ii in block_inds])
+            
             if ffnet_target is None or self.networks[-1] == self.networks[ffnet_target]:
-                pred = torch.zeros((data_subset_NT, num_cells)).to(device)
+                pred = torch.zeros((data_subset_NT, num_cells))
             else:
-                pred = torch.zeros((data_subset_NT, self.networks[ffnet_target+1].layers[0].shape[0])).to(device)
+                pred = torch.zeros((data_subset_NT, self.networks[ffnet_target+1].layers[0].shape[0]))
+
             if hasattr(data, 'upsample'):
                 if data.upsample > 1:
                     pred = pred.repeat(data.upsample, 1)
+            
+
             with torch.no_grad():
                 #for i in tqdm.tqdm(range(0, total, batch_size)):
                 batch_inds = [-1]
@@ -1380,9 +1388,11 @@ class NDN(nn.Module):
                     batch_inds = np.arange(batch_inds_start, batch_inds_end)
                     #data_batch = data[i:np.minimum(i+batch_size, total)]
                     data_batch = data[block_inds[trs]]
+                    
                     if device is not None:
                         for key in data_batch.keys():
                             data_batch[key] = data_batch[key].to(device)
+                    
                     if ffnet_target is not None:
                         if self.networks[ffnet_target].xstim_n is not None:
                             pred_batch = self.networks[ffnet_target](data_batch[self.networks[ffnet_target].xstim_n])
@@ -1393,9 +1403,10 @@ class NDN(nn.Module):
                             pred_batch = self.networks[ffnet_target](a)
                     else:
                         pred_batch = self(data_batch)
-                    pred[batch_inds] = pred_batch
+                    pred[batch_inds] = pred_batch.detach().cpu()
             self = self.to(model_device)
-            return pred.detach().cpu()
+            return pred
+
         if isinstance(data, dict):
             # Then assume that this is just to evaluate a sample: keep original here
             assert data_inds is None, "Cannot use data_inds if passing in a dataset dict."
