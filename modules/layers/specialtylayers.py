@@ -675,3 +675,115 @@ class MaskLayer(NDNLayer):
     
         return Ldict
     # END MaskLayer.layer_dict()
+
+
+class ConvLayerRank1spatial(ConvLayer):
+    """
+    ConvLayerRank1spatial: ConvLayer with rank-1 constraints:
+    Convolutional filter for each unit will be the outer product of weights over channels and
+        spatial masks that must be specified. Can specify filter_Width if lag (dim-4) is 1, or filter_dims if lag dim > 1.
+    """
+
+    def __init__(self, input_dims=None,
+                 num_filters=None,
+                 filter_width=None,
+                 filter_dims=None,  # pull out of kwargs
+                 initialize_center=False,
+                 output_norm=None,
+                 **kwargs):
+        """
+        Args:
+            input_dims: tuple or list of ints: (num_channels, height, width, lags)
+            num_filters: number of output filters
+            filter_width: int, width of convolutional kernel: only specify if no dim-4 otherwise use filter_dims 
+            filter_dims: use instead of filter_width if dim-4 > 1, specify as [C,W,W,T]
+            initialize_center: bool, whether to initialize center of spatial masks
+            output_norm: str, type of normalization for output
+            **kwargs: additional arguments to pass to STConvLay
+        """
+        assert input_dims is not None, "ConvLayerRank1spatial: input_dims must be specified"
+        assert filter_dims is None, "ConvLayerRank1spatial: should use filter_width instead of filter_dims"
+        assert num_filters is not None, "ConvLayerRank1spatial: num_filters must be specified"
+
+        if filter_dims is None:
+            assert filter_width is not None, "ConvLayerRank1spatial: must specify filter_width if filter_dims is None"
+            filter_dims = [input_dims[0], filter_width, filter_width, input_dims[3]]
+            if input_dims[2] == 1:
+                filter_dims[2] = 1
+        else:
+            assert filter_width is None, "ConvLayerRank1spatial: can't use filter_dims and filter_width at the same time"
+            filter_width = filter_dims[1]
+
+        # Effective filter_dims = [input_dims[0], filter_width, filter_width, input_dims[3]]        
+        super().__init__(
+            input_dims=input_dims, num_filters=num_filters, filter_dims=[filter_dims[0], 1, 1, 1],
+            initialize_center=False, **kwargs)
+
+        self.filter_dims = filter_dims
+        self.padding = self._padding   # has to be rerun once filter_dims are fixed
+
+        # Now make spatial mask default
+        self.register_buffer('sp_masks', torch.zeros( 
+            [filter_dims[1], filter_dims[2]*filter_dims[3], self.num_filters], dtype=torch.float32))
+
+        if initialize_center:
+            from NDNT.utils import initialize_gaussian_envelope as util_gaussian_envelope
+            assert filter_dims[2] != 1, "ConvLayerRank1spatial: need to update if this is going to be used"
+            self.sp_masks = torch.tensor(initialize_gaussian_envelope( np.ones([filter_width**2, num_filters]), [filter_width, filter_width]), dtype=torch.float32)
+    # END ConvLayerRank1spatial.__init__
+
+    def preprocess_weights( self, mod_weight=None, skip_tent_basis=False):
+        """
+        Preprocess weights: which generates full filter by combining weight parameters with spatial masks
+
+        Returns:
+            w: torch.Tensor, preprocessed weights
+        """
+        # does all standard preprocessing
+        w_chan = super().preprocess_weights(
+            mod_weight=mod_weight, skip_tent_basis=skip_tent_basis).reshape(
+                [self.filter_dims[0], self.num_filters])  
+        #print(w_chan.shape, self.sp_masks.shape)
+        # to check: might be problem with batchnorm
+        return torch.einsum('cn,xqn->cxqn', w_chan, self.sp_masks).reshape([-1, self.num_filters]) 
+    # END ConvLayerRank1spatial.preprocess_weights()
+
+    def set_spatial_masks(self, masks):
+        """
+        Set spatial masks for the ConvLayerRank1spatial
+
+        Args:
+            masks: np.ndarray, spatial masks to apply to the weights
+        """
+        assert np.prod(masks.shape) == np.prod(self.sp_masks.shape), "ConvLayerRank1spatial: masks shape must match sp_masks shape"
+        self.sp_masks = torch.tensor(masks.reshape(self.sp_masks.shape), dtype=torch.float32)
+    # END ConvLayerRank1spatial.set_spatial_masks()
+
+    def _layer_abbrev( self ):
+        #s = super()._layer_abbrev()
+        return 'conv1Rsp'
+
+    @classmethod
+    def layer_dict(cls, filter_width=None, **kwargs):
+        """
+        This outputs a dictionary of parameters that need to input into the layer to completely specify.
+        Output is a dictionary with these keywords. 
+        -- All layer-specific inputs are included in the returned dict
+        -- Values that must be set are set to empty lists
+        -- Other values will be given their defaults
+
+        Args:
+            filter_width: int, width of convolutional kernel
+            **kwargs: additional arguments to pass to NDNLayer
+
+        Returns:
+            Ldict: dict, dictionary of layer parameters
+        """
+
+        Ldict = super().layer_dict(**kwargs)
+        # Added arguments
+        Ldict['layer_type'] = 'conv1Rsp'
+        Ldict['filter_width'] = int(filter_width)
+        
+        return Ldict
+    # END ConvLayerRank1spatial.layer_dict()

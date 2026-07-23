@@ -10,7 +10,7 @@ from .dimlayers import DimSPTLayer
 from .dimlayers import ChannelLayer, ChannelXLayer
 from .laglayers import LagLayer
 from .lvlayers import LVLayer
-from .bilayers import BiConvLayer1D, BiSTconv1D, BinocShiftLayer
+from .bilayers import BiConvLayer1D, BiSTconv1D, BinocShiftLayer, MonocSTconvLayer, BiProjLayer
 #from .bilayers import ChannelConvLayer
 from .reslayers import IterLayer
 from .reslayers import IterTlayer
@@ -19,6 +19,7 @@ from .specialtylayers import Tlayer
 from .specialtylayers import L1convLayer
 from .specialtylayers import OnOffLayer
 from .specialtylayers import ParametricTuneLayer
+from .specialtylayers import ConvLayerRank1spatial
 from .masklayers import MaskLayer
 from .masklayers import MaskSTconvLayer, MaskTlayer, MaskConvLayer
 from .orilayers import OriLayer

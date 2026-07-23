@@ -1265,6 +1265,8 @@ class NDN(nn.Module):
             return LLneuron  # end of the old method
 
         else:
+            assert data.block_sample == self.block_sample, "Dataset block_sample does not match model block_sample setting."
+
             # This will be the 'modern' eval_models using already-defined self.loss_module
             # In this case, assume data is dataset
             if data_inds is None:

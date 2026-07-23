@@ -128,7 +128,6 @@ def init_vars(project=None, GPU=0, verbose=True):
         print( "Project: ", project ) # display only if left blank so default is clear
     
     ########## Computer-specific data directories and GPU settings ##########
-    
     if myhost in ['ca1', 'm1']:
         base_datadir = '/Data/'
     elif myhost == 'sc':
@@ -140,7 +139,9 @@ def init_vars(project=None, GPU=0, verbose=True):
         GPU = abs((torch.cuda.get_device_properties(0).minor == 9) - (GPU==0))
     elif myhost == 'fovea.umd.edu':
         base_datadir = '/data/'
-    
+    elif myhost=='BIOLMCN045926': 
+        base_datadir = '/Users/dbutts/Data/'
+
     device0 = torch.device("cpu")
     if GPU == 0:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  # then ada = cuda:0
@@ -199,9 +200,16 @@ def init_vars(project=None, GPU=0, verbose=True):
             'DeclanSampleData': DeclanSampleData}
         globs.update(new_entries)
 
-    elif project.lower() == 'runningMT':
+    elif project.lower() == 'runningmt':
         datadir = '/Users/dbutts/Library/CloudStorage/Dropbox/HukLab/'
+
+    elif project.lower() == 'briggsv1':
+        from NTdatasets.briggs.dataset_V1Briggs import Vision2Dsimple
+        new_entries = {
+            'Vision2Dsimple': Vision2Dsimple}
         
+        globs.update(new_entries)
+        datadir = base_datadir +'Briggs/'
     ##### OTHER PROJECTS ######
     else:
         new_entries = {}
@@ -211,7 +219,7 @@ def init_vars(project=None, GPU=0, verbose=True):
     if user.lower() in ['dbutts', 'dab']:
         # Overwrite general defaults for my laptop
         if myhost=='BIOLMCN045926': 
-            base_datadir = '/Users/dbutts/Data/'
+            #base_datadir = '/Users/dbutts/Data/'
             dirname = '/Users/dbutts/Projects/'
             device = device0
         if project.lower() == 'colorv1':
