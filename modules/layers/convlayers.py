@@ -236,7 +236,6 @@ class ConvLayer(NDNLayer):
         self._fullpadding = False
 
         sz = self.filter_dims[1:3] # handle 2D if necessary
-        print(sz)
         if self._padding == 'valid':
             self._npads = (0, 0, 0, 0)
         else:  # same number of pads for 'circular' and'same'
