@@ -799,7 +799,8 @@ class STconvLayer(TconvLayer):
             s = x.reshape([-1] + self.input_dims[:3]).permute(3,1,0,2) # [B,C,W,1]->[1,C,B,W]
             #w = w.reshape(self.filter_dims[:2] + [self.filter_dims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
             #w = w.reshape(fdims[:2] + [fdims[3]] +[-1]).permute(3,0,2,1) # [C,H,T,N]->[N,C,T,W]
-            w = w.squeeze()  # untested -- reshaping should have already happened
+            #w = w.squeeze()  # untested -- reshaping should have already happened -- doesnt' work fix bellow (Isabel)
+            w = w.squeeze(-1)
             
             if self._padding != 'valid':
                 # flip order of padding for STconv -- last two are temporal padding
