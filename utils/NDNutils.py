@@ -530,6 +530,35 @@ def is_int( val ):
         return False
 
 
+def string_convert(v):
+    """"
+    Removes the built-in Python types from a value, recursively if necessary. 
+    This is useful for displaying values in a more readable format, 
+    especially when dealing with numpy or torch types.
+    """
+    def _fmt_scalar(x, sig_figs=6):
+        if isinstance(x, bool):
+            return x
+        if isinstance(x, (int, np.integer)):
+            return int(x)
+        if isinstance(x, (float, np.floating)):
+            x = float(x)
+            if np.isfinite(x):
+                return float(f"{x:.{sig_figs}g}")
+            return x
+        return x
+
+    if isinstance(v, dict):
+        return {k: string_convert(val) for k, val in v.items()}
+    if isinstance(v, (list, tuple)):
+        return type(v)(string_convert(val) for val in v)
+    if isinstance(v, np.generic):
+        return _fmt_scalar(v.item())
+    if torch.is_tensor(v) and v.numel() == 1:
+        return _fmt_scalar(v.item())
+    return v
+
+
 def design_matrix_tent_basis( s, anchors, zero_left=False, zero_right=False):
     """Produce a design matrix based on continuous data (s) and anchor points for a tent_basis.
     Here s is a continuous variable (e.g., a stimulus) that is function of time -- single dimension --

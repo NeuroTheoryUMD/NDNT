@@ -532,6 +532,8 @@ class NDNLayer(nn.Module):
         This outputs the layer information in abbrev (default) or expanded format
         """
         #from NDNT.utils import filename_num2str
+        from NDNT.utils.NDNutils import string_convert 
+        
         info_string = "%s: %3d (i%d) "%(self._layer_abbrev(), self.num_filters, self.num_inh )
                                       #filename_num2str(self.num_inh) )
         if self.num_inh < 10:
@@ -561,7 +563,8 @@ class NDNLayer(nn.Module):
             addons_string += '-'
 
         if len(self.reg.vals) > 0:
-            reg_string = str(self.reg.vals)
+            #reg_string = str(string_convert(self.reg.vals))
+            reg_string = str(string_convert(self.reg.vals))
         else:
             reg_string = ''
         
