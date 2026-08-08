@@ -101,7 +101,7 @@ class MaskLayer(NDNLayer):
             self.replace = False
     # END MaskLayer.set_mask()
 
-    def preprocess_weights( self ):
+    def preprocess_weights( self, **kwargs ):
         """
         Preprocess weights for MaskLayer: completely overloaded so that pos_constraints and normalization
         handled after the mask is applied.
@@ -242,7 +242,7 @@ class MaskSTconvLayer(STconvLayer):
             self.replace = False
     # END MaskSTconvLayer.set_mask()
 
-    def preprocess_weights( self ):
+    def preprocess_weights( self, **kwargs ):
         """
         Preprocess weights for MaskSTconvLayer -- completely overloaded so that pos_constraints and normalization
         handled after the mask is applied.
@@ -372,7 +372,7 @@ class MaskTlayer(Tlayer):
             self.replace = False
     # END MaskTconvLayer.set_mask()
 
-    def preprocess_weights( self ):
+    def preprocess_weights( self, **kwargs ):
         """
         Preprocess weights for MaskTconvLayer -- completely overloaded so that pos_constraints and normalization
         handled after the mask is applied.
@@ -508,7 +508,7 @@ class MaskConvLayer(ConvLayer):
             self.replace = False
     # END MaskConvLayer.set_mask()
 
-    def preprocess_weights( self ):
+    def preprocess_weights( self, **kwargs ):
         """
         Preprocess weights for MaskConvLayer: calls super for standard preprocessing (includes pos_constraints),
         but will have to redo normalization ON UNMASKED components. 

@@ -245,9 +245,11 @@ def init_vars(project=None, GPU=0, verbose=True):
             datadir = base_datadir + 'V1/BruceV1/Binocular2/'
             dirname = dirname + 'Binocular/Bi2026/'
             if myhost=='ca3':
-                datadir = '/home/dbutts/Binocular/Data/'
+                datadir = '/home/DATA/BruceV1/BinocT/'
             elif myhost=='m1':
-                datadir = '/home/dbutts/V1/B2data/'
+                datadir = '/Data/BruceV1/BinocT/'
+                # datadir2 = '/home/dbutts/V1/B2data/'
+                dirname = '/home/dbutts/Binocular/BinocWorkspace/'
  
     ##### ISABEL FERNANDEZ #####
     elif user.lower() == 'ifernand':
