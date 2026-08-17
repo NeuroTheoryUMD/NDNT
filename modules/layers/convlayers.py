@@ -71,7 +71,6 @@ class ConvLayer(NDNLayer):
         if num_groups > 1:
             assert input_dims[0] % num_groups == 0, "ConvLayer: num_groups must divide input_dims[0]"
             filter_dims[0] = input_dims[0] // num_groups
-        self.groups = num_groups
 
         # Place filter_dims information in correct place -- maybe overkill, but easy to specify 
         # spatial width in any number of ways using 'filter_dims'
@@ -80,7 +79,7 @@ class ConvLayer(NDNLayer):
         # will need full_padding and slowdown (possibly non-deterministic behavior) otherwise
         for ii in [1,2]:
             if filter_dims[ii]%2 != 1: print("ConvDim %d should be odd."%ii) 
-                
+        
         # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         tent_basis = None
         if temporal_tent_spacing is not None and temporal_tent_spacing > 1:
@@ -112,13 +111,14 @@ class ConvLayer(NDNLayer):
             filter_dims=filter_dims,
             **kwargs)
 
+        self.num_groups = num_groups
         self.is1D = is1D
         self.res_layer = res_layer
        
-        if tent_basis is not None:
-            self.register_buffer('tent_basis', torch.Tensor(tent_basis.T))
-        else:
+        if tent_basis is None:
             self.tent_basis = None
+        else:
+            self.register_buffer('tent_basis', torch.Tensor(tent_basis.T))
 
         self.filter_dims = deepcopy(filter_dims)
 
@@ -138,7 +138,7 @@ class ConvLayer(NDNLayer):
         self.padding = padding   # self.padding will be a list of integers...    
 
         # Combine filter and temporal dimensions for conv -- collapses over both
-        self.folded_dims = self.input_dims[0]*self.input_dims[3]//self.groups
+        self.folded_dims = self.input_dims[0]*self.input_dims[3]//self.num_groups
 
         # check if output normalization is specified
         if output_norm in ['batch', 'batchX']:
@@ -437,7 +437,7 @@ class ConvLayer(NDNLayer):
 
         # Collapse over irrelevant dims for dim-specific convs
         if self.is1D:
-            s = torch.reshape( s, (-1, self.folded_dims*self.groups, self.input_dims[1]) )
+            s = torch.reshape( s, (-1, self.folded_dims*self.num_groups, self.input_dims[1]) )
             #if self.padding:
             #s = F.pad(s, self._npads, "constant", 0)
 
@@ -445,7 +445,7 @@ class ConvLayer(NDNLayer):
                 y = F.conv1d(
                     F.pad(s, self._npads, pad_type, 0),
                     w.view([-1, self.folded_dims, self.filter_dims[1]]), 
-                    bias=self.bias, groups=self.groups,
+                    bias=self.bias, groups=self.num_groups,
                     stride=self.stride, dilation=self.dilation)
             else:
                 if self._padding == 'circular':
@@ -454,7 +454,7 @@ class ConvLayer(NDNLayer):
                         spad,
                         #w.view([-1, self.folded_dims, self.filter_dims[1]]), 
                         w.reshape([-1, self.folded_dims, self.filter_dims[1]]), 
-                        bias=self.bias, groups=self.groups,
+                        bias=self.bias, groups=self.num_groups,
                         #padding=self._npads[0],
                         stride=self.stride, dilation=self.dilation)
                 else:  # this looks the same, but is faster (does not work with circular)
@@ -462,11 +462,11 @@ class ConvLayer(NDNLayer):
                         s,
                         #w.view([-1, self.folded_dims, self.filter_dims[1]]), 
                         w.reshape([-1, self.folded_dims, self.filter_dims[1]]), 
-                        bias=self.bias, groups=self.groups,
+                        bias=self.bias, groups=self.num_groups,
                         padding=self._npads[0], 
                         stride=self.stride, dilation=self.dilation)
         else:
-            s = torch.reshape( s, (-1, self.folded_dims*self.groups, self.input_dims[1], self.input_dims[2]) )
+            s = torch.reshape( s, (-1, self.folded_dims*self.num_groups, self.input_dims[1], self.input_dims[2]) )
             # Alternative location of batch_norm:
             #if self.output_norm is not None:
             #    s = self.output_norm(s)
@@ -476,7 +476,7 @@ class ConvLayer(NDNLayer):
                 y = F.conv2d(
                     spad, # we do our own padding
                     w.view([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
-                    bias=self.bias, groups=self.groups,
+                    bias=self.bias, groups=self.num_groups,
                     stride=self.stride, dilation=self.dilation)
             else:
                 # functional pads since padding is simple
@@ -485,14 +485,14 @@ class ConvLayer(NDNLayer):
                     y = F.conv2d(
                         spad, 
                         w.reshape([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
-                        bias=self.bias, groups=self.groups,
+                        bias=self.bias, groups=self.num_groups,
                         stride=self.stride, dilation=self.dilation)
                 else:  # this is faster if not circular
                     y = F.conv2d(
                         s, 
                         w.reshape([-1, self.folded_dims, self.filter_dims[1], self.filter_dims[2]]),
                         padding=(self._npads[2], self._npads[0]),
-                        bias=self.bias, groups=self.groups,
+                        bias=self.bias, groups=self.num_groups,
                         stride=self.stride, dilation=self.dilation)
 
         if not self.res_layer:

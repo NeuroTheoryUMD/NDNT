@@ -30,8 +30,10 @@ def fit_lbfgs(
         Model: Pytorch model
         data: Dictionary to used with Model.training_step(data)
     '''
-
     assert isinstance(data, dict), "data must be a dictionary"
+    from time import time
+    
+    start_time = time()
     model.prepare_regularization()
     model.initialize_loss(data, batch_size=len(data)) 
     model.train()
@@ -63,11 +65,14 @@ def fit_lbfgs(
         loss = optimizer.step(closure)
     except KeyboardInterrupt:
         print("Keyboard interrupt")
-    except TypeError:
-        print("stopped early")
+    except TypeError as e:
+        print(f"Stopped early: {e}")
+        # traceback.print_exc()
 
     optimizer.zero_grad()
     torch.cuda.empty_cache()
+    if verbose > 0:
+        print(f"  {time() - start_time:.2f} sec elapsed")
     #return loss
 # END fit_lbfgs
 
@@ -530,13 +535,12 @@ def is_int( val ):
         return False
 
 
-def string_convert(v):
+def string_convert(v, sig_figs=6):
     """"
-    Removes the built-in Python types from a value, recursively if necessary. 
-    This is useful for displaying values in a more readable format, 
-    especially when dealing with numpy or torch types.
+    Removes the built-in Python types from a value, recursively if necessary. This is useful 
+    for displaying values in a more readable format, especially when dealing with numpy or torch types.
     """
-    def _fmt_scalar(x, sig_figs=6):
+    def _fmt_scalar(x):
         if isinstance(x, bool):
             return x
         if isinstance(x, (int, np.integer)):
@@ -549,13 +553,17 @@ def string_convert(v):
         return x
 
     if isinstance(v, dict):
-        return {k: string_convert(val) for k, val in v.items()}
+        return {k: string_convert(val, sig_figs) for k, val in v.items()}
     if isinstance(v, (list, tuple)):
-        return type(v)(string_convert(val) for val in v)
+        return type(v)(string_convert(val, sig_figs) for val in v)
+    if isinstance(v, np.ndarray):
+        return string_convert(v.tolist(), sig_figs)
     if isinstance(v, np.generic):
         return _fmt_scalar(v.item())
-    if torch.is_tensor(v) and v.numel() == 1:
+    if 'torch' in str(type(v)) and hasattr(v, 'numel') and v.numel() == 1:
         return _fmt_scalar(v.item())
+    if isinstance(v, (int, float)): 
+        return _fmt_scalar(v)
     return v
 
 

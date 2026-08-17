@@ -185,7 +185,244 @@ class BiProjLayer(OriConvLayer):
 
 
 ############# 1-D Binocular layers ##################
-class BinocShiftLayer(NDNLayer):
+class BinocShiftLayer(ConvLayer):
+    """
+    This processes monocular output that spans NX and but has twice as many channels (num_filt x 2) and
+    generates filters based on eye_weights and shift in each eye, with fixed shift in dominant eye and
+    and DETERMININSTIC shift in non-dominant eye, using shifting gaussian (defined by mean and sigma), which shifts 
+    non-dominant eye filter. 
+    * eye_weights scaled by tanh (centered at zero) for each filter
+    """
+
+    def __init__(self, input_dims=None, init_sigma=1.5, LRdom=0, xdoms=0, bias=True, NLtype='relu',
+                 num_filters=None, filter_dims=None, weights_initializer=None, norm_type=0, pos_constraint=True,
+                 initialize_center=None,
+                 **kwargs ):
+        """
+        Same arguments as ConvLayer, but will make binocular filter with range of shifts. This assumes
+        input from ConvLayer (not BiConv) with num_filters x 72 input dims (can adjust) 
+
+        Note num_filters completely depends on input_dims (channels//2)
+        
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            LRdom: 0 for left eye dominant, 1 for right eye dominant (default 0)
+
+            [Inherited]
+            num_inh: number of inhibitory filters (default 0)
+            NL_type: nonlinearity type (default 'relu')
+            bias: whether to include bias term (default True)
+        """
+        disparity_lim = 8
+
+        # Enforce no specification of these       
+        #assert input_dims[0]%2 == 0, "BINOCSHIFTLAYER: input_dims[0] must be even (for left and right eye)"
+        assert input_dims[2] == 1, "BINOCSHIFTLAYER: only works for 1-d spatial inputs"
+        assert num_filters is None, "BINOCSHIFTLAYER: num_filters should be None (depends on input_dims)"
+        assert filter_dims is None, "BINOCSHIFTLAYER: filter_dims should be None"
+        assert pos_constraint is True, "BINOCSHIFTLAYER: pos_constraint should be True"
+        assert weights_initializer is None, "BINOCSHIFTLAYER: should not use weights_initializer"
+        assert norm_type == 0, "BINOCSHIFTLAYER: normalization implicit in this layer"
+        assert initialize_center is None, "BINOCSHIFTLAYER: initialize_center should be None"
+
+        assert np.max(abs(xdoms)) <= disparity_lim, "Dominant eye position is too far from center"
+        assert input_dims[1] == 72, "BINOCSHIFTLAYER: input_dims[1] must be 72"
+
+        # Assume that output stretched across space and need to re-interpret as channels
+        num_filters = input_dims[0]
+        input_dims[0] *= 2
+        input_dims[1] = input_dims[1]//2
+        self.NX = input_dims[1]
+
+        if not (isinstance(xdoms, np.ndarray) or isinstance(xdoms, list)):
+            xdoms = np.ones(num_filters, dtype=int)*xdoms
+        else:
+            assert len(xdoms) == num_filters, "xdoms must be a single value or a list/array of length num_filters"
+            xdoms = np.array(xdoms, dtype=int)
+
+        # could use number of groups to get number of filters correct: num_groups=num_mfilts
+        super().__init__(
+            input_dims=input_dims, filter_dims=[1, 1, 1, 1], num_filters=num_filters, bias=bias, NLtype=NLtype,
+            pos_constraint=True, weights_initializer='zeros', norm_type=0, **kwargs)
+
+        self.disparity_lim = disparity_lim
+        self.filter_dims = [1, disparity_lim*2+1, 1, 1]
+        self.padding = 'same'  # set padding with correct filter_width
+        # these dont matter, but might has well be set correctly
+        self.folded_dims = 1  
+        # to make ConvLayer.forward() work with generated weights:
+        #self.num_filters *= 2
+        #self.output_dims[:2] = [num_filters, self.NX]
+        #self.num_outputs = np.prod(self.output_dims)*2  # this is a hack
+        #self.register_buffer( 'bias', torch.zeros(self.num_filters, dtype=torch.float32) )
+        #self.bi_bias = bias
+        #self.bi_NL = deepcopy(self.NL)
+        #self.NL = None
+
+        # Make mus and sigmas -- in pixel coordinates
+        self.shifts = Parameter(torch.Tensor(num_filters))
+        self.sigmas = Parameter(torch.Tensor(num_filters))
+
+        # dominant eye position (in pixel coordinates relative to middle) -- note if direction depends on which eye
+        dir_mult = 1 if LRdom == 0 else -1
+        self.register_buffer('LorR', torch.tensor(LRdom, dtype=torch.int32))
+        self.register_buffer('x_fixed', torch.tensor(-dir_mult*xdoms, dtype=torch.int32)) 
+
+        # initial conditions for shifts
+        self.shifts.data = torch.tensor(dir_mult*xdoms, dtype=torch.float32, device=self.weight.device)
+        # self.sigmas.data.fill_(init_sigma)  # assuming one sigma 
+        self.sigmas.data = torch.tensor([init_sigma] * num_filters, dtype=torch.float32, device=self.weight.device)
+        self.sample = True
+        
+        #print(self.folded_dims, "folded dims")
+        # this results in num_filters x NX sample
+    # END BinocShiftLayer.__init__()
+
+    def preprocess_weights(self, **kwargs):
+        """
+        Generates weights based on eye_weight (which is self.weight) and positional arguments, resulting
+        in twice as many filters (matching num_filters) and convolutional width of 2*self.disparity_lim+1
+        """
+        eye_ws = (1.0+torch.tanh(self.weight.squeeze()))/2.0
+
+        Dweights = torch.zeros([self.filter_dims[1], self.num_filters], device=self.weight.device)
+
+        for ii in range(self.num_filters):
+            Dweights[self.x_fixed[ii].item()+self.disparity_lim, ii] = 1.0-eye_ws[ii]
+
+        #if self.training or self.sample:  # will always be here for training
+        if self.sample:
+            shifts = torch.maximum(torch.minimum(self.shifts, torch.tensor(self.disparity_lim, device=self.weight.device)), torch.tensor(-self.disparity_lim, device=self.weight.device))
+            sigs = torch.maximum(self.sigmas, torch.tensor(0.1, device=self.weight.device))
+            NDweights = torch.exp(-0.5/(sigs[None,:]**2)*(
+                (torch.arange(-self.disparity_lim, self.disparity_lim+1, device=self.weight.device)[:,None]-shifts[None, :])**2))
+            NDweights = (NDweights / torch.sum(NDweights, dim=0, keepdim=True)) * eye_ws[None, :]
+        else:
+            NDweights= torch.zeros([self.filter_dims[1], self.num_filters], device=self.weight.device)
+            for ii in range(self.num_filters):
+                NDweights[int(np.round(self.shifts[ii].item()))+self.disparity_lim, ii] = eye_ws[ii]
+
+        # Assemble weights into one tensor of shape (num_filters, filter_width, 1, 1)
+        ws = torch.zeros([self.filter_dims[1], self.num_filters*2], device=self.weight.device)
+
+        if self.LorR == 0:
+            ws[:, 0::2] = Dweights
+            ws[:, 1::2] = NDweights
+        else:
+            ws[:, 1::2] = Dweights
+            ws[:, 0::2] = NDweights
+        return ws
+    # END BinocShiftLayer.preprocess_weights
+
+    def center_filters(self, round_shifts=True, verbose=True):
+        """
+        Adjusts center-of-mass of binocular processing to allow for refitting with dominant eye adjusted
+        """
+        from NDNT.utils.NDNutils import string_convert
+        with torch.no_grad():
+            eye_ws = (1.0+torch.tanh(self.weight.squeeze()))/2.0
+            mean_shifts = (eye_ws * self.shifts + (1-eye_ws) * self.x_fixed)
+            if verbose:
+                print( "  Adjusted binocular shifts:", string_convert(-mean_shifts.cpu().detach().numpy(), sig_figs=2) )
+            self.x_fixed.data = (self.x_fixed.data - torch.round(mean_shifts)).to(torch.int32)
+            self.shifts.data += -mean_shifts
+            if round_shifts:
+                self.shifts.data = torch.round(self.shifts.data)
+    # END BinocShiftLayer.center_filters()
+
+    def fit_shifts(self, val=True, sigma0 = 1.5, verbose=False):
+        """
+        Will position to fit shifts, or turn off in order to fit weights without fitting shifts.
+        """
+        if val:
+            self.sigmas.data.fill_(sigma0)
+            self.set_parameters(val=True)
+            self.sample = True
+        else:
+            self.sample = False
+            self.set_parameters(val=False, name='shifts')
+            self.set_parameters(val=False, name='sigmas')
+            self.center_filters(round_shifts=True, verbose=verbose)
+            #self.list_parameters()
+    # END BinocShiftLayer.fit_shifts()
+
+
+    def plot_filters(self, sample=True):
+        """Plots binocular convolutional layer in Bi2026 model-type"""
+        from NDNT.utils import ss, imagesc
+        import matplotlib.pyplot as plt
+
+        self.eval()  # display will depend on sample
+        if not sample:
+            sample_save = self.sample
+            self.sample = False
+        ws = self.preprocess_weights().detach().cpu().numpy()
+        if not sample:
+            self.sample = sample_save
+            
+        ws_assemble = np.concatenate([ws[:, 0::2], ws[:, 1::2]], axis=0)
+        ss(rh=2)
+        imagesc(ws_assemble, cmap='seismic', balanced=True)
+        plt.axvline(self.filter_dims[1]-0.5,color='k',linewidth=2)
+        plt.axvline(self.disparity_lim,color='c',linestyle='--',linewidth=2)
+        plt.axvline(self.disparity_lim+self.filter_dims[1],color='c',linestyle='--',linewidth=2)
+        plt.show()
+    # END BinocShiftLayer.plot_filters()
+
+    def forward(self, x):
+        """
+        Took relevant parts of ConvLayer.forward() and applied constructed filter via preprocess_weights. Could
+        not work directly because of filter number (and bias number) mismatch, and necessity of summing across
+        eyes before the nonlinearity
+        """
+
+        s = x.reshape([-1]+self.input_dims[:2])
+        w = self.preprocess_weights().permute(1,0)[:,None,:]
+        y = F.conv1d(s, w, groups=self.input_dims[0], padding=self._npads[0])
+
+        # this will have 2*num_filters//2 channels, with left and right eye filters interleaved
+        y = torch.sum(y.reshape([-1, self.num_filters, 2, self.NX]), dim=2) + self.bias[None, :, None]
+
+        if self.output_norm is not None:
+            y = self.output_norm(y)
+
+        # Nonlinearity
+        if self.NL is not None:
+            y = self.NL(y)
+
+        #if self._ei_mask is not None:
+        if self._num_inh > 0:
+            y = y * self._ei_mask[None, :, None]
+
+        # store activity regularization to add to loss later
+        #y = torch.reshape(y, (-1, self.num_outputs))
+        if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
+            self.reg.compute_activity_regularization(y)
+
+        return y.reshape([-1, self.num_filters*self.NX])
+    # END BinocShiftLayer.forward()
+
+    def _layer_abbrev( self ):
+        return ' biShift'
+
+    @classmethod
+    def layer_dict(cls, init_sigma=1.5, **kwargs):
+        Ldict = super().layer_dict(**kwargs)
+        Ldict['layer_type'] = 'bishift'
+        del Ldict['num_filters']
+        del Ldict['norm_type']
+        del Ldict['weights_initializer']
+        # Added arguments
+        #Ldict['num_shifts'] = num_shifts
+        Ldict['init_sigma'] = init_sigma
+        Ldict['pos_constraint'] = True
+        Ldict['LRdom'] = 0
+        Ldict['initialize_center'] = None
+        return Ldict
+    # END [classmethod] BinocShiftLayer.layer_dict
+
+
+class BinocShiftLayerOlder(NDNLayer):
     """
     This processes monocular output that spans 2*NX and fits weight for each filter (decoding binocularity)
     and shift using mu and sigma
@@ -363,7 +600,7 @@ class BinocShiftLayer(NDNLayer):
     # END [classmethod] BinocShiftLayer.layer_dict
 
 
-class BinocShiftLayerOld(ConvLayer):
+class BinocShiftLayerOldest(ConvLayer):
     """
     Alternative: this processes monocular output that spans 2*NX and fits weight for each filter (decoding binocularity)
     and shift using mu and sigma
@@ -403,10 +640,8 @@ class BinocShiftLayerOld(ConvLayer):
         
         # First apply regular preprocess to get monocular filter of correct form
         w = super().preprocess_weights()
-
-        
         return w
-    # END BinocShiftLayer.preprocess_weights
+    # END BinocShiftLayerOldest.preprocess_weights
     
 
 class BinocLayer1D(ConvLayer):
