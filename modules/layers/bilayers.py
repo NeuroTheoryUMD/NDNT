@@ -250,14 +250,6 @@ class BinocShiftLayer(ConvLayer):
         self.padding = 'same'  # set padding with correct filter_width
         # these dont matter, but might has well be set correctly
         self.folded_dims = 1  
-        # to make ConvLayer.forward() work with generated weights:
-        #self.num_filters *= 2
-        #self.output_dims[:2] = [num_filters, self.NX]
-        #self.num_outputs = np.prod(self.output_dims)*2  # this is a hack
-        #self.register_buffer( 'bias', torch.zeros(self.num_filters, dtype=torch.float32) )
-        #self.bi_bias = bias
-        #self.bi_NL = deepcopy(self.NL)
-        #self.NL = None
 
         # Make mus and sigmas -- in pixel coordinates
         self.shifts = Parameter(torch.Tensor(num_filters))
@@ -292,10 +284,11 @@ class BinocShiftLayer(ConvLayer):
 
         #if self.training or self.sample:  # will always be here for training
         if self.sample:
-            shifts = torch.maximum(torch.minimum(self.shifts, torch.tensor(self.disparity_lim, device=self.weight.device)), torch.tensor(-self.disparity_lim, device=self.weight.device))
-            sigs = torch.maximum(self.sigmas, torch.tensor(0.1, device=self.weight.device))
-            NDweights = torch.exp(-0.5/(sigs[None,:]**2)*(
-                (torch.arange(-self.disparity_lim, self.disparity_lim+1, device=self.weight.device)[:,None]-shifts[None, :])**2))
+            shifts = self.shifts.clamp(min=-self.disparity_lim, max=self.disparity_lim)
+            #torch.maximum(torch.minimum(self.shifts, torch.tensor(self.disparity_lim, device=self.weight.device)), torch.tensor(-self.disparity_lim, device=self.weight.device))
+            #sigs = torch.maximum(self.sigmas, torch.tensor(0.1, device=self.weight.device))
+            NDweights = torch.exp( -0.5/self.sigmas.clamp(min=0.1)[None, :]**2 * 
+                (torch.arange(-self.disparity_lim, self.disparity_lim+1, device=self.weight.device)[:,None]-shifts[None, :])**2)
             NDweights = (NDweights / torch.sum(NDweights, dim=0, keepdim=True)) * eye_ws[None, :]
         else:
             NDweights= torch.zeros([self.filter_dims[1], self.num_filters], device=self.weight.device)
@@ -324,20 +317,33 @@ class BinocShiftLayer(ConvLayer):
             mean_shifts = (eye_ws * self.shifts + (1-eye_ws) * self.x_fixed)
             if verbose:
                 print( "  Adjusted binocular shifts:", string_convert(-mean_shifts.cpu().detach().numpy(), sig_figs=2) )
-            self.x_fixed.data = (self.x_fixed.data - torch.round(mean_shifts)).to(torch.int32)
-            self.shifts.data += -mean_shifts
+            self.x_fixed.data = (self.x_fixed.data - torch.round(mean_shifts)).clamp(min=-self.disparity_lim, max=self.disparity_lim).to(torch.int32)
+            self.shifts.data = (self.shifts.data-mean_shifts).clamp(min=-self.disparity_lim, max=self.disparity_lim)
             if round_shifts:
                 self.shifts.data = torch.round(self.shifts.data)
+            self.sigmas.data = torch.clamp(abs(self.sigmas.data), min=0.1)
     # END BinocShiftLayer.center_filters()
 
-    def fit_shifts(self, val=True, sigma0 = 1.5, verbose=False):
+    def fit_shifts(self, val=True, sigma0=None, verbose=False, fixed_sigmas=False):
         """
-        Will position to fit shifts, or turn off in order to fit weights without fitting shifts.
+        This fit shifts for layer in one of three configurations:
+        1. [Default] val=True, fixed_sigmas=False, this will fit shifts and sigmas along with weights
+        2. val=False, this will fit delta-function positions and not fit shifts or sigmas (just fit weights)
+        3. val=True, fixed_sigmas=True, this will fit shifts but not sigmas, and sigmas are fixed to
+            the minimum of their current value and sigma0
         """
         if val:
-            self.sigmas.data.fill_(sigma0)
-            self.set_parameters(val=True)
             self.sample = True
+            self.set_parameters(val=True)
+            if sigma0 is None:
+                sigma0 = 1.5  # default value
+            if fixed_sigmas:
+                self.set_parameters(val=False, name='sigmas')
+                with torch.no_grad():
+                    # only reduce sigmas that are not already reduced
+                    self.sigmas.data = torch.min(abs(self.sigmas.data), torch.tensor(sigma0, device=self.sigmas.device)).clamp(min=0.1)
+            else:
+                self.sigmas.data.fill_(sigma0)    
         else:
             self.sample = False
             self.set_parameters(val=False, name='shifts')
@@ -345,7 +351,6 @@ class BinocShiftLayer(ConvLayer):
             self.center_filters(round_shifts=True, verbose=verbose)
             #self.list_parameters()
     # END BinocShiftLayer.fit_shifts()
-
 
     def plot_filters(self, sample=True):
         """Plots binocular convolutional layer in Bi2026 model-type"""
