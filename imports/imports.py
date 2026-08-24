@@ -137,7 +137,7 @@ def init_vars(project=None, GPU=0, verbose=True):
         print('  cuda0:', torch.cuda.get_device_properties(0).name)
         print('  cuda1:', torch.cuda.get_device_properties(1).name)
         GPU = abs((torch.cuda.get_device_properties(0).minor == 9) - (GPU==0))
-    elif myhost == 'fovea.umd.edu':
+    elif myhost.__contains__('fovea'):
         base_datadir = '/data/'
     elif myhost=='BIOLMCN045926': 
         base_datadir = '/Users/dbutts/Data/'
@@ -190,9 +190,10 @@ def init_vars(project=None, GPU=0, verbose=True):
         from NTdatasets.cumming.binocular import binocular_single
         from NTdatasets.cumming.binocularT import binocular_singleT
         import NTdatasets.cumming.BinocUtils as BU # Binoc utilities
-    
+        import NTdatasets.cumming.SiCoUtils as SU # SiCi utilities
+
         new_entries = {
-            'MultiDataset': MultiDataset, 'MultiDatasetT': MultiDatasetT, 'BU': BU,
+            'MultiDataset': MultiDataset, 'MultiDatasetT': MultiDatasetT, 'BU': BU, 'SU': SU,
             'binocular_single': binocular_single, 'binocular_singleT': binocular_singleT}
         globs.update(new_entries)
 
@@ -213,6 +214,16 @@ def init_vars(project=None, GPU=0, verbose=True):
         
         globs.update(new_entries)
         datadir = base_datadir +'Briggs/'
+
+    elif project.lower() == 'lgn':
+        import pandas as pd
+        import NTdatasets.LGN.lgndata_tools as lgn_tools
+        from NTdatasets.LGN.JMAdataset import LGNdataset
+        new_entries = {
+            'lgn_tools': lgn_tools, 'LGNdataset': LGNdataset} #, 'pd': pd}        
+        globs.update(new_entries)
+        datadir = base_datadir +'LGN/'
+
     ##### OTHER PROJECTS ######
     else:
         new_entries = {}
@@ -242,10 +253,10 @@ def init_vars(project=None, GPU=0, verbose=True):
             datadir = base_datadir + 'Huk/'
             dirname = dirname + 'Running/'
         elif project.lower() == 'binoc':
-            datadir = base_datadir + 'V1/BruceV1/Binocular2/'
-            dirname = dirname + 'Binocular/Bi2026/'
-            if myhost=='ca3':
-                datadir = '/home/DATA/BruceV1/BinocT/'
+            datadir = base_datadir + 'BruceV1/BinocT/'
+            dirname = dirname + 'Binocular/'
+            if myhost.__contains__('fovea'):
+                datadir = base_datadir+'Binocular/'
             elif myhost=='m1':
                 datadir = '/Data/BruceV1/BinocT/'
                 # datadir2 = '/home/dbutts/V1/B2data/'

@@ -319,6 +319,8 @@ class BinocShiftLayer(ConvLayer):
                 print( "  Adjusted binocular shifts:", string_convert(-mean_shifts.cpu().detach().numpy(), sig_figs=2) )
             self.x_fixed.data = (self.x_fixed.data - torch.round(mean_shifts)).clamp(min=-self.disparity_lim, max=self.disparity_lim).to(torch.int32)
             self.shifts.data = (self.shifts.data-mean_shifts).clamp(min=-self.disparity_lim, max=self.disparity_lim)
+            self.shifts.data[torch.isnan(self.shifts.data)] = 0
+            self.sigmas.data[torch.isnan(self.sigmas.data)] = 0.6
             if round_shifts:
                 self.shifts.data = torch.round(self.shifts.data)
             self.sigmas.data = torch.clamp(abs(self.sigmas.data), min=0.1)
@@ -343,13 +345,18 @@ class BinocShiftLayer(ConvLayer):
                     # only reduce sigmas that are not already reduced
                     self.sigmas.data = torch.min(abs(self.sigmas.data), torch.tensor(sigma0, device=self.sigmas.device)).clamp(min=0.1)
             else:
-                self.sigmas.data.fill_(sigma0)    
+                with torch.no_grad():
+                    self.sigmas.data.fill_(sigma0)    
         else:
             self.sample = False
             self.set_parameters(val=False, name='shifts')
             self.set_parameters(val=False, name='sigmas')
             self.center_filters(round_shifts=True, verbose=verbose)
-            #self.list_parameters()
+            # Make sure shifts or sigmas did not go off the map
+            with torch.no_grad():
+                self.shifts.data[torch.isnan(self.shifts.data)] = 0
+                self.sigmas.data[torch.isnan(self.sigmas.data)] = 0.6
+        #self.list_parameters()
     # END BinocShiftLayer.fit_shifts()
 
     def plot_filters(self, sample=True):
