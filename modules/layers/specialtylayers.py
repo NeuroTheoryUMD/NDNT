@@ -18,6 +18,7 @@ class Tlayer(NDNLayer):
         filter_dims: width of convolutional kernel (int or list of ints)
     Args (optional):
         padding: 'same' or 'valid' (default 'same')
+        tent_spacing: int, spacing of tent basis functions for lag dimension: note that will result in filter dims = num_lags/tent_spacing
         weight_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
         bias_init: str, 'uniform', 'normal', 'xavier', 'zeros', or None
         bias: bool, whether to include bias term
@@ -29,7 +30,7 @@ class Tlayer(NDNLayer):
             input_dims=None,
             num_filters=None,
             num_lags=None,
-            temporal_tent_spacing=None,
+            tent_spacing=None,
             output_norm=None,
             res_layer=False,  # to make a residual layer
             **kwargs):
@@ -40,7 +41,7 @@ class Tlayer(NDNLayer):
             input_dims: tuple or list of ints, (num_channels, height, width, lags)
             num_filters: number of output filters
             num_lags: number of lags in spatiotemporal filter
-            temporal_tent_spacing: int, spacing of tent basis functions
+            tent_spacing: int, spacing of tent basis functions for lag dimension
             output_norm: str, 'batch', 'batchX', or None
             res_layer: bool, whether to make a residual layer
             **kwargs: additional arguments to pass to NDNLayer
@@ -50,11 +51,13 @@ class Tlayer(NDNLayer):
         assert num_lags is not None, "Tlayer: Must specify num_lags -- otherwise just use NDNLayer"
         assert input_dims[3] == 1, "Tlayer: input dims must not have lags"
 
+        # If tent-basis, figure out how many lag-dimensions using tent_basis transform
         tent_basis = None
-        if temporal_tent_spacing is not None and temporal_tent_spacing > 1:
+        if tent_spacing is not None and tent_spacing > 1:
             from NDNT.utils import tent_basis_generate
-            #tentctrs = list(np.arange(0, num_lags+1, temporal_tent_spacing))
-            tentctrs = np.arange(0, num_lags+temporal_tent_spacing, temporal_tent_spacing)
+            #tentctrs = list(np.arange(0, num_lags+1, tent_spacing))
+            #num_lags = filter_dims[-1]  # this is from input_dims[-1] or passed in (but should be in real lags)
+            tentctrs = np.arange(0, num_lags+tent_spacing, tent_spacing)
             tent_basis = tent_basis_generate(tentctrs)
             if tent_basis.shape[0] != num_lags:
                 print('Warning: tent_basis.shape[0] != num_lags')
@@ -71,11 +74,12 @@ class Tlayer(NDNLayer):
                         axis=0)
             tent_basis = tent_basis[:num_lags,:]
             num_lag_params = tent_basis.shape[1]
-            #print('ConvLayer temporal tent spacing: num_lag_params =', num_lag_params)
-            num_lags = num_lag_params
+            #filter_dims[-1] = num_lag_params
+        else:
+            num_lag_params = num_lags
 
-        filter_dims = input_dims[:3] + [num_lags]
-        
+        filter_dims = input_dims[:3] + [num_lag_params]
+      
         super().__init__(
             input_dims=input_dims,
             num_filters=num_filters,
@@ -176,9 +180,15 @@ class Tlayer(NDNLayer):
         super().plot_filters( 
             cmaps=cmaps, num_cols=num_cols, row_height=row_height, 
             time_reverse=time_reverse)
+    # END Tlayer.plot_filters()
+
+    def _layer_abbrev( self ):
+        from NDNT.utils import filename_num2str
+        return " t-lag" + filename_num2str(self.filter_dims[-1], 2)
+    # END Tlayer._layer_abbrev()
 
     @classmethod
-    def layer_dict(cls, num_lags=None, res_layer=False, temporal_tent_spacing=1, **kwargs):
+    def layer_dict(cls, num_lags=None, res_layer=False, tent_spacing=1, **kwargs):
         """
         This outputs a dictionary of parameters that need to input into the layer to completely specify.
         Output is a dictionary with these keywords. 
@@ -192,7 +202,7 @@ class Tlayer(NDNLayer):
         Ldict['layer_type'] = 'tlayer'
         Ldict['num_lags'] = num_lags
         Ldict['res_layer'] = res_layer
-        Ldict['temporal_tent_spacing'] = temporal_tent_spacing
+        Ldict['tent_spacing'] = tent_spacing
         Ldict['output_norm'] = None
         return Ldict
 # END Tlayer class

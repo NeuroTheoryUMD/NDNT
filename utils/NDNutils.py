@@ -17,7 +17,7 @@ def fit_lbfgs(
         model, data, #val_data=None,
         parameters=None,
         optimizer=None,
-        verbose=True,
+        verbose=1,
         max_iter=1000,
         lr=1,
         line_search='strong_wolfe',
@@ -26,9 +26,22 @@ def fit_lbfgs(
         tolerance_grad=1e-7):
     '''
     Runs fullbatch LBFGS on a Pytorch model and data dictionary
-    Inputs:
-        Model: Pytorch model
-        data: Dictionary to used with Model.training_step(data)
+
+    Args:
+        model: Pytorch model
+        data: dictionary to used with Model.training_step(data)
+        parameters: specific model parameters to fit (default: None -> all model parameters)
+        optimizer: Pytorch optimizer (default None: generates fresh LBFGS optimizer)
+        verbose: Whether to print per-iteration progress (verbose=2), just end (verbose=1, default) or silent
+        max_iter: Maximum number of iterations (default: 1000)
+        lr: Learning rate (default: 1)
+        line_search: Line search method (default: 'strong_wolfe') and only other choice is None
+        history_size: History size for LBFGS (default: 100)
+        tolerance_change: Tolerance for change in loss (default: 1e-7)
+        tolerance_grad: Tolerance for gradient size (default: 1e-7)
+    
+    Returns:
+        None, but model will reflect fit parameters
     '''
     assert isinstance(data, dict), "data must be a dictionary"
     from time import time
@@ -56,7 +69,7 @@ def fit_lbfgs(
             return loss
         if loss.requires_grad:
             loss.backward()
-        if verbose > 0:
+        if verbose > 1:
             print('Iteration: {} | Loss: {}'.format(optimizer.state_dict()['state'][0]['n_iter'], loss.cpu().item()))
         return loss
     
@@ -69,12 +82,14 @@ def fit_lbfgs(
         print(f"Stopped early: {e}")
         # traceback.print_exc()
 
+    # One last evaluation to get the final loss
+    if verbose > 0:
+        last_out = model.training_step(data)
+        print(f"  Final loss: {format(last_out['loss'].cpu().item(), '.6f')} ({time() - start_time:.2f} sec elapsed)")
     optimizer.zero_grad()
     torch.cuda.empty_cache()
-    if verbose > 0:
-        print(f"  {time() - start_time:.2f} sec elapsed")
-    #return loss
-# END fit_lbfgs
+# END fit_lbfgs()
+
 
 def fit_lbfgs_batch(
         model, dataset,

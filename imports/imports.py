@@ -220,9 +220,13 @@ def init_vars(project=None, GPU=0, verbose=True):
         import NTdatasets.LGN.lgndata_tools as lgn_tools
         from NTdatasets.LGN.JMAdataset import LGNdataset
         new_entries = {
-            'lgn_tools': lgn_tools, 'LGNdataset': LGNdataset} #, 'pd': pd}        
+            'lgn_tools': lgn_tools, 'LGNdataset': LGNdataset}
         globs.update(new_entries)
-        datadir = base_datadir +'LGN/'
+        if myhost=='ca3':
+            datadir = '/data/LGN/'
+        else:
+            datadir = base_datadir +'LGN/'
+        dirname = dirname + 'LGN/'
 
     ##### OTHER PROJECTS ######
     else:
