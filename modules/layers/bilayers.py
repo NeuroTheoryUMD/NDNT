@@ -276,7 +276,8 @@ class BinocShiftLayer(ConvLayer):
         in twice as many filters (matching num_filters) and convolutional width of 2*self.disparity_lim+1
         """
         eye_ws = (1.0+torch.tanh(self.weight.squeeze()))/2.0
-
+        if len(eye_ws.shape) == 0:
+            eye_ws = eye_ws[None]
         Dweights = torch.zeros([self.filter_dims[1], self.num_filters], device=self.weight.device)
 
         for ii in range(self.num_filters):

@@ -111,6 +111,93 @@ def scatterplot( arr2, arrS2=None, clr='b.', alpha=1.0, diag=False, square=False
 # END scatterplot()
 
 
+
+def raster(spk_ts, trange=None, clr='b', skip=0, tick_height=0.78, ax=None, fig_width=8, fig_height=6, fighandle=False):
+    """
+    Spike raster, one row per repeat -- ported from raster.m (DAB, 2003). Written by Claude Aug 2027
+
+    Draws a spike raster with repeats, using either the original MATLAB flat format (a single 1D
+    array/list with -1 marking the end of each repeat) or python-style list-of-arrays (with one 
+    array per repetition). 
+
+    Args:
+        spk_ts: spike times, either as single list with -1s or list-of-lists
+        trange: optional (tmin, tmax) -- spikes outside are dropped before plotting
+        skip: number of initial repeats to skip (default 0)
+        clr: matplotlib color spec for the ticks (default 'b'
+        ax: an existing Axes to plot into (e.g. for subplots) -- a new figure is created if omitted
+        tick_height: height of the ticks (default 0.78)
+        fig_width: width of the figure (default 8)
+        fig_height: height of the figure (default 6)
+        fighandle: whether to return the figure handle (default False)
+
+    Returns:
+        The Axes plotted into.
+    """
+    from matplotlib.collections import LineCollection
+
+    # --- detect format, normalize to a list of per-repeat arrays ---
+    if len(spk_ts) and np.ndim(spk_ts[0]) == 0:
+        # flat MATLAB-style: single 1D array, -1 marks end of each repeat
+        flat = np.asarray(spk_ts, dtype=float)
+        split_at = np.where(flat < 0)[0]
+        reps, start = [], 0
+        for idx in split_at:
+            reps.append(flat[start:idx])
+            start = idx + 1
+        if start < len(flat):  # trailing spikes with no closing -1 (as the
+            reps.append(flat[start:])  # original adds one before processing)
+    else:
+        # this project's format: already a list of per-repeat arrays
+        reps = [np.asarray(r, dtype=float) for r in spk_ts]
+
+    # --- apply t_range filter (or compute the default xlim) ---
+    all_spikes = np.concatenate(reps) if reps and any(len(r) for r in reps) else np.array([])
+    if trange is not None:
+        tmin, tmax = trange
+        reps = [r[(r > tmin) & (r < tmax)] for r in reps]
+        if not any(len(r) for r in reps):
+            print("There are no spikes in that time range.")
+            return
+    else:
+        tmin, tmax = 0.0, (all_spikes.max() * 1.1 if len(all_spikes) else 1.0)
+
+    # --- draw ---
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+    segs, n_spikes = [], 0
+    for row, rep in enumerate(reps, start=1):
+        if row > skip:
+            y0, y1 = -row, -(row + tick_height)
+            segs.extend([(t, y0), (t, y1)] for t in rep)
+            n_spikes += len(rep)
+        if segs:
+            ax.add_collection(LineCollection(segs, colors=clr, linewidths=1))
+
+    n_rows = len(reps)
+    print(f"{n_rows} repeats with {n_spikes} spikes.")
+
+    if trange is not None:
+        ax.set_xlim(tmin, tmax)
+    else:
+        pos_spikes = all_spikes[all_spikes > 0] if len(all_spikes) else np.array([])
+        mint = max(0.0, np.floor(pos_spikes.min() * 4) / 4) if len(pos_spikes) else 0.0
+        maxt = np.ceil(all_spikes.max() * 4) / 4 if len(all_spikes) else 1.0
+        ax.set_xlim(mint, maxt)
+
+    ax.set_ylim(-(n_rows + 2), 0)
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.6)
+    ax.tick_params(labelsize=8)
+
+    if fighandle:
+        #return fig, ax
+        return fig
+# END raster()
+
+
 def find_peaks( x, clearance=10, max_peaks=10, thresh=13.0 ):
     """Find maximum of peaks and then get rid of other points around it for plus/minus some amount"""
     y = deepcopy(x)
