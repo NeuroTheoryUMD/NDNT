@@ -293,6 +293,7 @@ class BinocShiftLayer(ConvLayer):
             NDweights = (NDweights / torch.sum(NDweights, dim=0, keepdim=True)) * eye_ws[None, :]
         else:
             NDweights= torch.zeros([self.filter_dims[1], self.num_filters], device=self.weight.device)
+            self.shifts.data[torch.isnan(self.shifts.data)] = 0.0
             for ii in range(self.num_filters):
                 NDweights[int(np.round(self.shifts[ii].item()))+self.disparity_lim, ii] = eye_ws[ii]
 
