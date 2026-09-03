@@ -1368,7 +1368,7 @@ class NDN(nn.Module):
             if ffnet_target is None or self.networks[-1] == self.networks[ffnet_target]:
                 pred = torch.zeros((data_subset_NT, num_cells))
             else:
-                pred = torch.zeros((data_subset_NT, self.networks[ffnet_target+1].layers[0].shape[0]))
+                pred = torch.zeros(([data_subset_NT] + self.networks[ffnet_target].output_dims)).squeeze()
 
             if hasattr(data, 'upsample'):
                 if data.upsample > 1:
