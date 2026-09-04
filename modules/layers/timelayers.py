@@ -50,6 +50,10 @@ class TimeShiftLayer(NDNLayer):
         
         return shift_x
 
+    def _layer_abbrev( self ):
+            from NDNT.utils import filename_num2str
+            return "   lag" + filename_num2str(self.num_lags)
+
     @classmethod
     def layer_dict(cls, input_dims=None, num_lags=1):
         """
