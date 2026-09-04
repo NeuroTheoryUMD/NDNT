@@ -164,9 +164,11 @@ def init_vars(project=None, GPU=0, verbose=True):
         import ColorDataUtils.RFutils as RFutils
         import ColorDataUtils.ModelBasedEyeTracking as MBET
         import NTdatasets.conway.multi_datasets as multidata
+        import ColorDataUtils.model_utils.Barcode as BC
+        import ColorDataUtils.model_utils.cnn_utils as CNNU
         new_entries = {
             'CU': CU, 'DDPIutils': DDPIutils, 'ETutils': ETutils, 'readout_fit': readout_fit, 'MBET': MBET,
-            'pproc': pproc, 'cal': cal, 'cme': cme, 'RFutils': RFutils, 'multidata': multidata}
+            'pproc': pproc, 'cal': cal, 'cme': cme, 'RFutils': RFutils, 'multidata': multidata, 'BC': BC, 'CNNU': CNNU}
         globs.update(new_entries)
         datadir = base_datadir + 'ColorV1/'
 
@@ -176,9 +178,10 @@ def init_vars(project=None, GPU=0, verbose=True):
         import NTdatasets.conway.synthcloud_datasets as scd
         import ColorDataUtils.simproj_utils as spu
         import ColorDataUtils.readout_fit as readout_fit
-        import ColorDataUtils.Barcode as BC
+        import ColorDataUtils.model_utils.Barcode as BC
+        import ColorDataUtils.model_utils.cnn_utils as CNNU
         new_entries = {
-            'scd': scd, 'spu': spu, 'readout_fit': readout_fit, 'BC': BC}
+            'scd': scd, 'spu': spu, 'readout_fit': readout_fit, 'BC': BC, 'CNNU': CNNU}
         globs.update(new_entries)
 
         datadir = base_datadir + 'Antolik/'
