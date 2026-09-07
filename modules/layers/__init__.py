@@ -16,6 +16,7 @@ from .reslayers import IterLayer
 from .reslayers import IterTlayer
 from .reslayers import IterSTlayer
 from .specialtylayers import Tlayer
+from .specialtylayers import SoftplusLayer, SoftplusLayerDrift
 from .specialtylayers import L1convLayer
 from .specialtylayers import OnOffLayer
 from .specialtylayers import ParametricTuneLayer

@@ -8,6 +8,90 @@ from .ndnlayer import NDNLayer
 from .convlayers import ConvLayer
 from torch.nn.parameter import Parameter
 
+
+class SoftplusLayer(NDNLayer):
+    """
+    """
+    def __init__(self, input_dims=None, num_filters=None, **kwargs):
+        """
+        SoftplusLayer: Layer that implements a softplus nonlinearity with channel-specific parameters. Number
+        of output channels matches number of input channels, with:
+        y = weight/beta * log(1 + exp(beta*x+bias))
+
+        Args:
+            input_dims: tuple or list of ints, (num_channels, height, width, lags)
+            num_filters: number of output filters
+            **kwargs: additional arguments to pass to NDNLayer
+        """
+        assert num_filters is None, "SoftplusLayer: num_filters must be None, as it is determined by input_dims"
+        assert np.prod(input_dims[1:]) == 1, "SoftplusLayer: input_dims must be 1D with length equal to num_channels"
+        num_chan = input_dims[0]  # number of output channels matches number of input channels
+
+        super().__init__(
+            input_dims=[1,1,1,1], num_filters=num_chan, weights_initializer='ones', pos_constraint=True, **kwargs)
+
+        self.register_parameter('beta', Parameter(torch.ones(num_chan, dtype=torch.float32)))
+
+        # by default, weights are not fit
+        self.set_parameters(val=False, name='weight')
+    # END SoftplusLayer.__init__()
+
+    def forward(self, x):
+        """
+        this uses threshold of 20 to avoid overflow in exp, could also use log1p for better numerical stability.
+        """
+        betas = self.beta.clamp(min=0.1, max=10.0)
+        g = betas * x + self.bias
+        # need to trim values outside of range to avoid overflow
+        y = self.preprocess_weights()/betas * torch.where( g > 20.0, g, torch.log1p(torch.exp(g)) )
+        return y
+    # END SoftplusLayer.forward()
+
+    def _layer_abbrev(self):
+        return 'softplus'
+
+    @classmethod
+    def layer_dict(cls, bias=True, **kwargs):
+        """"""
+        assert bias is True, "SoftplusLayer: bias must be True, as it is required for the softplus nonlinearity"
+        Ldict = super().layer_dict(**kwargs)
+        Ldict['bias'] = True
+        Ldict['NLtype'] = 'lin'  # this is ignored, but set to lin to avoid confusion
+        del Ldict['num_filters']
+        del Ldict['pos_constraint']
+        del Ldict['weights_initializer']
+
+        # Added arguments
+        Ldict['layer_type'] = 'softplus'
+        return Ldict
+# END SoftplusLayer class
+
+
+class SoftplusLayerDrift(SoftplusLayer):
+    """
+    """
+    def __init__(self, **kwargs):
+        """
+        """
+        super().__init__(**kwargs)
+    # END SoftplusLayerDrift.__init__()
+
+    def forward(self, x):
+        return super.forward(x)
+    # END SoftplusLayerDrift.forward()
+
+    def _layer_abbrev(self):
+        return 'softpDRF'
+
+    @classmethod
+    def layer_dict(cls, **kwargs):
+        """"""
+        Ldict = super().layer_dict(**kwargs)
+        Ldict['layer_type'] = 'softplus_drift'
+        return Ldict
+# END SoftplusLayerDrift class
+
+
 class Tlayer(NDNLayer):
     """
     NDN Layer where num_lags is handled convolutionally (but all else is normal)

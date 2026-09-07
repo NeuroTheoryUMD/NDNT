@@ -61,6 +61,8 @@ class FFnetwork(nn.Module):
         self.LayerTypes = {
             'normal': layers.NDNLayer,
             'conv': layers.ConvLayer,
+            'softplus': layers.SoftplusLayer,
+            'softplus_drift': layers.SoftplusLayerDrift,
             'divnorm': layers.DivNormLayer,
             'tconv': layers.TconvLayer,
             'stconv': layers.STconvLayer,
