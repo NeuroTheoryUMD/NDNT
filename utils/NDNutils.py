@@ -880,6 +880,7 @@ def grid2pixel( x, L=60, force_int=True, enforce_bounds=False ):
             return int(np.round(p))
     else:
         return p
+# END grid2pixel()
 
 
 def set_scaffold_level_reg( ndn, reg_val=None, level_exponent=1.0, core_net=0, readout_net=1 ):

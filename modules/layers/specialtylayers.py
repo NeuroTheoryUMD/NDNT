@@ -11,6 +11,11 @@ from torch.nn.parameter import Parameter
 
 class SoftplusLayer(NDNLayer):
     """
+    Implements a unit-specific sofplus nonlinearity with 3 parameters:  y = weight/beta * log [1 + exp[beta*x + bias]].
+    The default is that weight is not fit (fixed at 1) whereas bias and beta are fit. The number of output channels 
+    matches the number of input channels, and the input must be 1D (i.e., input_dims[1:] = [1,1,1])
+
+    Default layer-dict should be appropriate with no additional arguments, i.e., layer_params = SoftplusLayer.layer_dict()
     """
     def __init__(self, input_dims=None, num_filters=None, **kwargs):
         """

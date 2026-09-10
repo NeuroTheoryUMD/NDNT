@@ -111,7 +111,6 @@ def scatterplot( arr2, arrS2=None, clr='b.', alpha=1.0, diag=False, square=False
 # END scatterplot()
 
 
-
 def raster(spk_ts, trange=None, clr='b', skip=0, tick_height=0.78, ax=None, fig_width=8, fig_height=6, fighandle=False):
     """
     Spike raster, one row per repeat -- ported from raster.m (DAB, 2003). Written by Claude Aug 2027
