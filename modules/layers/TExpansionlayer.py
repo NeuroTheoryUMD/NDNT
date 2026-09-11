@@ -55,8 +55,10 @@ class TExpansionlayer(NDNLayer):
                 z = torch.zeros_like(y)
                 z = z.repeat_interleave(self.frac, dim=0)
                 z[::self.frac] = y
+                y = z
             else:
                 z = y.repeat_interleave(self.frac, dim=0)
-        
-        return z
+                y = z
+                
+        return y
     
