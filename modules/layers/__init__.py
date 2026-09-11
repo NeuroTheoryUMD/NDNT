@@ -34,3 +34,5 @@ from .partiallayers import OriConvLayerPartial
 #from .pyrlayers import ConvPyrLayer
 
 from .timelayers import TimeShiftLayer
+
+from .TExpansionlayer import TExpansionlayer
