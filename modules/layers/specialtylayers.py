@@ -74,25 +74,75 @@ class SoftplusLayer(NDNLayer):
 
 class SoftplusLayerDrift(SoftplusLayer):
     """
+    SoftplusLayerDrift: Layer that implements a softplus nonlinearity with channel-specific parameters, with an additional drift term. The number of output channels matches the number of input channels, and the input must be 1D (i.e., input_dims[1:] = [1,1,1]).
     """
-    def __init__(self, **kwargs):
+    def __init__(self, num_anchors=0, bias_reg=0.1, beta_reg=0.1, bias=False, num_filters=None, input_dims=None, **kwargs):
         """
         """
-        super().__init__(**kwargs)
+        assert num_filters is None, "SoftplusLayerDrift: num_filters must be None, as it is determined by input_dims"
+        #assert np.prod(input_dims[1:]) == 1, "SoftplusLayerDrift: input_dims must be 1D with length equal to num_channels"
+        assert num_anchors > 0, "SoftplusLayerDrift: num_anchors must be greater than 0"
+        num_chan = input_dims[0]  # number of output channels matches number of input channels
+
+        super().__init__(
+            input_dims=input_dims, num_filters=None, **kwargs)
+
+        del self.beta
+        self.register_parameter('betas', Parameter(torch.ones([num_anchors, num_chan], dtype=torch.float32)))
+        self.register_parameter('drift', Parameter(torch.zeros([num_anchors, num_chan], dtype=torch.float32)))
+
+        self.register_buffer('bias_reg', torch.tensor(bias_reg, dtype=torch.float32))
+        self.register_buffer('beta_reg', torch.tensor(beta_reg, dtype=torch.float32))
+
+        # by default, weights are not fit
+        self.set_parameters(val=False, name='weight')
     # END SoftplusLayerDrift.__init__()
 
-    def forward(self, x):
-        return super.forward(x)
+    def forward(self, x, Xdrift=None):
+        """Implement softplus with changing betas and bias (drift)"""
+        betas = Xdrift@self.betas.clamp(min=0.1, max=10.0)
+        g = betas * x + Xdrift@self.drift
+        # need to trim values outside of range to avoid overflow
+        y = self.preprocess_weights()/betas * torch.where( g > 20.0, g, torch.log1p(torch.exp(g)) )
+        return y
     # END SoftplusLayerDrift.forward()
 
+    def compute_reg_loss(self):
+        """
+        Needs to skip the reg module for computing reg-loss, since the weights are not fit but instead external 
+        regularization is applied to betas and bias
+
+        Args:
+            None
+
+        Returns:
+            reg_loss: torch.Tensor, regularization loss
+        """
+        reg_loss = torch.tensor(0.0, device=self.betas.device)
+        if self.bias_reg > 0.0:
+            d2 = -2*self.drift[1:-1,:].clone()  # ignoring edges
+            d2 += self.drift[:-2,:]
+            d2 += self.drift[2:,:]
+            reg_loss += self.bias_reg * torch.sum( d2**2 )
+        if self.beta_reg > 0.0:
+            d2 = -2*self.betas[1:-1,:].clone()  # ignoring edges
+            d2 += self.betas[:-2,:]
+            d2 += self.betas[2:,:]
+            reg_loss += self.beta_reg * torch.sum( d2**2 )
+        return reg_loss
+    # END SoftplusLayerDrift.compute_reg_loss()
+
     def _layer_abbrev(self):
-        return 'softpDRF'
+        return 'sfplusDR'
 
     @classmethod
-    def layer_dict(cls, **kwargs):
+    def layer_dict(cls, num_anchors=0, bias_reg=0.1, beta_reg=0.1, **kwargs):
         """"""
         Ldict = super().layer_dict(**kwargs)
         Ldict['layer_type'] = 'softplus_drift'
+        Ldict['num_anchors'] = num_anchors
+        Ldict['bias_reg'] = bias_reg
+        Ldict['beta_reg'] = beta_reg
         return Ldict
 # END SoftplusLayerDrift class
 

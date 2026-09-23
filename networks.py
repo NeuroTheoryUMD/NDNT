@@ -9,7 +9,7 @@ from copy import deepcopy
 from NDNT.modules import layers
 
 
-_valid_ffnet_types = ['normal', 'add', 'mult', 'readout', 'scaffold', 'scaffold3d']
+_valid_ffnet_types = ['normal', 'add', 'mult', 'comb', 'readout', 'scaffold', 'scaffold3d']
       
 class FFnetwork(nn.Module):
     """
@@ -151,9 +151,7 @@ class FFnetwork(nn.Module):
                     self.layer_list[ll]['input_dims'] = deepcopy(self.layers[ll-1].output_dims)
             Ltype = self.layer_list[ll]['layer_type']
             #print(Ltype)
-            #print(LayerTypes[Ltype])
             self.layers.append( self.LayerTypes[Ltype](**self.layer_list[ll]) )
-
         # output dims determined by last layer
         self.output_dims = self.layers[-1].output_dims
         
@@ -213,7 +211,7 @@ class FFnetwork(nn.Module):
                     num_cat_filters = input_dims_list[0][0]
                 else:
                     if input_dims_list[ii][1:] != input_dims_list[0][1:]:
-                        if ffnet_type in ['add', 'mult']:
+                        if ffnet_type in ['add', 'mult', 'comb']:
                             for jj in range(2):
                                 #if (input_dims_list[ii][jj+1] > 1) | (input_dims_list[0][jj+1] == 1):
                                 if (input_dims_list[ii][jj+1] > 1) & (input_dims_list[0][jj+1] > 1):
@@ -261,7 +259,7 @@ class FFnetwork(nn.Module):
                 for mm in range(1, len(inputs)):
                     #if self.network_type == 'normal': # concatentate inputs
                     #    x = torch.cat( (x, inputs[mm].view([-1]+self.input_dims_list[mm])), 1 )
-                    if self.network_type == 'add': # add inputs
+                    if (self.network_type == 'add') or (self.network_type == 'comb'): # add inputs
                         x = torch.add( x, inputs[mm].view([-1]+self.input_dims_list[mm]) )
                     elif self.network_type == 'mult': # multiply: (input1) x (1+input2)
                         x = torch.multiply(
@@ -1086,6 +1084,78 @@ class FFnet_external(FFnetwork):
         ffnet_dict = super().ffnet_dict(**kwargs)
         ffnet_dict['ffnet_type'] = 'external'
         return ffnet_dict
+# END FFnet_external class
+
+
+class CombNetwork(FFnetwork):
+    """
+    FFnetwork to host combining different FFnetworks and pull drift information into softplus drift network
+    """
+
+    def __init__(
+            self, ffnet_n=[0], bias_reg=0.1, beta_reg=0.1, 
+            xstim_n=None, layer_list=None, **kwargs):
+        """
+        Same as contructor for regular network, with extra argument to say if there is a shifter coming in. 
+        If there is a shifter, it will interpret (in the forward) the last element routing towards the shifter
+        """
+        
+        assert ffnet_n is not None, "CombNetwork: ffnet_n must be specified"
+        assert xstim_n is None, "CombNetwork: xstim_n must be None"
+
+        from NDNT.modules.layers import SoftplusLayerDrift, SoftplusLayer
+        
+        super().__init__(xstim_n=None, ffnet_n=ffnet_n, layer_list=layer_list, **kwargs)
+        #self.network_type = 'combnet'  # this has to be add or multiply or whatever
+   # END CombNetwork.__init__()
+
+    def forward(self, inputs, Xdrift=None):
+        """
+        Network inputs correspond to output of conv layer, and (if it exists), a shifter.
+        
+        Args:
+            inputs (list, torch.Tensor): The input to the network.
+
+        Returns:
+            y (torch.Tensor): The output of the network.
+        """ 
+
+        if not isinstance(inputs, list):
+            inputs = [inputs]
+
+        x = self.preprocess_input(inputs)
+        if Xdrift is not None:
+            y = self.layers[0](x, Xdrift=Xdrift)
+        else:
+            y = self.layers[0](x)
+        return y
+    # END CombNetwork.forward()
+    
+    @classmethod
+    def ffnet_dict( cls, ffnet_n=[0], num_anchors=0, bias_reg=0.1, beta_reg=0.1, layer_list=None, **kwargs):
+        """
+        Returns a dictionary to specify the CombNetwork
+
+        Args:
+            ffnet_n (int): The feedforward network.
+
+        Returns:
+            ffnet_dict (dict): The dictionary of the CombNetwork.
+        """
+        assert layer_list is None, "CombNetwork: layer_list should not be specified directly"
+        from NDNT.modules.layers import SoftplusLayerDrift, SoftplusLayer
+        if num_anchors == 0:
+            layer_list = [SoftplusLayer.layer_dict()]
+        else:
+            layer_list = [SoftplusLayerDrift.layer_dict(num_anchors=num_anchors, bias_reg=bias_reg, beta_reg=beta_reg)]
+
+        ffnet_dict = super().ffnet_dict(
+            ffnet_n=ffnet_n, xstim_n=None, ffnet_type='comb', layer_list=layer_list, **kwargs)
+        #ffnet_dict['num_anchors'] = num_anchors
+        #ffnet_dict['bias_reg'] = bias_reg
+        #ffnet_dict['beta_reg'] = beta_reg
+        return ffnet_dict
+# END CombNetwork class
 
 
 class ScaffoldNetwork3d(ScaffoldNetwork3D):

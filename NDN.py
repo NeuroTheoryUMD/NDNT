@@ -24,6 +24,7 @@ FFnets = {
     'normal': NDNnetworks.FFnetwork,
     'add': NDNnetworks.FFnetwork,  # just controls how inputs are concatenated
     'mult': NDNnetworks.FFnetwork, # just controls how inputs are concatenated
+    'comb': NDNnetworks.CombNetwork,
     'scaffold': NDNnetworks.ScaffoldNetwork, # forward concatenates all layers (default: convolutional)
     'scaffold3d': NDNnetworks.ScaffoldNetwork3D, # forward concatenates all layers (default: convolutional)
     'readout': NDNnetworks.ReadoutNetwork
@@ -224,7 +225,7 @@ class NDN(nn.Module):
         Computes the network outputs for the given input data.
 
         Args:
-            Xs (list): The input data.
+            Xs (dictionary): the input data
 
         Returns:
             tuple: A tuple containing the network inputs and network outputs.
@@ -253,9 +254,15 @@ class NDN(nn.Module):
                     inputs.append( net_outs[in_nets[mm]] )
             net_ins.append(inputs)
             # Compute outputs
-            net_outs.append( self.networks[ii](inputs) ) 
+            if isinstance( self.networks[ii], NDNnetworks.CombNetwork ): # Automatically detect CombNet to route drift term, if appropriate
+                if 'Xdrift' in Xs:
+                    net_outs.append( self.networks[ii](inputs, Xdrift=Xs['Xdrift']) )
+                else:
+                    net_outs.append( self.networks[ii](inputs) )
+            else:
+                net_outs.append( self.networks[ii](inputs) ) 
         return net_ins, net_outs
-    # END NDNT.compute_network_outputs
+    # END NDNT.compute_network_outputs()
 
     def forward(self, Xs):
             """
