@@ -62,7 +62,6 @@ class FFnetwork(nn.Module):
             'normal': layers.NDNLayer,
             'conv': layers.ConvLayer,
             'softplus': layers.SoftplusLayer,
-            'softplus_drift': layers.SoftplusLayerDrift,
             'divnorm': layers.DivNormLayer,
             'tconv': layers.TconvLayer,
             'stconv': layers.STconvLayer,
@@ -73,7 +72,6 @@ class FFnetwork(nn.Module):
             'bistconv': layers.BiSTconv1D,
             'monoc_stconv': layers.MonocSTconvLayer,
             'binoc_proj': layers.BiProjLayer,
-            #'channelconv': layers.ChannelConvLayer,
             'ori': layers.OriLayer,
             'oriconv': layers.OriConvLayer,
             'oriconvH': layers.HermiteOriConvLayer,
@@ -1087,27 +1085,30 @@ class FFnet_external(FFnetwork):
 # END FFnet_external class
 
 
-class CombNetwork(FFnetwork):
+class SoftplusNetwork(FFnetwork):
     """
     FFnetwork to host combining different FFnetworks and pull drift information into softplus drift network
     """
 
     def __init__(
-            self, ffnet_n=[0], bias_reg=0.1, beta_reg=0.1, 
+            self, ffnet_n=[0], bias_reg=0.01, beta_reg=0.01, 
             xstim_n=None, layer_list=None, **kwargs):
         """
         Same as contructor for regular network, with extra argument to say if there is a shifter coming in. 
         If there is a shifter, it will interpret (in the forward) the last element routing towards the shifter
         """
-        
-        assert ffnet_n is not None, "CombNetwork: ffnet_n must be specified"
-        assert xstim_n is None, "CombNetwork: xstim_n must be None"
+        assert ffnet_n is not None, "SoftplusNetwork: ffnet_n must be specified"
+        assert xstim_n is None, "SoftplusNetwork: xstim_n must be None"
 
-        from NDNT.modules.layers import SoftplusLayerDrift, SoftplusLayer
+        from NDNT.modules.layers import SoftplusLayer  # SoftplusLayerDrift
         
         super().__init__(xstim_n=None, ffnet_n=ffnet_n, layer_list=layer_list, **kwargs)
         #self.network_type = 'combnet'  # this has to be add or multiply or whatever
-   # END CombNetwork.__init__()
+   # END SoftplusNetwork.__init__()
+
+    def spikingNL(self, gvals, cell_list=None, t0=0, verbose=False ):
+        """Pass through spiking NL"""
+        return self.layers[0].spikingNL(gvals, cell_list=cell_list, t0=t0, verbose=verbose)
 
     def forward(self, inputs, Xdrift=None):
         """
@@ -1129,10 +1130,10 @@ class CombNetwork(FFnetwork):
         else:
             y = self.layers[0](x)
         return y
-    # END CombNetwork.forward()
+    # END SoftplusNetwork.forward()
     
     @classmethod
-    def ffnet_dict( cls, ffnet_n=[0], num_anchors=0, bias_reg=0.1, beta_reg=0.1, layer_list=None, **kwargs):
+    def ffnet_dict( cls, ffnet_n=[0], num_anchors=0, bias_reg=0.1, beta_reg=0.1, layer_list=None, beta_drift=False, **kwargs):
         """
         Returns a dictionary to specify the CombNetwork
 
@@ -1140,14 +1141,15 @@ class CombNetwork(FFnetwork):
             ffnet_n (int): The feedforward network.
 
         Returns:
-            ffnet_dict (dict): The dictionary of the CombNetwork.
+            ffnet_dict (dict): The dictionary of the SoftplusNetwork.
         """
-        assert layer_list is None, "CombNetwork: layer_list should not be specified directly"
-        from NDNT.modules.layers import SoftplusLayerDrift, SoftplusLayer
-        if num_anchors == 0:
-            layer_list = [SoftplusLayer.layer_dict()]
-        else:
-            layer_list = [SoftplusLayerDrift.layer_dict(num_anchors=num_anchors, bias_reg=bias_reg, beta_reg=beta_reg)]
+        assert layer_list is None, "SoftplusNetwork: layer_list should not be specified directly"
+        from NDNT.modules.layers import SoftplusLayer
+        #if num_anchors == 0:
+        #    layer_list = [SoftplusLayer.layer_dict()]
+        #else:
+        layer_list = [SoftplusLayer.layer_dict(
+            num_anchors=num_anchors, bias_reg=bias_reg, beta_reg=beta_reg, beta_drift=beta_drift)]
 
         ffnet_dict = super().ffnet_dict(
             ffnet_n=ffnet_n, xstim_n=None, ffnet_type='comb', layer_list=layer_list, **kwargs)
@@ -1155,7 +1157,7 @@ class CombNetwork(FFnetwork):
         #ffnet_dict['bias_reg'] = bias_reg
         #ffnet_dict['beta_reg'] = beta_reg
         return ffnet_dict
-# END CombNetwork class
+# END SoftplusNetwork class
 
 
 class ScaffoldNetwork3d(ScaffoldNetwork3D):

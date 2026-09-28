@@ -128,27 +128,10 @@ class NDNLayer(nn.Module):
 
         self.reg = Regularization( 
             filter_dims=self.filter_dims, vals=reg_vals, num_outputs=num_filters, pos_constraint=self.pos_constraint )
-        ##### self.activity_reg = ActivityRegularization(reg_vals=reg_vals)
-        # place to store the activity regularization value to be used in the loss function
-        ##### self.activity_regularization = 0.0
 
         # Now taken care of in model properties
         self.register_buffer( '_ei_mask', torch.ones(self.num_filters, dtype=torch.float32) )
         self.num_inh = num_inh  # this will call setter function to adjust _ei_mask appropriately
-
-        # check if output normalization is specified
-        #if output_norm in ['batch', 'batchX']:
-        #    if output_norm == 'batchX':
-        #        affine = False
-        #    else:
-        #        affine = True
-        #    if self.filter_dims[2] == 1:
-        #        self.output_norm = nn.BatchNorm1d(self.num_filters, affine=affine)
-        #    else:
-        #        self.output_norm = nn.BatchNorm2d(self.num_filters, affine=affine)
-        #        #self.output_norm = nn.BatchNorm2d(self.folded_dims, affine=False)
-        #else:
-        #    self.output_norm = None
 
         # Set inital weight and bias values
         self.reset_parameters( weights_initializer, bias_initializer )
@@ -226,10 +209,6 @@ class NDNLayer(nn.Module):
 
         if self.pos_constraint > 0:
             self.weight.data = torch.sqrt(abs(self.weight.data))
-        # Pos-constraints will be implemented in preprocessing (including making negative there)
-        # So this scales the initial values so the square is in the right place
-        #elif self.pos_constraint<0:
-        #    self.weight.data = -abs(self.weight)
 
         if self.norm_type == 1:
             self.weight.data = F.normalize( self.weight.data, dim=0 ) / self.weight_scale
@@ -250,7 +229,6 @@ class NDNLayer(nn.Module):
         This is useful for initializing filters to have a spatial-temporal Gaussian shape.
         """
         from NDNT.utils import initialize_gaussian_envelope as util_gaussian_envelope
-        #w_centered = initialize_gaussian_envelope( self.get_weights(to_reshape=False), self.filter_dims)
         w_centered = util_gaussian_envelope( self.weight.clone().detach().numpy(), self.filter_dims)
         self.weight.data = torch.tensor(w_centered, dtype=torch.float32)
     # END NDNLayer.initialize_gaussian_envelope()
@@ -278,15 +256,7 @@ class NDNLayer(nn.Module):
         return w
 
     def forward(self, x):
-        """
-        Forward pass for the layer.
-
-        Args:
-            x: torch.Tensor, input tensor
-
-        Returns:
-            x: torch.Tensor, output tensor
-        """
+        """Forward pass for the NDNLayer"""
 
         # Pull weights and process given pos_constrain and normalization conditions
         w = self.preprocess_weights()
@@ -308,12 +278,11 @@ class NDNLayer(nn.Module):
             x = x * self._ei_mask
 
         # store activity regularization to add to loss later
-        #self.activity_regularization = self.activity_reg.regularize(x)
         if hasattr(self.reg, 'activity_regmodule'):  # to put buffer in case old model
             self.reg.compute_activity_regularization(x)
 
         return x
-        # END NDNLayer.forward()
+    # END NDNLayer.forward()
 
     def compute_reg_loss(self):
         """

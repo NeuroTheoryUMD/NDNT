@@ -11,6 +11,15 @@ import pickle
 import json
 import io
 
+# Suggested add to restore old cap on number of steps the line-search can take 
+import torch.optim.lbfgs as lbfgs_mod
+if hasattr(lbfgs_mod, '_strong_wolfe') and not hasattr(lbfgs_mod, '_strong_wolfe_orig'):
+    lbfgs_mod._strong_wolfe_orig = lbfgs_mod._strong_wolfe
+    def _strong_wolfe_capped(*args, max_ls=25, **kwargs):
+        return lbfgs_mod._strong_wolfe_orig(*args, max_ls=min(max_ls, 25), **kwargs)
+    lbfgs_mod._strong_wolfe = _strong_wolfe_capped
+# end suggestion -- this modified internal stuff after the torch.import so will work for this module
+
 
 ########### LBFGS TRAINER (just a function!) #################
 def fit_lbfgs(
@@ -43,15 +52,17 @@ def fit_lbfgs(
     Returns:
         None, but model will reflect fit parameters
     '''
-    assert isinstance(data, dict), "data must be a dictionary"
     from time import time
-    
+    assert isinstance(data, dict), "data must be a dictionary"
+    max_loss = 1e10  # prevents values from exploding to infinity (especially gradients using cubic interpolation)
+
     start_time = time()
     model.prepare_regularization()
     model.initialize_loss(data, batch_size=len(data)) 
     model.train()
     if parameters is None:
         parameters = model.parameters()
+
     if optimizer is None:
         optimizer = torch.optim.LBFGS(
             parameters,
@@ -60,20 +71,35 @@ def fit_lbfgs(
             tolerance_change=tolerance_change,
             line_search_fn=line_search,
             tolerance_grad=tolerance_grad)
-        
+    
+    params = optimizer.param_groups[0]['params']
+
     def closure():
         optimizer.zero_grad()
         out = model.training_step(data)
         loss = out['loss']
-        if np.isnan(loss.item()):
-            return loss
-        if loss.requires_grad:
-            loss.backward()
+        #if np.isnan(loss.item()):
+        #    return loss
+        if abs(loss.item()) < max_loss:  # False for NaN, inf, or huge values
+            if loss.requires_grad:
+                #with torch.autograd.detect_anomaly():
+                loss.backward()
+            #if all(p.grad is None or torch.isfinite(p.grad).all() for p in params): # also checks for exploding gradients
+            if torch.isfinite(sum(p.grad.sum() for p in params if p.grad is not None)): # also checks for exploding gradients
+                if verbose > 1:
+                    print("Iteration: {} | Loss: {}".format(optimizer.state_dict()['state'][0]['n_iter'], loss.cpu().item()))
+                return loss
+
+        # Bad trial point: report it, then make strong_wolfe reject it
+        bad = [n for n, p in model.named_parameters() if p.grad is not None and not torch.isfinite(p.grad).all()]
+        print('Non-finite grads in:', bad)
         if verbose > 1:
-            print('Iteration: {} | Loss: {}'.format(optimizer.state_dict()['state'][0]['n_iter'], loss.cpu().item()))
-        return loss
-    
-    #loss = optimizer.step(closure)
+            print("Rejected trial step (loss = {})".format(loss.item()))
+        for p in params:
+            p.grad = torch.full_like(p, float('nan'))
+        return torch.full_like(loss, float('inf'))
+    # END closure()
+
     try:
         loss = optimizer.step(closure)
     except KeyboardInterrupt:
@@ -130,7 +156,7 @@ def fit_lbfgs_batch(
         history_size: LBFGS history size in approximating Jacobian (Default: 100)
         tolerance_change: minimum change in loss criteria (Default: 1e-8)
         tolerance_grad: minimum size of gradient criteria (Default: 1e-8)
-        line_search: whether to use strong-wolfe line search (True, Default) or not 
+        line_search: whether to use strong-wolfe line search (True, Default) or not (set to None)
 
     Returns:
         None, but model will reflect fit parameters
@@ -174,6 +200,7 @@ def fit_lbfgs_batch(
     losses = [] #, vlosses = [], []
     #optimizer = torch.optim.LBFGS(model.model.net[1].parameters(), lr=1, max_iter=max_iter)
     patience = 200
+
 
     #best_model = model.state_dict()
     def closure():

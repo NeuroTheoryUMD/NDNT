@@ -24,7 +24,7 @@ FFnets = {
     'normal': NDNnetworks.FFnetwork,
     'add': NDNnetworks.FFnetwork,  # just controls how inputs are concatenated
     'mult': NDNnetworks.FFnetwork, # just controls how inputs are concatenated
-    'comb': NDNnetworks.CombNetwork,
+    'comb': NDNnetworks.SoftplusNetwork, 
     'scaffold': NDNnetworks.ScaffoldNetwork, # forward concatenates all layers (default: convolutional)
     'scaffold3d': NDNnetworks.ScaffoldNetwork3D, # forward concatenates all layers (default: convolutional)
     'readout': NDNnetworks.ReadoutNetwork
@@ -254,7 +254,7 @@ class NDN(nn.Module):
                     inputs.append( net_outs[in_nets[mm]] )
             net_ins.append(inputs)
             # Compute outputs
-            if isinstance( self.networks[ii], NDNnetworks.CombNetwork ): # Automatically detect CombNet to route drift term, if appropriate
+            if isinstance( self.networks[ii], NDNnetworks.SoftplusNetwork ): # Automatically detect SoftplusNetwork to route drift term, if appropriate
                 if 'Xdrift' in Xs:
                     net_outs.append( self.networks[ii](inputs, Xdrift=Xs['Xdrift']) )
                 else:
@@ -1069,35 +1069,120 @@ class NDN(nn.Module):
     # END NDNT.initialize_loss()
 
     def calc_spikingNL( 
-            self, dataset, data_inds=None, gmin=None, gmax=None, gbins=30,
-            batch_size=None, num_lags=0, device=None):
-                        
+            self, dataset, data_inds=None, gbins=30, gmin=None, gmax=None,
+            batch_size=None, num_lags=0, device=None, to_plot=True, verbose=False):
         """
         Computes measured and model spiking nonlineatities across data for all NDN outputs
 
         Args:
-            dataset
-            data_inds
-            gmin
-            gmax
-            gbins
+            dataset: dataset to use for computing spikingNLs; can be dict or dataset object
+            data_inds: if dataset is not dict, inds to use (default all)
+            gbins: number of bins for histogram (default 30)
+            gmin: minimum value for histogram (default use np.histogram call)
+            gmax: maximum value for histogram (must be specified if gmin is specified)
 
         Output:
             spkNL: dict with fNLs (model NLs), spkNLs (measured), gbins, gdist 
         """
         from copy import deepcopy
-        if data_inds is None:
-            if self.block_sample:
-                data_inds = np.arange(len(dataset.block_inds))
-            else:
-                data_inds = np.arange(len(dataset))
+        from NDNT.networks import SoftplusNetwork
+        from NDNT.modules.layers import SoftplusLayer
 
+        if gbins is None:
+            gbins = 30
+        if isinstance(dataset, dict):
+            assert data_inds is None, "calc_spikingNL: cannot pass data_inds with dict dataset"
+        else:
+            if data_inds is None:
+                if self.block_sample:
+                    data_inds = np.arange(len(dataset.block_inds))
+                else:
+                    data_inds = np.arange(len(dataset))
         # Strategy: make copy of model, and turn spiking nonlinearity to linear
-        linear_output_model = deepcopy(self)
-        linear_output_model.networks[-1].layers[-1].NL = None
-        gs = linear_output_model.prediction(
-            dataset, data_inds=data_inds, batch_size=batch_size, device=device, num_lags=num_lags)
+        if isinstance(self.networks[-1], SoftplusNetwork) | isinstance(self.networks[-1].layers[-1], SoftplusLayer):
+            # then take input into Softplus network
+            input_ffnets = self.networks[-1].ffnets_in
+            assert len(self.networks[-1].layers) == 1, "calc_spikingNL: currently only works with single-layer SoftplusNetwork.\neasy fix but havent done it" 
+            gs = self.predictions(dataset, ffnet_target=input_ffnets[0],
+                data_inds=data_inds, batch_size=batch_size, device=device, num_lags=num_lags )
+            for ii in range(1, len(input_ffnets)):
+                gs += self.predictions(dataset, ffnet_target=input_ffnets[ii],
+                    data_inds=data_inds, batch_size=batch_size, device=device, num_lags=num_lags )
+        else:
+            linear_output_model = deepcopy(self)
+            linear_output_model.networks[-1].layers[-1].NL = None
+            gs = linear_output_model.predictions(
+                dataset, data_inds=data_inds, batch_size=batch_size, device=device, num_lags=num_lags)
         NC = gs.shape[1]
+        
+        spkNLs = np.zeros([gbins, NC], dtype=np.float32)
+        gdists = np.zeros([gbins, NC], dtype=np.float32)
+        modelNLs = np.zeros([gbins, NC], dtype=np.float32)
+        modelNLs1 = None # endpoint spiking NL
+        gxs = np.zeros([gbins, NC], dtype=np.float32)
+
+        for cc in range(NC):
+            if isinstance(dataset, dict):
+                valid_inds = (dataset['dfs'][:, cc] > 0).detach().cpu()
+                robs = (dataset['robs'][valid_inds, cc]).detach().cpu().numpy()
+            else:
+                valid_inds = dataset[data_inds]['dfs'][:, cc] > 0
+                robs = (dataset[data_inds]['robs'][valid_inds, cc]).detach().cpu().numpy()
+            
+            g = gs[valid_inds, cc].cpu().detach().numpy()
+
+            # Compute average robs given g-values
+            if gmin is None:
+                h = np.histogram( g, bins=gbins )
+            else:
+                assert gmax is not None, "calc_spikingNL: if gmin is specified, gmax must be specified if gmin is specified"
+                h = np.histogram( g, bins=gbins, range=(gmin, gmax) )
+
+            gxs[:, cc] = (h[1][1:]+h[1][:-1])/2  # bin centers
+            gdists[:, cc] = deepcopy(h[0]/np.max(h[0]))
+            # Compute model-NLs
+        
+            if isinstance(self.networks[-1], SoftplusNetwork) | isinstance(self.networks[-1].layers[-1], SoftplusLayer):
+                modelNLs[:, cc] = self.networks[-1].layers[-1].spikingNL(gxs[:,cc], cell_list=[cc]).squeeze()
+                if self.networks[-1].layers[-1].drift is not None:
+                    modelNLs1 = self.networks[-1].layers[-1].spikingNL(gxs[:,cc], cell_list=[cc], t0=-1)
+                #if verbose:
+                #    print("%2d: alpha=%5.3f, beta=%4.2f, drift=%4.2f"%(cc, self.networks[-1].layers[-1].weight.data[cc]))
+            else:
+                # This will not take into account any drift (or will it)
+                modelNLs[:, cc] = self.networks[-1].layers[-1].NL(torch.tensor(gxs[:, cc]))
+
+            rdist = np.zeros(gbins, dtype=np.float32)
+            for ii in range(gbins):
+                if isinstance(dataset, dict):
+                    rdist[ii] = np.sum(robs[(g >= h[1][ii]) & (g < h[1][ii+1])])
+                else:
+                    rdist[ii] = np.sum(robs[(g >= h[1][ii]) & (g < h[1][ii+1])])
+                
+            # count average spikes in each bin
+            spkNLs[:, cc] = rdist / np.maximum( h[0], 1 )
+
+        if to_plot:
+            from matplotlib import pyplot as plt
+            from NDNT.utils import subplot_setup
+            if NC > 1:
+                nrows = int(np.ceil(NC/5))
+                subplot_setup(nrows, 5, row_height=3)
+            for cc in range(NC):
+                if NC > 1:
+                    plt.subplot(nrows, 5, cc+1)
+                plt.plot(gxs[:,cc], spkNLs[:,cc], 'k', linewidth=1)
+                plt.plot(gxs[:,cc], modelNLs[:, cc], 'r--', linewidth=1)
+                ys = plt.ylim()
+                plt.ylim([0, ys[1]])
+                plt.fill_between(gxs[:, cc], gdists[:,cc]*ys[1]*0.7, color="steelblue", alpha=0.35, edgecolor="none")
+                if modelNLs1 is not None:
+                    plt.plot(gxs[:,cc], modelNLs1[:, cc], 'c--', linewidth=1)
+                if NC > 1:
+                    plt.title('Cell %d'%cc)
+            plt.show()
+        
+        return {'spkNLs': spkNLs, 'xs': gxs, 'gdists': gdists, 'modelNLs': modelNLs, 'modelNLs_last': modelNLs1}
     # END NDN.calc_spikingNL()
 
     def compute_average_responses( self, dataset, data_inds=None ):
@@ -1337,7 +1422,7 @@ class NDN(nn.Module):
         return LLneuron.detach().cpu().numpy()
     # END NDN.eval_models()
 
-    def predictions(self, data, data_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
+    def predictions(self, dataset, data_inds=None, batch_size=None, num_lags=0, ffnet_target=None, device=None):
         """
         Generate predictions for the model for a dataset. Note that will need to send to device if needed, and enter
         batch_size information.
@@ -1358,45 +1443,45 @@ class NDN(nn.Module):
 
         num_cells = self.networks[-1].output_dims[0]
         model_device = self.device
-        
-        if (self.block_sample) and not isinstance(data, dict):
+
+        if (self.block_sample) and not isinstance(dataset, dict):
             if device is None:
-                device = data[0]['robs'].device
+                device = dataset[0]['robs'].device
             self = self.to(device)
             
             #assert data_inds is None, "block_sample currently does not handle data_inds"
             if batch_size is None:
                 batch_size = 10   # default batch size for block_sample
             if block_inds is None:
-                block_inds = np.arange(len(data.block_inds))
+                block_inds = np.arange(len(dataset.block_inds))
             total = len(block_inds)
-            data_subset_NT = np.sum([len(data.block_inds[ii]) for ii in block_inds])
+            
+            data_subset_NT = np.sum([len(dataset.block_inds[ii]) for ii in block_inds])
             
             if ffnet_target is None or self.networks[-1] == self.networks[ffnet_target]:
                 pred = torch.zeros((data_subset_NT, num_cells))
             else:
                 pred = torch.zeros(([data_subset_NT] + self.networks[ffnet_target].output_dims)).squeeze()
 
-            if hasattr(data, 'upsample'):
-                if data.upsample > 1:
-                    pred = pred.repeat(data.upsample, 1)
+            if hasattr(dataset, 'upsample'):
+                if dataset.upsample > 1:
+                    pred = pred.repeat(dataset.upsample, 1)
             
-
             with torch.no_grad():
                 #for i in tqdm.tqdm(range(0, total, batch_size)):
                 batch_inds = [-1]
                 for trs in tqdm.tqdm(chunker(np.arange(total), batch_size)):
 
-                    batch_blocks = [data.block_inds[block_inds[ii]] for ii in trs]
+                    batch_blocks = [dataset.block_inds[block_inds[ii]] for ii in trs]
                     batch_inds_start = 1+batch_inds[-1]
                     batch_size = len(np.concatenate(batch_blocks))
-                    if data.upsample > 1:
-                        batch_size *= data.upsample
+                    if dataset.upsample > 1:
+                        batch_size *= dataset.upsample
                     batch_inds_end = batch_inds_start + batch_size
                     
                     batch_inds = np.arange(batch_inds_start, batch_inds_end)
                     #data_batch = data[i:np.minimum(i+batch_size, total)]
-                    data_batch = data[block_inds[trs]]
+                    data_batch = dataset[block_inds[trs]]
                     
                     if device is not None:
                         for key in data_batch.keys():
@@ -1416,29 +1501,29 @@ class NDN(nn.Module):
             self = self.to(model_device)
             return pred
 
-        if isinstance(data, dict):
+        if isinstance(dataset, dict):
             # Then assume that this is just to evaluate a sample: keep original here
             assert data_inds is None, "Cannot use data_inds if passing in a dataset dict."
-            dev0 = data['robs'].device
+            dev0 = dataset['robs'].device
             m0 = self.to(dev0)
             with torch.no_grad():
                 if ffnet_target is not None:
                     if self.networks[ffnet_target].xstim_n is not None:
-                        pred = self.networks[ffnet_target](data[self.networks[ffnet_target].xstim_n])
+                        pred = self.networks[ffnet_target](dataset[self.networks[ffnet_target].xstim_n])
                     else:
                         a = []
                         for ii in self.networks[ffnet_target].ffnets_in:
-                            a.append(self.networks[ii](data[self.networks[ii].xstim_n]))
+                            a.append(self.networks[ii](dataset[self.networks[ii].xstim_n]))
                         pred = self.networks[ffnet_target](a)
                 else:
-                    pred = self(data)
+                    pred = self(dataset)
         else:
             if batch_size is None:
                 batch_size = 500   # default batch size for non-block_sample
-            dev0 = data[0]['robs'].device
+            dev0 = dataset[0]['robs'].device
             self = self.to(dev0)
             if data_inds is None:
-                data_inds = np.arange(len(data))
+                data_inds = np.arange(len(dataset))
             NT = len(data_inds)
             pred = torch.zeros([NT, num_cells], device=dev0)
             # Must do contiguous sampling despite num_lags
@@ -1448,13 +1533,17 @@ class NDN(nn.Module):
                 trange = trange[trange < NT]
                 with torch.no_grad():
                     if ffnet_target is not None:
-                        pred_tmp = self.networks[ffnet_target](data[data_inds[trange]])
+                        xstim_name = self.networks[ffnet_target].xstim_n
+                        assert xstim_name is not None, "recursive predictions for this thread not complete -- need to do a little more coding."
+                        #print('problem line', trange.shape, data_inds.shape, data_inds[trange].shape)                        
+                        pred_tmp = self.networks[ffnet_target](dataset[data_inds[trange]][xstim_name])
                     else:
-                        pred_tmp = self(data[data_inds[trange]])
+                        pred_tmp = self(dataset[data_inds[trange]])
                 pred[batch_size*bb + np.arange(len(trange)-num_lags), :] = pred_tmp[num_lags:, :]
             self = self.to(model_device)
         torch.cuda.empty_cache()
         return pred.cpu().detach()
+    # END NDN.predictions()
 
     def change_loss( self, new_loss_type, dataset=None ):
         """
