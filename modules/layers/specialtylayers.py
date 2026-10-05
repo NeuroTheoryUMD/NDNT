@@ -16,11 +16,14 @@ class SoftplusLayer(NDNLayer):
     matches the number of input channels, and the input must be 1D (i.e., input_dims[1:] = [1,1,1])
 
     Default layer-dict should be appropriate with no additional arguments, i.e., layer_params = SoftplusLayer.layer_dict()
+    Note that bias is on if num_anchors=0, and otherwise will fit the whole drift. However bias can be set manually if there
+    is a drift term: default is that drift term is held fixed (not fit) and bias and beta are fit, but also can work if 
+    drift_anchored = True in the dataset (i.e., drift term constrained to go to zero on one end.
     """
 
     def __init__(
         self, input_dims=None, num_filters=None, bias=False,
-        num_anchors=0, beta_drift=False, alpha_drift=False, bias_reg=0.01, beta_reg=0.01, **kwargs):
+        num_anchors=0, beta_drift=False, alpha_drift=False, drift_reg=0.04, beta_reg=0.1, **kwargs):
         
         """
         SoftplusLayer: Layer that implements a softplus nonlinearity with channel-specific parameters. Number
@@ -28,22 +31,24 @@ class SoftplusLayer(NDNLayer):
         y = weight/beta * log(1 + exp(beta*x+bias))
 
         Args:
-            input_dims: tuple or list of ints, (num_channels, height, width, lags)
-            num_filters: number of output filters
-            num_anchors: number of anchors to use
+            input_dims: tuple or list of ints, (num_channels, height, width, lags) -- this should just have channel dimension
+            num_filters: number of units
+            num_anchors: number of anchors used by Xdrift
             beta_drift: whether to allow drift in the beta parameter
             alpha_drift: whether to allow drift in the alpha parameter
-            bias_reg: regularization strength for the bias parameter
-            beta_reg: regularization strength for the beta parameter
+            drift_reg: reg-val for the drift parameter (default 0.1)
+            beta_reg: reg-val for the beta parameter (default 0.1)
             **kwargs: additional arguments to pass to NDNLayer
         """
         assert num_filters is None, "SoftplusLayer: num_filters must be None, as it is determined by input_dims"
         assert np.prod(input_dims[1:]) == 1, "SoftplusLayer: input_dims must be 1D with length equal to num_channels"
         num_chan = input_dims[0]  # number of output channels matches number of input channels
-        assert bias is False, "Bias setting is automatic: should not be set here"
+        #assert bias is False, "Bias setting is automatic: should not be set here"
+        if num_anchors == 0 and not bias:
+            bias = True  # make bias true if there is no drift term -- necessary
 
         super().__init__(
-            input_dims=[1,1,1,1], num_filters=num_chan, weights_initializer='ones', pos_constraint=True, bias=num_anchors==0, **kwargs)
+            input_dims=[1,1,1,1], num_filters=num_chan, weights_initializer='ones', pos_constraint=True, bias=bias, **kwargs)
 
         self.beta_drift = beta_drift
         self.alpha_drift = alpha_drift
@@ -54,12 +59,15 @@ class SoftplusLayer(NDNLayer):
             self.register_parameter('drift', Parameter(torch.zeros([num_anchors, num_chan], dtype=torch.float32)))
             if beta_drift:
                 self.register_parameter('beta', Parameter(torch.ones([num_anchors, num_chan], dtype=torch.float32)))
+            if bias:
+                print('  SoftplusLayer reminder: bias is set to true and there is a drift term. drift is defaulted to not being fit')
+                self.set_parameters(val=False, name='drift')  # if bias, default is that driftterm is not fit
         else:
             self.drift = None
         if (num_anchors == 0) or (not beta_drift):
             self.register_parameter('beta', Parameter(torch.ones(num_chan, dtype=torch.float32)))
 
-        self.register_buffer('bias_reg', torch.tensor(bias_reg, dtype=torch.float32))
+        self.register_buffer('drift_reg', torch.tensor(drift_reg, dtype=torch.float32))
         self.register_buffer('beta_reg', torch.tensor(beta_reg, dtype=torch.float32))
 
         # by default, weights (alpha) are not fit
@@ -141,11 +149,11 @@ class SoftplusLayer(NDNLayer):
             return torch.tensor(0.0, device=self.beta.device)
             
         reg_loss = torch.tensor(0.0, device=self.beta.device)
-        if self.bias_reg > 0.0:
+        if self.drift_reg > 0.0:
             d2 = -2*self.drift[1:-1,:].clone()  # ignoring edges
             d2 += self.drift[:-2,:]
             d2 += self.drift[2:,:]
-            reg_loss += self.bias_reg * torch.mean( d2**2 )
+            reg_loss += self.drift_reg * torch.mean( d2**2 )
         if (self.beta_reg > 0.0) and (self.beta_drift):
             d2 = -2*self.beta[1:-1,:].clone()  # ignoring edges
             d2 += self.beta[:-2,:]
@@ -158,9 +166,9 @@ class SoftplusLayer(NDNLayer):
         return 'softplus'
 
     @classmethod
-    def layer_dict(cls, num_anchors=0, beta_drift=False, drift_reg=0.01, beta_reg=0.01, bias=False, **kwargs):
+    def layer_dict(cls, num_anchors=0, beta_drift=False, drift_reg=0.1, beta_reg=0.1, bias=False, **kwargs):
         """"""
-        assert bias is False, "SoftplusLayer: bias must not be set -- it is determined"
+        #assert bias is False, "SoftplusLayer: bias must not be set -- it is determined"
         Ldict = super().layer_dict(**kwargs)
         Ldict['NLtype'] = 'lin'  # this is ignored, but set to lin to avoid confusion
         del Ldict['num_filters']

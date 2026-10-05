@@ -15,9 +15,19 @@ import io
 import torch.optim.lbfgs as lbfgs_mod
 if hasattr(lbfgs_mod, '_strong_wolfe') and not hasattr(lbfgs_mod, '_strong_wolfe_orig'):
     lbfgs_mod._strong_wolfe_orig = lbfgs_mod._strong_wolfe
-    def _strong_wolfe_capped(*args, max_ls=25, **kwargs):
-        return lbfgs_mod._strong_wolfe_orig(*args, max_ls=min(max_ls, 25), **kwargs)
-    lbfgs_mod._strong_wolfe = _strong_wolfe_capped
+
+    #def _strong_wolfe_capped(*args, max_ls=25, **kwargs):
+    #    return lbfgs_mod._strong_wolfe_orig(*args, max_ls=min(max_ls, 25), **kwargs)
+    #lbfgs_mod._strong_wolfe = _strong_wolfe_capped
+
+    def _strong_wolfe_guarded(obj_func, x, t, d, f, g, gtd, *args, max_ls=25, **kwargs):
+        if not torch.isfinite(d).all():
+            print('Non-finite L-BFGS direction; stopping at last good parameters')
+            d.zero_()   # makes L-BFGS's final parameter update a no-op
+            return f, g, 0.0, 0
+        return lbfgs_mod._strong_wolfe_orig(obj_func, x, t, d, f, g, gtd, *args, max_ls=min(max_ls, 25), **kwargs)
+
+    lbfgs_mod._strong_wolfe = _strong_wolfe_guarded
 # end suggestion -- this modified internal stuff after the torch.import so will work for this module
 
 
@@ -92,8 +102,9 @@ def fit_lbfgs(
 
         # Bad trial point: report it, then make strong_wolfe reject it
         bad = [n for n, p in model.named_parameters() if p.grad is not None and not torch.isfinite(p.grad).all()]
-        print('Non-finite grads in:', bad)
+        print('Rejected trial: loss = {}, non-finite grads in: {}'.format(loss.item(), bad))
         if verbose > 1:
+            #print('Non-finite grads in:', bad)
             print("Rejected trial step (loss = {})".format(loss.item()))
         for p in params:
             p.grad = torch.full_like(p, float('nan'))

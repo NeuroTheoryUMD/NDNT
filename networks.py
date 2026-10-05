@@ -1091,8 +1091,7 @@ class SoftplusNetwork(FFnetwork):
     """
 
     def __init__(
-            self, ffnet_n=[0], bias_reg=0.01, beta_reg=0.01, 
-            xstim_n=None, layer_list=None, **kwargs):
+            self, ffnet_n=[0], drift_reg=0.04, beta_reg=0.04, xstim_n=None, layer_list=None, **kwargs):
         """
         Same as contructor for regular network, with extra argument to say if there is a shifter coming in. 
         If there is a shifter, it will interpret (in the forward) the last element routing towards the shifter
@@ -1103,7 +1102,7 @@ class SoftplusNetwork(FFnetwork):
         from NDNT.modules.layers import SoftplusLayer  # SoftplusLayerDrift
         
         super().__init__(xstim_n=None, ffnet_n=ffnet_n, layer_list=layer_list, **kwargs)
-        #self.network_type = 'combnet'  # this has to be add or multiply or whatever
+        self.network_type = 'softplus'  # this has to be add or multiply or whatever
    # END SoftplusNetwork.__init__()
 
     def spikingNL(self, gvals, cell_list=None, t0=0, verbose=False ):
@@ -1133,7 +1132,7 @@ class SoftplusNetwork(FFnetwork):
     # END SoftplusNetwork.forward()
     
     @classmethod
-    def ffnet_dict( cls, ffnet_n=[0], num_anchors=0, bias_reg=0.1, beta_reg=0.1, layer_list=None, beta_drift=False, **kwargs):
+    def ffnet_dict( cls, ffnet_n=[0], num_anchors=0, drift_reg=0.04, beta_reg=0.04, layer_list=None, beta_drift=False, **kwargs):
         """
         Returns a dictionary to specify the CombNetwork
 
@@ -1149,12 +1148,12 @@ class SoftplusNetwork(FFnetwork):
         #    layer_list = [SoftplusLayer.layer_dict()]
         #else:
         layer_list = [SoftplusLayer.layer_dict(
-            num_anchors=num_anchors, bias_reg=bias_reg, beta_reg=beta_reg, beta_drift=beta_drift)]
+            num_anchors=num_anchors, drift_reg=drift_reg, beta_reg=beta_reg, beta_drift=beta_drift)]
 
         ffnet_dict = super().ffnet_dict(
             ffnet_n=ffnet_n, xstim_n=None, ffnet_type='comb', layer_list=layer_list, **kwargs)
         #ffnet_dict['num_anchors'] = num_anchors
-        #ffnet_dict['bias_reg'] = bias_reg
+        #ffnet_dict['drift_reg'] = drift_reg
         #ffnet_dict['beta_reg'] = beta_reg
         return ffnet_dict
 # END SoftplusNetwork class
