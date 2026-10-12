@@ -55,7 +55,7 @@ class FFnetwork(nn.Module):
                     layer_list = []
         else:
             assert layer_list is not None, "FFnetwork: Must supply a layer_list."
-            
+        
         super().__init__()
 
         self.LayerTypes = {
@@ -222,7 +222,8 @@ class FFnetwork(nn.Module):
                         num_cat_filters += input_dims_list[ii][0]
                     elif input_dims_list[ii][0] > 1:
                         # these are combined and input to first layer has same size as one input
-                        assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for ' + ffnet_type + ' ffnetwork'
+                        if ffnet_type != 'comb':
+                            assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for ' + ffnet_type + ' ffnetwork'
 
             self.input_dims = [num_cat_filters] + input_dims_list[0][1:]
         
@@ -257,13 +258,13 @@ class FFnetwork(nn.Module):
                 for mm in range(1, len(inputs)):
                     #if self.network_type == 'normal': # concatentate inputs
                     #    x = torch.cat( (x, inputs[mm].view([-1]+self.input_dims_list[mm])), 1 )
-                    if (self.network_type == 'add') or (self.network_type == 'comb'): # add inputs
+                    if (self.network_type == 'add'): # add inputs
                         x = torch.add( x, inputs[mm].view([-1]+self.input_dims_list[mm]) )
                     elif self.network_type == 'mult': # multiply: (input1) x (1+input2)
                         x = torch.multiply(
                             x, torch.add(inputs[mm].view([-1]+self.input_dims_list[mm]), 1.0).clamp(min=0.0) )
                         # Make sure multiplication is not negative
-                    else: # especially 'normal'
+                    else: # especially 'normal' and also comb for flexibility
                         x = torch.cat( (x, inputs[mm].view([-1]+self.input_dims_list[mm])), 1 )
                 x = x.view([nt, -1])
         else:
@@ -1091,7 +1092,8 @@ class SoftplusNetwork(FFnetwork):
     """
 
     def __init__(
-            self, ffnet_n=[0], drift_reg=0.04, beta_reg=0.04, xstim_n=None, layer_list=None, **kwargs):
+            self, ffnet_n=[0], drift_reg=0.04, beta_reg=0.04, xstim_n=None, layer_list=None, 
+            comb_type='add', ffnet_type='comb', **kwargs):
         """
         Same as contructor for regular network, with extra argument to say if there is a shifter coming in. 
         If there is a shifter, it will interpret (in the forward) the last element routing towards the shifter
@@ -1101,8 +1103,9 @@ class SoftplusNetwork(FFnetwork):
 
         from NDNT.modules.layers import SoftplusLayer  # SoftplusLayerDrift
         
-        super().__init__(xstim_n=None, ffnet_n=ffnet_n, layer_list=layer_list, **kwargs)
-        self.network_type = 'softplus'  # this has to be add or multiply or whatever
+        super().__init__(xstim_n=None, ffnet_n=ffnet_n, layer_list=layer_list, ffnet_type='comb', **kwargs)
+        #self.network_type = 'softplus'  # this has to be add or multiply or whatever
+        self.comb_type = comb_type  # this is default behavior
    # END SoftplusNetwork.__init__()
 
     def spikingNL(self, gvals, cell_list=None, t0=0, verbose=False ):
@@ -1124,6 +1127,13 @@ class SoftplusNetwork(FFnetwork):
             inputs = [inputs]
 
         x = self.preprocess_input(inputs)
+        
+        if x.shape[1] > 1:
+            if self.comb_type == 'add':
+                x = torch.sum(x, axis=1, keepdim=True)
+            else:
+                print("Warning: have not handled mult-comb in softplus yet")
+                
         if Xdrift is not None:
             y = self.layers[0](x, Xdrift=Xdrift)
         else:
@@ -1132,7 +1142,9 @@ class SoftplusNetwork(FFnetwork):
     # END SoftplusNetwork.forward()
     
     @classmethod
-    def ffnet_dict( cls, ffnet_n=[0], num_anchors=0, drift_reg=0.04, beta_reg=0.04, layer_list=None, beta_drift=False, **kwargs):
+    def ffnet_dict( 
+        cls, ffnet_n=[0], num_anchors=0, comb_type='add', drift_reg=0.04, beta_reg=0.04, layer_list=None, beta_drift=False, 
+        **kwargs):
         """
         Returns a dictionary to specify the CombNetwork
 
@@ -1152,9 +1164,7 @@ class SoftplusNetwork(FFnetwork):
 
         ffnet_dict = super().ffnet_dict(
             ffnet_n=ffnet_n, xstim_n=None, ffnet_type='comb', layer_list=layer_list, **kwargs)
-        #ffnet_dict['num_anchors'] = num_anchors
-        #ffnet_dict['drift_reg'] = drift_reg
-        #ffnet_dict['beta_reg'] = beta_reg
+        ffnet_dict['comb_type'] = comb_type
         return ffnet_dict
 # END SoftplusNetwork class
 

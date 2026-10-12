@@ -1106,8 +1106,12 @@ class NDN(nn.Module):
             gs = self.predictions(dataset, ffnet_target=input_ffnets[0],
                 data_inds=data_inds, batch_size=batch_size, device=device, num_lags=num_lags )
             for ii in range(1, len(input_ffnets)):
-                gs += self.predictions(dataset, ffnet_target=input_ffnets[ii],
+                g_tmp = self.predictions(dataset, ffnet_target=input_ffnets[ii],
                     data_inds=data_inds, batch_size=batch_size, device=device, num_lags=num_lags )
+                if g_tmp.shape[1] > 1:
+                    gs += torch.sum(g_tmp, dim=1, keepdim=True)
+                else:
+                    gs += g_tmp                    
         else:
             linear_output_model = deepcopy(self)
             linear_output_model.networks[-1].layers[-1].NL = None
@@ -1440,8 +1444,10 @@ class NDN(nn.Module):
 
         if self.block_sample:
             block_inds = data_inds
+        if ffnet_target is None:
+            ffnet_target = -1
 
-        num_cells = self.networks[-1].output_dims[0]
+        num_cells = self.networks[ffnet_target].output_dims[0]
         model_device = self.device
 
         if (self.block_sample) and not isinstance(dataset, dict):
