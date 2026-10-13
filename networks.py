@@ -222,8 +222,8 @@ class FFnetwork(nn.Module):
                         num_cat_filters += input_dims_list[ii][0]
                     elif input_dims_list[ii][0] > 1:
                         # these are combined and input to first layer has same size as one input
-                        if ffnet_type != 'comb':
-                            assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for ' + ffnet_type + ' ffnetwork'
+                        #if ffnet_type != 'comb':
+                        assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for ' + ffnet_type + ' ffnetwork'
 
             self.input_dims = [num_cat_filters] + input_dims_list[0][1:]
         
@@ -1129,10 +1129,10 @@ class SoftplusNetwork(FFnetwork):
         x = self.preprocess_input(inputs)
         
         if x.shape[1] > 1:
-            if self.comb_type == 'add':
+            if self.comb_type == 'funnel':
                 x = torch.sum(x, axis=1, keepdim=True)
-            else:
-                print("Warning: have not handled mult-comb in softplus yet")
+            #else:
+            #    print("Warning: have not handled mult-comb in softplus yet")
                 
         if Xdrift is not None:
             y = self.layers[0](x, Xdrift=Xdrift)
