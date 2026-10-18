@@ -222,8 +222,8 @@ class FFnetwork(nn.Module):
                         num_cat_filters += input_dims_list[ii][0]
                     elif input_dims_list[ii][0] > 1:
                         # these are combined and input to first layer has same size as one input
-                        #if ffnet_type != 'comb':
-                        assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for ' + ffnet_type + ' ffnetwork'
+                        if (ffnet_type != 'comb'):
+                            assert input_dims_list[ii][0] == num_cat_filters, 'Input dims must be the same for ' + ffnet_type + ' ffnetwork'
 
             self.input_dims = [num_cat_filters] + input_dims_list[0][1:]
         
@@ -1097,6 +1097,14 @@ class SoftplusNetwork(FFnetwork):
         """
         Same as contructor for regular network, with extra argument to say if there is a shifter coming in. 
         If there is a shifter, it will interpret (in the forward) the last element routing towards the shifter
+
+        Args:
+            ffnet_n: ffnet_input list, default [0]
+            drift_reg:
+            comb_type: can be 'add', 'mult' (untested), 'funnel' (see below), default = add
+                'funnel' will add across all channel dimensions assuming one output channel
+
+            ffnet_type: leave to default (do not use) -- it scrapes out so does not get past on
         """
         assert ffnet_n is not None, "SoftplusNetwork: ffnet_n must be specified"
         assert xstim_n is None, "SoftplusNetwork: xstim_n must be None"
@@ -1126,11 +1134,21 @@ class SoftplusNetwork(FFnetwork):
         if not isinstance(inputs, list):
             inputs = [inputs]
 
-        x = self.preprocess_input(inputs)
-        
-        if x.shape[1] > 1:
-            if self.comb_type == 'funnel':
-                x = torch.sum(x, axis=1, keepdim=True)
+        # Combine inputs using chosen comb_type
+        if len(inputs) == 1:
+            x = inputs[0]
+        elif self.comb_type in ['add', 'mult', 'normal']:
+            x = self.preprocess_input(inputs)
+            self.network_type = 'comb'
+        elif self.comb_type == 'funnel':   # special case where there is only one cell but multiple inputs to combine (of all sizes)
+            x = inputs[0]
+            if x.shape[1] > 1:
+                x = torch.sum(x, axis=1, keepdim=True)     
+            for ii in range(1, len(inputs)):
+                if inputs[ii].shape[1] > 0:
+                    x += torch.sum(inputs[ii], axis=1, keepdim=True)
+                else: 
+                    x += inputs[ii]
             #else:
             #    print("Warning: have not handled mult-comb in softplus yet")
                 
