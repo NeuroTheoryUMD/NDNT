@@ -6,6 +6,10 @@ from torch.nn import functional as F
 from torch.nn import Parameter
 
 class TExpansionlayer(NDNLayer):
+    """
+    This layer does spatial processing then expands the time dimension by a factor of frac.
+    crt: whether the stimulus frames should be a delta function (on for one time point in the upsample)
+    """
     def __init__(self, input_dims=None,
         num_filters=None,
         filter_dims=None,

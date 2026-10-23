@@ -36,3 +36,4 @@ from .partiallayers import OriConvLayerPartial
 from .timelayers import TimeShiftLayer
 
 from .TExpansionlayer import TExpansionlayer
+from .NonConvlayer import NonConvlayer
