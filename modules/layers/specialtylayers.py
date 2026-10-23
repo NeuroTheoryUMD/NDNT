@@ -70,16 +70,25 @@ class SoftplusLayer(NDNLayer):
         self.register_buffer('drift_reg', torch.tensor(drift_reg, dtype=torch.float32))
         self.register_buffer('beta_reg', torch.tensor(beta_reg, dtype=torch.float32))
 
-        # by default, weights (alpha) are not fit
+        # by default, weights (alpha) and input multiplier (beta) are not fit
         self.set_parameters(val=False, name='weight')
+        self.set_parameters(val=False, name='beta')
     # END SoftplusLayer.__init__()
 
-    def set_scale(self, rmeans):
+    def set_scale(self, rmeans, verbose=False):
         """
-        Use average spikes per bin to set the alphas in the softplus nonlinearity
+        Use average spikes per bin to set the alphas in the softplus nonlinearity. Note that we are multiplying
+        by 3.3 to set a scale so that x=0 has the average firing rate: practically speaking the function is much more 
+        linear for x>0 and approaches 0 for negative, but firing rate is nonzero to -2beta 
         """
+        if isinstance(rmeans, list):
+            rmeans = np.array(rmeans, dtype=np.float32)
+        if not isinstance(rmeans, np.ndarray):
+            rmeans = np.array([rmeans], dtype=np.float32)
         assert len(rmeans) == self.num_filters, "SoftplusLayer.set_scale: rmeans must have length equal to num_filters"
-        self.weight.data = torch.tensor(np.sqrt(rmeans), dtype=torch.float32, device=self.weight.device)
+        self.weight.data = torch.tensor(np.sqrt(3.3*rmeans), dtype=torch.float32, device=self.weight.device)
+        if verbose:
+            print("  alpha =, self.weight.data = ", self.weight.data.cpu().numpy())
     # END SoftplusLayer.set_scales()
 
     def spikingNL( self, gvals, cell_list=None, t0=0, verbose=False ):
