@@ -1139,6 +1139,7 @@ class SoftplusNetwork(FFnetwork):
         if len(inputs) == 1:
             x = inputs[0]
         elif self.comb_type in ['add', 'mult', 'normal']:
+            self.network_type = self.comb_type
             x = self.preprocess_input(inputs)
             self.network_type = 'comb'
         elif self.comb_type == 'funnel':   # special case where there is only one cell but multiple inputs to combine (of all sizes)
