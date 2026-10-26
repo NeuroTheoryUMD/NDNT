@@ -101,7 +101,8 @@ class FFnetwork(nn.Module):
             'partial_conv': layers.ConvLayerPartial,
             'partial_oriconv': layers.OriConvLayerPartial,
             'ptunlayer': layers.ParametricTuneLayer,
-            'TEx_layer': layers.TExpansionlayer
+            'TEx_layer': layers.TExpansionlayer,
+            'NonConv_layer': layers.NonConvlayer
             #'PyrLayer': layers.PyrLayer,
             #'ConvPyrLayer': layers.ConvPyrLayer
             # 'external': layers.ExternalLayer,    
